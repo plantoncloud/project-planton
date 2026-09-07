@@ -763,6 +763,12 @@ type AwsEventBridgeScheduleNetworkConfiguration struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The subnets tasks launch into. Reference AwsSubnet subnet_id
 	// outputs or pass literal subnet-... ids.
+	//
+	// Containment-exempt: these subnets place the ECS TASKS the schedule
+	// launches, not the schedule itself, which is a managed service outside
+	// the network. On a diagram the schedule stands beside the VPC with a
+	// line in -- the verdict an EventBridge rule's ECS target subnets
+	// already carry.
 	Subnets []*v1.StringValueOrRef `protobuf:"bytes,1,rep,name=subnets,proto3" json:"subnets,omitempty"`
 	// The security groups attached to tasks. Unset uses the VPC's
 	// default. Reference AwsSecurityGroup security_group_id outputs or
@@ -1278,9 +1284,9 @@ const file_catalog_aws_awseventbridgescheduler_v1alpha1_spec_proto_rawDesc = "" 
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x10capacityProvider\x12\x1f\n" +
 	"\x04base\x18\x02 \x01(\x05B\v\xbaH\b\x1a\x06\x18\xa0\x8d\x06(\x00R\x04base\x12\"\n" +
 	"\x06weight\x18\x03 \x01(\x05B\n" +
-	"\xbaH\a\x1a\x05\x18\xe8\a(\x00R\x06weight\"\xd8\x02\n" +
-	"*AwsEventBridgeScheduleNetworkConfiguration\x12w\n" +
-	"\asubnets\x18\x01 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\xbaH\x05\x92\x01\x02\b\x01\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\asubnets\x12\x86\x01\n" +
+	"\xbaH\a\x1a\x05\x18\xe8\a(\x00R\x06weight\"\xdc\x02\n" +
+	"*AwsEventBridgeScheduleNetworkConfiguration\x12{\n" +
+	"\asubnets\x18\x01 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB-\xbaH\x05\x92\x01\x02\b\x01\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\asubnets\x12\x86\x01\n" +
 	"\x0fsecurity_groups\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x0esecurityGroups\x12(\n" +
 	"\x10assign_public_ip\x18\x03 \x01(\bR\x0eassignPublicIp\"\x8f\x01\n" +
 	")AwsEventBridgeSchedulePlacementConstraint\x125\n" +

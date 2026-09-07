@@ -347,10 +347,17 @@ message AwsEventBridgeScheduleCapacityProviderStrategy {
 message AwsEventBridgeScheduleNetworkConfiguration {
   // The subnets tasks launch into. Reference AwsSubnet subnet_id
   // outputs or pass literal subnet-... ids.
+  //
+  // Containment-exempt: these subnets place the ECS TASKS the schedule
+  // launches, not the schedule itself, which is a managed service outside
+  // the network. On a diagram the schedule stands beside the VPC with a
+  // line in -- the verdict an EventBridge rule's ECS target subnets
+  // already carry.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef subnets = 1 [
     (buf.validate.field).repeated.min_items = 1,
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsSubnet,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // The security groups attached to tasks. Unset uses the VPC's
