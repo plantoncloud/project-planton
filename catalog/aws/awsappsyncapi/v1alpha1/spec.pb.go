@@ -2613,6 +2613,11 @@ type AwsAppSyncDatasourceEventbridge struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The event bus. Can reference an AwsEventBridgeBus resource or
 	// pass a literal bus ARN.
+	//
+	// Containment-exempt: the API PUBLISHES events onto the bus; it is not
+	// deployed into it. On a diagram the bus is a room its rules live in,
+	// and the API stands outside with a line in -- the verdict an SES
+	// configuration set's event-bus destination already carries.
 	EventBusArn   *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=event_bus_arn,json=eventBusArn,proto3" json:"event_bus_arn,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3121,9 +3126,9 @@ const file_catalog_aws_awsappsyncapi_v1alpha1_spec_proto_rawDesc = "" +
 	"\x06region\x18\x02 \x01(\tB\x06\xbaH\x03\xd8\x01\x01R\x06region\"h\n" +
 	"!AwsAppSyncDatasourceElasticsearch\x12#\n" +
 	"\bendpoint\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bendpoint\x12\x1e\n" +
-	"\x06region\x18\x02 \x01(\tB\x06\xbaH\x03\xd8\x01\x01R\x06region\"\xa0\x01\n" +
-	"\x1fAwsAppSyncDatasourceEventbridge\x12}\n" +
-	"\revent_bus_arn\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\xbaH\x03\xc8\x01\x01\x88\xd4a\x83\b\x92\xd4a\x16status.outputs.bus_arnR\veventBusArn\"\xc0\x03\n" +
+	"\x06region\x18\x02 \x01(\tB\x06\xbaH\x03\xd8\x01\x01R\x06region\"\xa5\x01\n" +
+	"\x1fAwsAppSyncDatasourceEventbridge\x12\x81\x01\n" +
+	"\revent_bus_arn\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\xbaH\x03\xc8\x01\x01\x88\xd4a\x83\b\x92\xd4a\x16status.outputs.bus_arn\x98\xd4a\x01R\veventBusArn\"\xc0\x03\n" +
 	"&AwsAppSyncDatasourceRelationalDatabase\x12\x98\x01\n" +
 	"\x15db_cluster_identifier\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xf2\a\x92\xd4a!status.outputs.cluster_identifierR\x13dbClusterIdentifier\x12\x8d\x01\n" +
 	"\x14aws_secret_store_arn\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\x9c\t\x92\xd4a\x19status.outputs.secret_arnR\x11awsSecretStoreArn\x12+\n" +

@@ -8,7 +8,6 @@ contained dev.planton._test.testcloudresourcekubernetes.v1alpha1.TestCloudResour
 contained dev.planton.aws.awsalb.v1alpha1.AwsAlbSpec.subnets -> AwsSubnet
 contained dev.planton.aws.awsapprunnerservice.v1alpha1.AwsAppRunnerServiceVpcIngressConnection.vpc_id -> AwsVpc
 contained dev.planton.aws.awsapprunnervpcconnector.v1alpha1.AwsAppRunnerVpcConnectorSpec.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncDatasourceEventbridge.event_bus_arn -> AwsEventBridgeBus
 contained dev.planton.aws.awsautoscalinggroup.v1alpha1.AwsAutoScalingGroupSpec.subnets -> AwsSubnet
 contained dev.planton.aws.awsbatchcomputeenvironment.v1alpha1.AwsBatchComputeResources.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsbatchcomputeenvironment.v1alpha1.AwsBatchEksConfiguration.eks_cluster_arn -> AwsEksCluster
@@ -655,6 +654,7 @@ contained dev.planton.openfga.openfgaauthorizationmodel.v1alpha1.OpenFgaAuthoriz
 contained dev.planton.openfga.openfgarelationshiptuple.v1alpha1.OpenFgaRelationshipTupleSpec.store_id -> OpenFgaStore
 exempt    dev.planton.aws.awsalb.v1alpha1.AwsAlbDns.route53_zone_id -> AwsRoute53Zone
 exempt    dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncCognitoUserPoolAuth.user_pool_id -> AwsCognitoUserPool
+exempt    dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncDatasourceEventbridge.event_bus_arn -> AwsEventBridgeBus
 exempt    dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncEventsCognitoAuth.user_pool_id -> AwsCognitoUserPool
 exempt    dev.planton.aws.awsbatchjobdefinition.v1alpha1.AwsBatchJobDefinitionEfsVolume.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awscertmanagercert.v1alpha1.AwsCertManagerCertSpec.route53_hosted_zone_id -> AwsRoute53Zone

@@ -1214,10 +1214,16 @@ message AwsAppSyncDatasourceElasticsearch {
 message AwsAppSyncDatasourceEventbridge {
   // The event bus. Can reference an AwsEventBridgeBus resource or
   // pass a literal bus ARN.
+  //
+  // Containment-exempt: the API PUBLISHES events onto the bus; it is not
+  // deployed into it. On a diagram the bus is a room its rules live in,
+  // and the API stands outside with a line in -- the verdict an SES
+  // configuration set's event-bus destination already carries.
   dev.planton.shared.foreignkey.v1.StringValueOrRef event_bus_arn = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsEventBridgeBus,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.bus_arn"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.bus_arn",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 }
 
