@@ -651,9 +651,15 @@ message AwsSagemakerDomainSpaceIdleSettings {
 message AwsSagemakerDomainSpaceCustomFileSystem {
   // The EFS file system to mount. The file system must have mount targets in
   // the domain's VPC.
+  //
+  // Containment-exempt: a space MOUNTS the file system; the domain is not
+  // deployed inside it. On a diagram the domain stands in its VPC with a
+  // line to the file system -- the verdict the domain-level
+  // AwsSagemakerDomainEfsFileSystemConfig.file_system_id already carries.
   dev.planton.shared.foreignkey.v1.StringValueOrRef file_system_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsElasticFileSystem,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.file_system_id"
   ];
 }

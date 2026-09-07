@@ -97,7 +97,6 @@ contained dev.planton.aws.awsroute53resolverendpoint.v1alpha1.AwsRoute53Resolver
 contained dev.planton.aws.awsroute53resolverendpoint.v1alpha1.AwsRoute53ResolverEndpointRule.vpc_ids -> AwsVpc
 contained dev.planton.aws.awsroute53resolverfirewall.v1alpha1.AwsRoute53ResolverFirewallVpcAssociation.vpc_id -> AwsVpc
 contained dev.planton.aws.awsroute53resolverquerylog.v1alpha1.AwsRoute53ResolverQueryLogSpec.vpc_ids -> AwsVpc
-contained dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainSpaceCustomFileSystem.file_system_id -> AwsElasticFileSystem
 contained dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainSpec.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainSpec.vpc_id -> AwsVpc
 contained dev.planton.aws.awssagemakermodel.v1alpha1.AwsSagemakerModelVpcConfig.subnet_ids -> AwsSubnet
@@ -680,6 +679,7 @@ exempt    dev.planton.aws.awsnlb.v1alpha1.AwsNlbDns.route53_zone_id -> AwsRoute5
 exempt    dev.planton.aws.awsopensearchdomain.v1alpha1.AwsOpenSearchDomainCognitoOptions.user_pool_id -> AwsCognitoUserPool
 exempt    dev.planton.aws.awsroute53zone.v1alpha1.AwsRoute53ZoneVpcAssociation.vpc_id -> AwsVpc
 exempt    dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainEfsFileSystemConfig.file_system_id -> AwsElasticFileSystem
+exempt    dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainSpaceCustomFileSystem.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awssesconfigurationset.v1alpha1.AwsSesConfigurationSetEventDestination.event_bus -> AwsEventBridgeBus
 exempt    dev.planton.aws.awsvpcendpoint.v1alpha1.AwsVpcEndpointSpec.route_table_ids -> AwsSubnet
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterServiceMeshCertificateAuthority.key_vault_id -> AzureKeyVault
