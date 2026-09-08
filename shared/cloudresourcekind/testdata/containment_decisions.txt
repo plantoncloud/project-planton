@@ -86,11 +86,8 @@ contained dev.planton.aws.awsrdsinstance.v1alpha1.AwsRdsInstanceSpec.subnet_ids 
 contained dev.planton.aws.awsrdsproxy.v1alpha1.AwsRdsProxyEndpoint.vpc_subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsrdsproxy.v1alpha1.AwsRdsProxySpec.vpc_subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsrediselasticache.v1alpha1.AwsRedisElasticacheSpec.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsredshiftcluster.v1alpha1.AwsRedshiftClusterEndpointAuthorization.vpc_ids -> AwsVpc
 contained dev.planton.aws.awsredshiftcluster.v1alpha1.AwsRedshiftClusterSpec.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupEndpointAccess.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupSpec.namespace_name -> AwsRedshiftServerlessNamespace
-contained dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupSpec.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsrestapigateway.v1alpha1.AwsRestApiGatewayAuthorizer.provider_arns -> AwsCognitoUserPool
 contained dev.planton.aws.awsroute53dnsrecord.v1alpha1.AwsRoute53DnsRecordSpec.zone_id -> AwsRoute53Zone
 contained dev.planton.aws.awsroute53resolverendpoint.v1alpha1.AwsRoute53ResolverEndpointIpAddress.subnet_id -> AwsSubnet
@@ -678,6 +675,9 @@ exempt    dev.planton.aws.awslblistenerrule.v1alpha1.AwsLbListenerRuleActionAuth
 exempt    dev.planton.aws.awslblistenerrule.v1alpha1.AwsLbListenerRuleActionAuthenticateCognito.user_pool_domain -> AwsCognitoUserPool
 exempt    dev.planton.aws.awsnlb.v1alpha1.AwsNlbDns.route53_zone_id -> AwsRoute53Zone
 exempt    dev.planton.aws.awsopensearchdomain.v1alpha1.AwsOpenSearchDomainCognitoOptions.user_pool_id -> AwsCognitoUserPool
+exempt    dev.planton.aws.awsredshiftcluster.v1alpha1.AwsRedshiftClusterEndpointAuthorization.vpc_ids -> AwsVpc
+exempt    dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupEndpointAccess.subnet_ids -> AwsSubnet
+exempt    dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupSpec.subnet_ids -> AwsSubnet
 exempt    dev.planton.aws.awsroute53zone.v1alpha1.AwsRoute53ZoneVpcAssociation.vpc_id -> AwsVpc
 exempt    dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainEfsFileSystemConfig.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awssesconfigurationset.v1alpha1.AwsSesConfigurationSetEventDestination.event_bus -> AwsEventBridgeBus

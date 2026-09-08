@@ -68,9 +68,16 @@ message AwsRedshiftServerlessWorkgroupSpec {
   // base capacity. Empty lets AWS use the account's default VPC (only
   // meaningful in accounts that still have one). Reference AwsSubnet
   // subnet_id outputs or pass literal subnet IDs.
+  //
+  // Containment-exempt: on a diagram the workgroup lives inside the
+  // namespace it serves (the box AWS's own model draws around its
+  // workgroups); the subnets are where its network interfaces land, and
+  // the workgroup reaches into that VPC by lines -- the same verdict an
+  // ECS service carries for its subnets while its cluster places it.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_ids = 6 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsSubnet,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // Security groups attached to the workgroup's endpoint. Empty uses
@@ -308,9 +315,13 @@ message AwsRedshiftServerlessWorkgroupEndpointAccess {
   // subnet_ids (which must then be set -- CEL-enforced). Reference
   // AwsSubnet subnet_id outputs or pass literal subnet IDs. Changing
   // the list replaces the endpoint.
+  //
+  // Containment-exempt: these are the consuming VPC's subnets, an access
+  // path INTO the workgroup; the workgroup is not deployed into them.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_ids = 2 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsSubnet,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // Security groups attached to the endpoint's network interfaces.
