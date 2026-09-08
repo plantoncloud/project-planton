@@ -88,9 +88,16 @@ message AwsManagedPrometheusScraperSpec {
 message AwsManagedPrometheusScraperEksSource {
   // The EKS cluster to scrape. Reference an AwsEksCluster cluster_arn
   // output or pass a literal ARN.
+  //
+  // Containment-exempt: the scraper READS the cluster's metrics; its
+  // collectors run on AWS-managed interfaces in the subnets below, never
+  // as workloads inside the cluster. On a diagram the scraper stands where
+  // its subnets place it, with a line to the cluster it scrapes -- the
+  // verdict every other reader of a room already carries.
   dev.planton.shared.foreignkey.v1.StringValueOrRef cluster_arn = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsEksCluster,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.cluster_arn"
   ];
 
