@@ -12,7 +12,9 @@ type Locals struct {
 	KubernetesHttpRoute *kuberneteshttproutev1alpha1.KubernetesHttpRoute
 	RouteName           string
 	Namespace           string
-	Labels              map[string]string
+	// The first declared hostname, or "" when the route matches every host.
+	FirstHost string
+	Labels    map[string]string
 }
 
 func initializeLocals(_ *pulumi.Context, stackInput *kuberneteshttproutev1alpha1.KubernetesHttpRouteStackInput) *Locals {
@@ -27,6 +29,11 @@ func initializeLocals(_ *pulumi.Context, stackInput *kuberneteshttproutev1alpha1
 	// runs, so GetValue() returns the resolved value.
 	namespace := spec.GetNamespace().GetValue()
 
+	firstHost := ""
+	if hostnames := spec.GetHostnames(); len(hostnames) > 0 {
+		firstHost = hostnames[0]
+	}
+
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "httproute",
 		"app.kubernetes.io/instance":   metadata.Name,
@@ -38,6 +45,7 @@ func initializeLocals(_ *pulumi.Context, stackInput *kuberneteshttproutev1alpha1
 		KubernetesHttpRoute: target,
 		RouteName:           routeName,
 		Namespace:           namespace,
+		FirstHost:           firstHost,
 		Labels:              labels,
 	}
 }

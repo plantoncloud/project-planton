@@ -34,7 +34,14 @@ type KubernetesHttpRouteStackOutputs struct {
 	// Namespace the HTTPRoute was created in (the resolved spec.namespace).
 	// Cross-namespace parent and backend references from this route are subject
 	// to ReferenceGrant rules relative to this value.
-	Namespace     string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// The first hostname the route matches (spec.hostnames[0]) -- the address a
+	// request reaches this route at, exported exactly as the Ingress kind exports
+	// its first rule's host, so anything that reads a hostname off an Ingress
+	// (a dashboard, a smoke test, a DNS record, a deployment's URL discovery)
+	// reads it off a route the same way. Empty when the route declares no
+	// hostnames and matches every host its Gateway listener accepts.
+	FirstHost     string `protobuf:"bytes,3,opt,name=first_host,json=firstHost,proto3" json:"first_host,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -83,15 +90,24 @@ func (x *KubernetesHttpRouteStackOutputs) GetNamespace() string {
 	return ""
 }
 
+func (x *KubernetesHttpRouteStackOutputs) GetFirstHost() string {
+	if x != nil {
+		return x.FirstHost
+	}
+	return ""
+}
+
 var File_catalog_kubernetes_kuberneteshttproute_v1alpha1_outputs_proto protoreflect.FileDescriptor
 
 const file_catalog_kubernetes_kuberneteshttproute_v1alpha1_outputs_proto_rawDesc = "" +
 	"\n" +
-	"=catalog/kubernetes/kuberneteshttproute/v1alpha1/outputs.proto\x123dev.planton.kubernetes.kuberneteshttproute.v1alpha1\"^\n" +
+	"=catalog/kubernetes/kuberneteshttproute/v1alpha1/outputs.proto\x123dev.planton.kubernetes.kuberneteshttproute.v1alpha1\"}\n" +
 	"\x1fKubernetesHttpRouteStackOutputs\x12\x1d\n" +
 	"\n" +
 	"route_name\x18\x01 \x01(\tR\trouteName\x12\x1c\n" +
-	"\tnamespace\x18\x02 \x01(\tR\tnamespaceB\xa2\x03\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x1d\n" +
+	"\n" +
+	"first_host\x18\x03 \x01(\tR\tfirstHostB\xa2\x03\n" +
 	"7com.dev.planton.kubernetes.kuberneteshttproute.v1alpha1B\fOutputsProtoP\x01Zhgithub.com/plantonhq/planton/catalog/kubernetes/kuberneteshttproute/v1alpha1;kuberneteshttproutev1alpha1\xa2\x02\x04DPKK\xaa\x023Dev.Planton.Kubernetes.Kuberneteshttproute.V1alpha1\xca\x023Dev\\Planton\\Kubernetes\\Kuberneteshttproute\\V1alpha1\xe2\x02?Dev\\Planton\\Kubernetes\\Kuberneteshttproute\\V1alpha1\\GPBMetadata\xea\x027Dev::Planton::Kubernetes::Kuberneteshttproute::V1alpha1b\x06proto3"
 
 var (

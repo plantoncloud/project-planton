@@ -1745,6 +1745,7 @@ Reference an output from another manifest as `valueFrom: {kind: KubernetesHttpRo
 |---|---|---|
 | `status.outputs.route_name` | `string` | Name of the created HTTPRoute (equals metadata.name). In InfraCharts this orders the route after the Gateway and backends it references. |
 | `status.outputs.namespace` | `string` | Namespace the HTTPRoute was created in (the resolved spec.namespace). Cross-namespace parent and backend references from this route are subject to ReferenceGrant rules relative to this value. |
+| `status.outputs.first_host` | `string` | The first hostname the route matches (spec.hostnames[0]) -- the address a request reaches this route at, exported exactly as the Ingress kind exports its first rule's host, so anything that reads a hostname off an Ingress (a dashboard, a smoke test, a DNS record, a deployment's URL discovery) reads it off a route the same way. Empty when the route declares no hostnames and matches every host its Gateway listener accepts. |
 
 ## References
 

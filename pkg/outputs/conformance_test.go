@@ -1023,8 +1023,11 @@ func TestStackOutputsConformance(t *testing.T) {
 			rawOutputs: map[string]interface{}{
 				"route_name": "app-route",
 				"namespace":  "team-alpha",
+				// The route's first hostname is an address, exported as the
+				// Ingress exports first_host so one reader serves both.
+				"first_host": "api.example.com",
 			},
-			mustPopulate: []string{"route_name", "namespace"},
+			mustPopulate: []string{"route_name", "namespace", "first_host"},
 		},
 		{
 			name: "KubernetesGrpcRoute",
