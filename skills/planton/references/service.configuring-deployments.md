@@ -1,6 +1,6 @@
 ---
 title: Reading and Changing a Service's Deployment Configuration
-description: What a service is DECLARED to deploy per environment and who writes that declaration — reading deploy.environments honestly, the two writers (a git kustomize tree vs platform-authored), editing through get-then-apply without destroying authored content, adding and removing target environments, and the deployments on/off switch. Read when someone asks what an environment is configured to run, wants more memory or a new variable on a running service, wants a new target environment, or asks why deployments stopped happening.
+description: What a service is DECLARED to deploy per environment and who writes that declaration — reading deploy.environments honestly, the two writers (a git kustomize tree vs platform-authored), editing through get-then-apply without destroying authored content, which resources belong on the service and which on an infra project (and how to move one across), adding and removing target environments, and the deployments on/off switch. Read when someone asks what an environment is configured to run, wants more memory or a new variable on a running service, wants a new target environment, asks why the service shows no URL while a route fronts it elsewhere, or asks why deployments stopped happening.
 ---
 
 # Reading and Changing a Service's Deployment Configuration
@@ -39,7 +39,13 @@ The loop is `get_service` → edit the JSON → `apply_service` with the whole r
 
 Refusals arrive as the server's own sentences and always name the real fix — a serving-hostname collision names both services and the environment; a branch mapped twice names the branch. Relay them verbatim.
 
-## Adding and removing target environments
+## What belongs on the service, and what belongs on the infra project
+
+A service's environment declares the resources that exist BECAUSE of that service: its workload, and the traffic that reaches only it — the `KubernetesHttpRoute` or `KubernetesIngress` that fronts it, the Cloud Run domain mapping or ALB listener rule for its hostname, its own ConfigMap and ExternalSecret. Everything one service shares with others belongs to an infra project — the Gateway the routes attach to, the wildcard certificate, the DNS zone, the namespace, the database, the cache. The test is one question: if this service were deleted, should the resource go with it? Yes → the service's `resources[]`; no → the infra project.
+
+The boundary matters for more than tidiness. The platform reads a service's URL from the resources in ITS OWN environment (the route's hostname, the Cloud Run service's URL, the ALB's DNS name); a route declared in the infra project gives the service no address, no endpoint check, and nothing to click on the service page. And the service's delete cascade tears down only what the service declares — a route left in the infra project outlives the service it fronted.
+
+**Moving a resource from an infra project onto the service.** There is no verb that transfers a live resource between the two; the move is three steps, each an ordinary act: (1) declare the resource under the service's environment (`deploy.environments[].resources[]`, per the get-then-apply loop above), (2) remove it from the infra project's chart or manifest set and apply the project so the project's copy is destroyed, (3) deploy the service (a push, or `planton service deploy`) so the service's copy is created. Say the honest consequence before doing it: between steps 2 and 3 the resource does not exist, so traffic through a moved route is interrupted until the service's deploy applies it — order the two steps back to back, or move at a quiet hour. Do not "adopt" the live object into the service's DAG by hand; two owners of one resource is a state fight the next apply loses.
 
 **Adding** an environment is adding one entry to `deploy.environments` — the slug plus its manifests. Copying an existing environment's resources and re-stamping `metadata.env` (and the `{service}-{env}` name convention, when the source followed it) is the faithful path for any resource shape. Nothing deploys at add time; the next push (or a promote into the new environment) performs the first deployment. Adding an entry can newly collide on the serving hostname — the refusal names it.
 
