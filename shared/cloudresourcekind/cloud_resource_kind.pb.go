@@ -1292,11 +1292,16 @@ const (
 	// Virtual WAN: the umbrella of Azure's managed hub-and-spoke
 	// networking, under which virtual hubs and their gateways are
 	// created. Self-contained -- only the resource group is required.
+	// A container: its hubs and its branch sites are created into it, so
+	// on a diagram the WAN is the room they stand in.
 	CloudResourceKind_AzureVirtualWan CloudResourceKind = 2148
 	// The WAN is the prerequisite: this kind models the Virtual WAN hub
 	// (virtual_wan_id is required; standalone hubs are the legacy Route
 	// Server construction, which has its own ARM surface). The resource
-	// group chains transitively through the WAN.
+	// group chains transitively through the WAN. A container: ARM deploys
+	// the hub's VPN, ExpressRoute, and point-to-site gateways and its
+	// spoke connections INTO the hub, so on a diagram the hub is the room
+	// they stand in.
 	CloudResourceKind_AzureVirtualHub CloudResourceKind = 2149
 	// Both sides of the attachment are prerequisites: the hub being
 	// joined and the spoke virtual network being attached.
@@ -4196,7 +4201,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\x96\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\x9a\xdb\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4571,9 +4576,9 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x18AzureExpressRouteCircuit\x10\xe0\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azerc:\x02\xd0\x0fP\xcd\x01\x12E\n" +
 	"\x1fAzureExpressRouteCircuitPeering\x10\xe1\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azercp:\x02\xe0\x10P\xcd\x01\x12>\n" +
 	"\x18AzureExpressRouteGateway\x10\xe2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azergw:\x02\xe5\x10P\xcd\x01\x12;\n" +
-	"\x15AzureExpressRoutePort\x10\xe3\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azerpt:\x02\xd0\x0fP\xcd\x01\x125\n" +
-	"\x0fAzureVirtualWan\x10\xe4\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azvwan:\x02\xd0\x0fP\xcd\x01\x125\n" +
-	"\x0fAzureVirtualHub\x10\xe5\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azvhub:\x02\xe4\x10P\xcd\x01\x12B\n" +
+	"\x15AzureExpressRoutePort\x10\xe3\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azerpt:\x02\xd0\x0fP\xcd\x01\x127\n" +
+	"\x0fAzureVirtualWan\x10\xe4\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azvwan0\x01:\x02\xd0\x0fP\xcd\x01\x127\n" +
+	"\x0fAzureVirtualHub\x10\xe5\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azvhub0\x01:\x02\xe4\x10P\xcd\x01\x12B\n" +
 	"\x19AzureVirtualHubConnection\x10\xe6\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazvhubc:\x04\xe5\x10\xd6\x0fP\xcd\x01\x126\n" +
 	"\x0fAzureVpnGateway\x10\xe7\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazvpngw:\x02\xe5\x10P\xcd\x01\x12C\n" +
 	"\x19AzureVpnGatewayConnection\x10\xe8\x10\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\bazvpngwc:\x04\xe7\x10\xe9\x10P\xcd\x01\x125\n" +

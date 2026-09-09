@@ -111,7 +111,9 @@ type AzureVirtualHubConnectionSpec struct {
 	// The virtual network being attached (the spoke) -- references an
 	// AzureVirtualNetwork's ARM ID. The VNet's address space must not
 	// overlap the hub's or any other connected network's. Fixed at
-	// creation.
+	// creation. Containment-exempt: the connection is an ARM child of the
+	// hub and merely attaches the spoke, so on a diagram it stands in the
+	// hub with a line to the spoke network, never inside the network.
 	RemoteVirtualNetworkId *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=remote_virtual_network_id,json=remoteVirtualNetworkId,proto3" json:"remote_virtual_network_id,omitempty"`
 	// Enable "internet security": the hub advertises a default route
 	// (0.0.0.0/0) to this connection, so the spoke's internet-bound
@@ -441,11 +443,11 @@ var File_catalog_azure_azurevirtualhubconnection_v1alpha1_spec_proto protoreflec
 
 const file_catalog_azure_azurevirtualhubconnection_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	";catalog/azure/azurevirtualhubconnection/v1alpha1/spec.proto\x124dev.planton.azure.azurevirtualhubconnection.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xc5\x04\n" +
+	";catalog/azure/azurevirtualhubconnection/v1alpha1/spec.proto\x124dev.planton.azure.azurevirtualhubconnection.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xc9\x04\n" +
 	"\x1dAzureVirtualHubConnectionSpec\x12K\n" +
 	"\x04name\x18\x01 \x01(\tB7\xbaH4\xc8\x01\x01r/2-^[0-9a-zA-Z][-_.0-9a-zA-Z]{0,78}[_0-9a-zA-Z]$R\x04name\x12\x86\x01\n" +
-	"\x0evirtual_hub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\xe5\x10\x92\xd4a\x1dstatus.outputs.virtual_hub_idR\fvirtualHubId\x12\x9f\x01\n" +
-	"\x19remote_virtual_network_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd6\x0f\x92\xd4a!status.outputs.virtual_network_idR\x16remoteVirtualNetworkId\x12:\n" +
+	"\x0evirtual_hub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\xe5\x10\x92\xd4a\x1dstatus.outputs.virtual_hub_idR\fvirtualHubId\x12\xa3\x01\n" +
+	"\x19remote_virtual_network_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd6\x0f\x92\xd4a!status.outputs.virtual_network_id\x98\xd4a\x01R\x16remoteVirtualNetworkId\x12:\n" +
 	"\x19internet_security_enabled\x18\x04 \x01(\bR\x17internetSecurityEnabled\x12p\n" +
 	"\arouting\x18\x05 \x01(\v2V.dev.planton.azure.azurevirtualhubconnection.v1alpha1.AzureVirtualHubConnectionRoutingR\arouting\"\xf8\v\n" +
 	" AzureVirtualHubConnectionRouting\x12\x9d\x01\n" +

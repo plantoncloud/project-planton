@@ -3584,24 +3584,31 @@ enum CloudResourceKind {
   // Virtual WAN: the umbrella of Azure's managed hub-and-spoke
   // networking, under which virtual hubs and their gateways are
   // created. Self-contained -- only the resource group is required.
+  // A container: its hubs and its branch sites are created into it, so
+  // on a diagram the WAN is the room they stand in.
   AzureVirtualWan = 2148 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azvwan"
     prerequisites: [AzureResourceGroup]
     service_group: azure_networking
+    container_kind: true
   }];
 
   // The WAN is the prerequisite: this kind models the Virtual WAN hub
   // (virtual_wan_id is required; standalone hubs are the legacy Route
   // Server construction, which has its own ARM surface). The resource
-  // group chains transitively through the WAN.
+  // group chains transitively through the WAN. A container: ARM deploys
+  // the hub's VPN, ExpressRoute, and point-to-site gateways and its
+  // spoke connections INTO the hub, so on a diagram the hub is the room
+  // they stand in.
   AzureVirtualHub = 2149 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azvhub"
     prerequisites: [AzureVirtualWan]
     service_group: azure_networking
+    container_kind: true
   }];
 
   // Both sides of the attachment are prerequisites: the hub being
