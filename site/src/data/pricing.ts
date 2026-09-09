@@ -171,6 +171,10 @@ export const EVALUATION_DAYS = 30;
 // buy page; no account required).
 export const BUY_LICENSE_URL = 'https://planton.ai/license/buy';
 
+// Where the free evaluation key is claimed: the same public page, its
+// evaluation section (email in, key by email, once per address).
+export const EVALUATION_URL = `${BUY_LICENSE_URL}#evaluation`;
+
 // The self-serve ceiling: below this seat count nobody needs to talk to
 // sales -- both license sizes are card-and-email purchases.
 export const SELF_SERVE_SEAT_CEILING = 25;

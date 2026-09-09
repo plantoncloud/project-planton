@@ -11,7 +11,7 @@ import {
 import { Add } from '@mui/icons-material';
 import { TypoB2Regular, TypoH2 } from '@/components/common';
 import Link from 'next/link';
-import { EVALUATION_DAYS, FREE_TIER_SEATS } from '@/data/pricing';
+import { EVALUATION_DAYS, EVALUATION_URL, FREE_TIER_SEATS } from '@/data/pricing';
 
 interface IFaq {
   title: string;
@@ -80,7 +80,11 @@ const faqs: IFaq[] = [
           unlocks every capability on your own cluster for {EVALUATION_DAYS}{' '}
           days. When it ends, the install steps down gently to the community
           edition through the same never-breaks ladder a paid license uses.
-          Nothing you built is ever locked or lost.
+          Nothing you built is ever locked or lost.{' '}
+          <Link className="text-white underline" href={EVALUATION_URL}>
+            Claim your evaluation key
+          </Link>{' '}
+          — enter your email and it arrives in your inbox.
         </TypoB2Regular>
       </Box>
     ),
