@@ -150,6 +150,7 @@ func fullControlPlaneConfig() ControlPlaneConfig {
 	// arm, and the contract lists the widest environment.
 	cfg.WebIdentity = &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: false, ClosedReason: "fixture reason"}
 	cfg.GithubWebhooks = &GithubWebhooksBinding{Reachable: false, ReceiverURL: "https://planton.example.com/webhooks/github"}
+	cfg.Console = &ConsoleBinding{URL: "https://planton.example.com"}
 	return cfg
 }
 

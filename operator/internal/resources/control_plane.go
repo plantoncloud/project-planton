@@ -108,6 +108,14 @@ type ControlPlaneConfig struct {
 	// webhook namespace on every install; reachability is the door's.
 	GithubWebhooks *GithubWebhooksBinding
 
+	// Console is where this install's browser console is served -- the front
+	// door -- for the control plane to hand out as the address a third party
+	// sends a person's browser back to (a customer's own GitHub App points its
+	// Setup URL and Callback URL at console pages here). Always set alongside
+	// WebIdentity: the console and the issuer are the same door on a
+	// self-hosted install.
+	Console *ConsoleBinding
+
 	// Vault wires the control plane to the deployed OpenBAO component. Nil
 	// when the vault component is disabled -- then the pod carries
 	// PLANTON_VAULT_ENABLED=false and NO vault address at all (present or
@@ -228,6 +236,17 @@ type GithubWebhooksBinding struct {
 	// path -- true on every install, reachable only on a public one; never a
 	// placeholder.
 	ReceiverURL string
+}
+
+// ConsoleBinding carries the origin the install's browser console is served
+// at: the front door, whatever its shape. On a port-forward door this is the
+// loopback address the person's own browser reaches -- still true, because a
+// third party only ever redirects the BROWSER there, never calls it. Hosted
+// Planton pins its console; a desktop's local instance declares none (the
+// desktop application is its console), so the variable is never a placeholder.
+type ConsoleBinding struct {
+	// URL is the console's origin, no path.
+	URL string
 }
 
 // RunnerBinding carries what the control plane needs to seed the in-cluster
@@ -862,6 +881,7 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 	envs = append(envs, storageEnvVars(cfg.Storage)...)
 	envs = append(envs, webIdentityEnvVars(cfg.WebIdentity)...)
 	envs = append(envs, githubWebhooksEnvVars(cfg.GithubWebhooks)...)
+	envs = append(envs, consoleEnvVars(cfg.Console)...)
 	envs = append(envs, vaultEnvVars(cfg.Vault)...)
 	envs = append(envs, secretBackendEnvVars(cfg.SecretBackend)...)
 	envs = append(envs, licenseEnvVars(cfg.License)...)
@@ -1048,6 +1068,21 @@ func githubWebhooksEnvVars(binding *GithubWebhooksBinding) []corev1.EnvVar {
 		// ── GitHub webhook delivery: the front door's webhook namespace ──
 		{Name: "GITHUB_WEBHOOKS_RECEIVER_URL", Value: binding.ReceiverURL},
 		{Name: "GITHUB_WEBHOOKS_REACHABLE", Value: fmt.Sprintf("%t", binding.Reachable)},
+	}
+}
+
+// consoleEnvVars names where the browser console lives, for the control plane
+// to compose the console pages a customer's GitHub App is pointed at. One
+// variable, deployment-wide: the same name hosted pins and a local instance
+// leaves empty, so the control plane has one spelling of "where is my console"
+// to converge every per-domain return address onto.
+func consoleEnvVars(binding *ConsoleBinding) []corev1.EnvVar {
+	if binding == nil {
+		return nil
+	}
+	return []corev1.EnvVar{
+		// ── browser console: the front door ──
+		{Name: "PLANTON_CONSOLE_URL", Value: binding.URL},
 	}
 }
 

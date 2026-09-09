@@ -116,8 +116,10 @@ sign-in sends the browser there. Declare the Gateway on the platform instead.
 
 One hostname serves the web console, the API the browser calls (under the `/rpc`
 path of that origin), the keyless identity issuer's discovery documents (under
-`/.well-known`), and inbound webhooks (under `/webhooks`). The platform reports its
-URL in `status.consoleUrl` (the `URL` column of `kubectl get plantonplatform`) and
+`/.well-known`), and inbound webhooks (under `/webhooks`). That one hostname is also
+what the platform tells third parties about itself: a customer's own GitHub App is
+pointed at the door's pages and webhook receiver, never at a hosted address. The
+platform reports its URL in `status.consoleUrl` (the `URL` column of `kubectl get plantonplatform`) and
 whether the internet reaches it in `status.reachability` (the `Reachability`
 column; declared with `spec.ingress.reachability`, resolved from the door's shape
 when left at `auto`), and the

@@ -246,6 +246,7 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 			Reachable:   posture.Public(),
 			ReceiverURL: resources.GithubWebhookReceiverURL(publicURL),
 		}
+		cfg.Console = &resources.ConsoleBinding{URL: posture.URL}
 	}
 
 	return cfg

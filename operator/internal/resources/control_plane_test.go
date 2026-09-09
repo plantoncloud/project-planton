@@ -1035,46 +1035,55 @@ func TestControlPlaneDeployment_PostureFollowsTheFrontDoor(t *testing.T) {
 		"front door over the public internet, and the front door is declared private. Use the runner or access-key method instead."
 
 	arms := []struct {
-		name   string
-		webID  *WebIdentityBinding
-		hooks  *GithubWebhooksBinding
-		want   map[string]string
-		absent []string
+		name    string
+		webID   *WebIdentityBinding
+		hooks   *GithubWebhooksBinding
+		console *ConsoleBinding
+		want    map[string]string
+		absent  []string
 	}{
 		{
-			name:  "public https door",
-			webID: publicDoorWebIdentity(),
-			hooks: publicDoorGithubWebhooks(),
+			name:    "public https door",
+			webID:   publicDoorWebIdentity(),
+			hooks:   publicDoorGithubWebhooks(),
+			console: &ConsoleBinding{URL: "https://planton.example.com"},
 			want: map[string]string{
 				"OIDC_ISSUER_URL": "https://planton.example.com",
 				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY": "available",
 				"GITHUB_WEBHOOKS_REACHABLE":                            "true",
 				"GITHUB_WEBHOOKS_RECEIVER_URL":                         "https://planton.example.com/webhooks/github",
+				"PLANTON_CONSOLE_URL":                                  "https://planton.example.com",
 			},
 			absent: []string{"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON"},
 		},
 		{
-			name:  "door declared private",
-			webID: &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: false, ClosedReason: privateReason},
-			hooks: &GithubWebhooksBinding{Reachable: false, ReceiverURL: "https://planton.example.com/webhooks/github"},
+			name:    "door declared private",
+			webID:   &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: false, ClosedReason: privateReason},
+			hooks:   &GithubWebhooksBinding{Reachable: false, ReceiverURL: "https://planton.example.com/webhooks/github"},
+			console: &ConsoleBinding{URL: "https://planton.example.com"},
 			want: map[string]string{
 				"OIDC_ISSUER_URL": "https://planton.example.com",
 				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY": "unavailable",
 				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON":       privateReason,
 				"GITHUB_WEBHOOKS_REACHABLE":                            "false",
 				"GITHUB_WEBHOOKS_RECEIVER_URL":                         "https://planton.example.com/webhooks/github",
+				// A private door is still the console the person's own browser reaches.
+				"PLANTON_CONSOLE_URL": "https://planton.example.com",
 			},
 		},
 		{
-			name:  "port-forward door",
-			webID: &WebIdentityBinding{IssuerURL: "http://localhost:8080", Offered: false, ClosedReason: "port-forward sentence"},
-			hooks: &GithubWebhooksBinding{Reachable: false, ReceiverURL: "http://localhost:8080/webhooks/github"},
+			name:    "port-forward door",
+			webID:   &WebIdentityBinding{IssuerURL: "http://localhost:8080", Offered: false, ClosedReason: "port-forward sentence"},
+			hooks:   &GithubWebhooksBinding{Reachable: false, ReceiverURL: "http://localhost:8080/webhooks/github"},
+			console: &ConsoleBinding{URL: "http://localhost:8080"},
 			want: map[string]string{
 				"OIDC_ISSUER_URL": "http://localhost:8080",
 				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY": "unavailable",
 				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON":       "port-forward sentence",
 				"GITHUB_WEBHOOKS_REACHABLE":                            "false",
 				"GITHUB_WEBHOOKS_RECEIVER_URL":                         "http://localhost:8080/webhooks/github",
+				// The loopback console the browser reaches over the port-forward: true, never a placeholder.
+				"PLANTON_CONSOLE_URL": "http://localhost:8080",
 			},
 		},
 	}
@@ -1092,6 +1101,7 @@ func TestControlPlaneDeployment_PostureFollowsTheFrontDoor(t *testing.T) {
 			cfg := testControlPlaneConfig()
 			cfg.WebIdentity = arm.webID
 			cfg.GithubWebhooks = arm.hooks
+			cfg.Console = arm.console
 			envMap := envVarMap(ControlPlaneDeployment(cfg).Spec.Template.Spec.Containers[0].Env)
 			for k, want := range arm.want {
 				if got := envMap[k]; got != want {

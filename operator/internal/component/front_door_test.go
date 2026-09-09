@@ -171,7 +171,7 @@ func TestPublishFrontDoor_PublishesAndClearsBothFacts(t *testing.T) {
 
 // buildConfig hands the renderer the derived bindings, never literals: the
 // issuer is the door, the verdict follows the posture, the receiver is the door
-// under the webhook namespace.
+// under the webhook namespace, and the browser console is the door itself.
 func TestBuildConfig_WebIdentityAndWebhookBindingsFollowTheDoor(t *testing.T) {
 	cp := &ControlPlane{}
 
@@ -184,6 +184,9 @@ func TestBuildConfig_WebIdentityAndWebhookBindingsFollowTheDoor(t *testing.T) {
 	if cfg.GithubWebhooks == nil || !cfg.GithubWebhooks.Reachable || cfg.GithubWebhooks.ReceiverURL != "https://planton.example.com/webhooks/github" {
 		t.Errorf("public door GithubWebhooks = %+v, want reachable at the door's webhook namespace", cfg.GithubWebhooks)
 	}
+	if cfg.Console == nil || cfg.Console.URL != "https://planton.example.com" {
+		t.Errorf("public door Console = %+v, want the door as the browser console's origin", cfg.Console)
+	}
 
 	portForward := ingressPlatform(false)
 	cfg = cp.buildConfig(portForward, nil)
@@ -192,5 +195,8 @@ func TestBuildConfig_WebIdentityAndWebhookBindingsFollowTheDoor(t *testing.T) {
 	}
 	if cfg.GithubWebhooks == nil || cfg.GithubWebhooks.Reachable || cfg.GithubWebhooks.ReceiverURL != "http://localhost:8080/webhooks/github" {
 		t.Errorf("port-forward GithubWebhooks = %+v, want unreachable, the true localhost receiver, never a placeholder", cfg.GithubWebhooks)
+	}
+	if cfg.Console == nil || cfg.Console.URL != "http://localhost:8080" {
+		t.Errorf("port-forward Console = %+v, want the loopback console the browser reaches, never a placeholder", cfg.Console)
 	}
 }
