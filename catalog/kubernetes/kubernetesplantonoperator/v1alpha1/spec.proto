@@ -70,19 +70,19 @@ message KubernetesPlantonOperatorSpec {
   bool create_namespace = 2;
 
   /**
-   * The planton-operator chart version to install (e.g. "0.9.1"). The chart
-   * and the operator image share one version line: chart 0.9.1 runs
-   * operator v0.9.1. Defaults to the version this catalog release was
+   * The planton-operator chart version to install (e.g. "0.12.0"). The chart
+   * and the operator image share one version line: chart 0.12.0 runs
+   * operator v0.12.0. Defaults to the version this catalog release was
    * validated against; pin a different version only for change control.
    * Versions must exist as published charts at oci://ghcr.io/plantonhq/charts.
    * Charts older than 0.8.0 do not own their definitions and are refused
    * at plan time: the `crds` dials would have nothing to act on.
    */
   optional string chart_version = 3 [
-    (dev.planton.shared.options.default) = "0.9.1",
+    (dev.planton.shared.options.default) = "0.12.0",
     (buf.validate.field).cel = {
       id: "chart_version_format"
-      message: "chart version must be an exact semver like \"0.9.1\" — ranges are not reproducible"
+      message: "chart version must be an exact semver like \"0.12.0\" — ranges are not reproducible"
       expression: "this.matches('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$')"
     }
   ];

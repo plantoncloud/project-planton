@@ -64,7 +64,7 @@ spec:
   namespace:
     value: planton-operator
   create_namespace: true
-  chart_version: 0.9.1
+  chart_version: 0.12.0
   crds:
     install: true
     keep_on_uninstall: true
@@ -94,7 +94,7 @@ spec:
     - mirror-pull
   image:
     repository: ghcr.io/plantonhq/planton/operator
-    tag: v0.9.1
+    tag: v0.12.0
 ```
 
 ## Spec Fields
@@ -103,7 +103,7 @@ spec:
 |---|---|---|---|---|
 | `spec.namespace` | `string \| valueFrom` | yes |  | KubernetesNamespace (`spec.name`) |
 | `spec.createNamespace` | `bool` |  |  |  |
-| `spec.chartVersion` | `string` |  | `0.9.1` |  |
+| `spec.chartVersion` | `string` |  | `0.12.0` |  |
 | `spec.replicas` | `int32` |  | `1` |  |
 | `spec.leaderElection` | `bool` |  | `true` |  |
 | `spec.resources` | `ContainerResources` |  |  |  |
@@ -162,16 +162,16 @@ the resource. When false, the namespace must already exist.
 
 `string` · optional (explicit presence)
 
-The planton-operator chart version to install (e.g. "0.9.1"). The chart
-and the operator image share one version line: chart 0.9.1 runs
-operator v0.9.1. Defaults to the version this catalog release was
+The planton-operator chart version to install (e.g. "0.12.0"). The chart
+and the operator image share one version line: chart 0.12.0 runs
+operator v0.12.0. Defaults to the version this catalog release was
 validated against; pin a different version only for change control.
 Versions must exist as published charts at oci://ghcr.io/plantonhq/charts.
 Charts older than 0.8.0 do not own their definitions and are refused
 at plan time: the `crds` dials would have nothing to act on.
 
-- default: `0.9.1`
-- rule: chart version must be an exact semver like "0.9.1" — ranges are not reproducible
+- default: `0.12.0`
+- rule: chart version must be an exact semver like "0.12.0" — ranges are not reproducible
 
 ### spec.replicas
 

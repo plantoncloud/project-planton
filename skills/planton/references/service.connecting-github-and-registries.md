@@ -64,5 +64,6 @@ A registry connection is how Planton reaches a registry: builds push with it, an
 
 - On a loopback instance (`planton instance current` shows `127.0.0.1` / `localhost`), the sign-in family IS the path: never walk a laptop user through installing a GitHub App or creating a PAT.
 - When a run did not start on a push through a sign-in connection, the question is the repository watch, not a missing webhook.
+- On a laptop the whole road — the watch, the build cluster and its verbs, the sign-in as the only credential, the commit status, every laptop failure sentence — is `references/service.building-on-your-laptop.md`; read it before diagnosing anything on a local instance.
 - Reading a repository through any GitHub connection is `get_github_access_token` (`service.reading-a-repository.md`) — the token AND the git username come back together; use both exactly as given, and relay a signed-out sentence verbatim.
 - Every connection page has a verify door. Use it — and tell the person to use it — before diagnosing a build or clone failure from its logs.

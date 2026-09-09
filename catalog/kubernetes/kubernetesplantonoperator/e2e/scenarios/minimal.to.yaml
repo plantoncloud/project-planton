@@ -12,4 +12,4 @@ spec:
   namespace:
     value: planton-operator
   create_namespace: true
-  chart_version: 0.9.1
+  chart_version: 0.12.0

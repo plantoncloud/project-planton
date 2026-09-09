@@ -31,7 +31,7 @@ locals {
   # crds.enabled / crds.keep values this module renders; older charts have
   # no such values, so the crds dials would be silently dropped — refused
   # at plan time instead (main.tf precondition).
-  default_chart_version = "0.9.1"
+  default_chart_version = "0.12.0"
   min_chart_version     = "0.8.0"
   chart_version         = coalesce(try(var.spec.chart_version, null), local.default_chart_version)
 
