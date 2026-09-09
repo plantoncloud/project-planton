@@ -31,7 +31,7 @@ Embedded .tgz → RenderHelmChart(chartData, releaseName, namespace, values) →
 | Component | Chart | Version | Mode |
 |-----------|-------|---------|------|
 | Valkey (redis-protocol cache) | bitnamicharts/valkey | 3.0.31 | Always (no mode field) |
-| OpenFGA | openfga/openfga | 0.2.12 | Always |
+| OpenFGA | openfga/openfga | 0.3.13 | Always |
 | Temporal | temporal/temporal | 0.62.0 | Always |
 
 ## Credential Generation

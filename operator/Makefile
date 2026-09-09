@@ -307,7 +307,7 @@ endef
 CNPG_VERSION ?= 1.30.0
 CNPG_MANIFESTS_DIR := internal/resources/manifests/cloudnative-pg
 
-OPENFGA_HELM_CHART_VERSION ?= 0.2.12
+OPENFGA_HELM_CHART_VERSION ?= 0.3.13
 OPENFGA_HELM_CHART_REPO_NAME := openfga
 OPENFGA_HELM_CHART_REPO_URL := https://openfga.github.io/helm-charts
 OPENFGA_CHART_DIR := internal/resources/manifests/openfga-chart

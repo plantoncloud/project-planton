@@ -17,7 +17,7 @@ var cloudNativePGFS embed.FS
 //go:embed manifests/tekton-pipelines/release.yaml
 var tektonPipelinesFS embed.FS
 
-//go:embed manifests/openfga-chart/openfga-0.2.12.tgz
+//go:embed manifests/openfga-chart/openfga-0.3.13.tgz
 var openfgaChartData []byte
 
 //go:embed manifests/temporal/temporal-0.62.0.tgz
