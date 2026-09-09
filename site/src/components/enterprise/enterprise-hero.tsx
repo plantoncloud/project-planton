@@ -26,7 +26,7 @@ export const EnterpriseHero: FC = () => {
         Enterprise at Planton
       </Typography>
       <Typography className="text-sm md:text-base text-[#a0a0a0] max-w-[720px]">
-        {`Under ${SELF_SERVE_SEAT_CEILING} seats, you don't need to talk to us at all — the self-serve license is ${sizeLow}–${sizeHigh} a year, card and email, running today. Enterprise adds the things procurement actually needs: your identity provider, air-gap, compliance reporting, and a real SLA — at a published price.`}
+        {`At ${SELF_SERVE_SEAT_CEILING} seats or fewer, you don't need to talk to us at all — the self-serve license is ${sizeLow}–${sizeHigh} a year, card and email, running today. Enterprise adds the things procurement actually needs: your identity provider, air-gap, compliance reporting, and a real SLA — at a published price.`}
       </Typography>
       {/* Renders only for India-detected visitors (the sitewide gate) —
           same chip, same placement as the pricing page's hero. */}

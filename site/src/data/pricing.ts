@@ -56,6 +56,15 @@ export interface Market {
   enterprise: EnterpriseTierDisplay[];
 }
 
+// Self-hosted license structure (market-invariant): the two sizes differ by
+// seat ceiling only — identical features. Each market's `licenses` entry
+// reads its ceiling from HERE (declared first for that reason), so a seat
+// count exists once on the site; prices live in each MARKETS entry, set per
+// market like every other number here. The community edition underneath
+// stays free forever. The build's displayed-vs-enforced guard pins these
+// ceilings to the platform's authored license offers.
+export const SELF_HOSTED_LICENSE_SEAT_CEILINGS = [10, 25] as const;
+
 export const MARKETS: Record<MarketId, Market> = {
   us: {
     id: 'us',
@@ -66,8 +75,8 @@ export const MARKETS: Record<MarketId, Market> = {
     teamSeatAnnual: 192,
     creditPackStart: 10,
     licenses: [
-      { perYear: '$3,000', perYearCompact: '$3K', perYearCard: '$3,000', seatCeiling: 10 },
-      { perYear: '$8,000', perYearCompact: '$8K', perYearCard: '$8,000', seatCeiling: 25 },
+      { perYear: '$3,000', perYearCompact: '$3K', perYearCard: '$3,000', seatCeiling: SELF_HOSTED_LICENSE_SEAT_CEILINGS[0] },
+      { perYear: '$8,000', perYearCompact: '$8K', perYearCard: '$8,000', seatCeiling: SELF_HOSTED_LICENSE_SEAT_CEILINGS[1] },
     ],
     enterprise: [
       {
@@ -93,8 +102,8 @@ export const MARKETS: Record<MarketId, Market> = {
     teamSeatAnnual: 9990,
     creditPackStart: 499,
     licenses: [
-      { perYear: '₹2,00,000', perYearCompact: '₹2L', perYearCard: '₹2L', seatCeiling: 10 },
-      { perYear: '₹5,00,000', perYearCompact: '₹5L', perYearCard: '₹5L', seatCeiling: 25 },
+      { perYear: '₹2,00,000', perYearCompact: '₹2L', perYearCard: '₹2L', seatCeiling: SELF_HOSTED_LICENSE_SEAT_CEILINGS[0] },
+      { perYear: '₹5,00,000', perYearCompact: '₹5L', perYearCard: '₹5L', seatCeiling: SELF_HOSTED_LICENSE_SEAT_CEILINGS[1] },
     ],
     enterprise: [
       {
@@ -157,25 +166,23 @@ export const FREE_TIER_SEATS = 3;
  */
 export const COMMUNITY_SEAT_LIMIT = 5;
 
-// Self-hosted license structure (market-invariant): the two sizes differ by
-// seat ceiling only — identical features. Prices live in each MARKETS entry
-// (`licenses`), set per market like every other number here. The community
-// edition underneath stays free forever.
-export const SELF_HOSTED_LICENSE_SEAT_CEILINGS = [10, 25] as const;
-
 // Free full-experience evaluation on your own cluster: every capability
 // unlocked for this many days; expiry steps down gently, never bricks.
 export const EVALUATION_DAYS = 30;
 
 // Where a self-hosted license purchase starts (the console's public
-// buy page; no account required).
+// buy page; no account required). It accepts `?email=` to open its form
+// prefilled -- the links here carry a console's email handoff into it
+// (see components/handoff).
 export const BUY_LICENSE_URL = 'https://planton.ai/license/buy';
 
 // Where the free evaluation key is claimed: the same public page, its
 // evaluation section (email in, key by email, once per address).
 export const EVALUATION_URL = `${BUY_LICENSE_URL}#evaluation`;
 
-// The self-serve ceiling: below this seat count nobody needs to talk to
-// sales -- both license sizes are card-and-email purchases.
-export const SELF_SERVE_SEAT_CEILING = 25;
+// The self-serve ceiling: up to this seat count nobody needs to talk to
+// sales -- every license size is a card-and-email purchase, so the ceiling
+// IS the largest size, derived rather than restated.
+export const SELF_SERVE_SEAT_CEILING: number =
+  SELF_HOSTED_LICENSE_SEAT_CEILINGS[SELF_HOSTED_LICENSE_SEAT_CEILINGS.length - 1];
 

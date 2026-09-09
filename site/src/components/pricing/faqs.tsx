@@ -12,11 +12,26 @@ import { Add } from '@mui/icons-material';
 import { TypoB2Regular, TypoH2 } from '@/components/common';
 import Link from 'next/link';
 import { EVALUATION_DAYS, EVALUATION_URL, FREE_TIER_SEATS } from '@/data/pricing';
+import { useHandoffEmail, withHandoffEmail } from '@/components/handoff';
 
 interface IFaq {
   title: string;
   description: ReactNode;
 }
+
+/**
+ * The evaluation door inside the FAQ. Its own component because the answer
+ * list below is module-level data: a console that handed this tab the
+ * buyer's email decorates the link so the claim form opens prefilled.
+ */
+const EvaluationClaimLink: FC = () => {
+  const handoffEmail = useHandoffEmail();
+  return (
+    <Link className="text-white underline" href={withHandoffEmail(EVALUATION_URL, handoffEmail)}>
+      Claim your evaluation key
+    </Link>
+  );
+};
 
 /**
  * Every answer here words a product behavior or a published policy --
@@ -81,9 +96,7 @@ const faqs: IFaq[] = [
           days. When it ends, the install steps down gently to the community
           edition through the same never-breaks ladder a paid license uses.
           Nothing you built is ever locked or lost.{' '}
-          <Link className="text-white underline" href={EVALUATION_URL}>
-            Claim your evaluation key
-          </Link>{' '}
+          <EvaluationClaimLink />{' '}
           — enter your email and it arrives in your inbox.
         </TypoB2Regular>
       </Box>

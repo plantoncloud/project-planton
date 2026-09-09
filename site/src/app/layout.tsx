@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/providers/theme';
 import { GoogleAnalytics } from '@next/third-parties/google';
+import { HANDOFF_CAPTURE_SCRIPT } from '@/components/handoff';
 
 const inter = Inter({
   weight: ['300', '400', '500', '600', '700'],
@@ -44,6 +45,10 @@ export default async function RootLayout({
             __html: 'try{if(window.location.hostname==="planton.ai"&&window.location.pathname==="/"&&!window.location.search&&/planton_logged_in=/.test(document.cookie))window.location.replace("/dashboard")}catch(e){}',
           }}
         />
+        {/* A console's email handoff (`#email=`) is captured into session
+            storage and stripped from the address bar here, synchronously,
+            before the analytics script below can record a page URL. */}
+        <script dangerouslySetInnerHTML={{ __html: HANDOFF_CAPTURE_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

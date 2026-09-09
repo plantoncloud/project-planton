@@ -13,6 +13,7 @@ import {
   SecondaryButton,
 } from '@/components/landing-page/v3-2026-01-02-1000/shared';
 import { useMarket } from '@/components/market';
+import { useHandoffEmail, withHandoffEmail } from '@/components/handoff';
 import {
   BUY_LICENSE_URL,
   EVALUATION_DAYS,
@@ -178,6 +179,9 @@ const AI_COMING_SELF_HOSTED: PlanCardData['ai'] = {
 
 export const PlanGrid: FC = () => {
   const { market } = useMarket();
+  // A console that already knows the buyer hands their email to this tab;
+  // both doors into the store carry it so the form opens prefilled.
+  const handoffEmail = useHandoffEmail();
 
   const sizeLow = market.licenses[0];
   const sizeHigh = market.licenses[market.licenses.length - 1];
@@ -226,7 +230,7 @@ export const PlanGrid: FC = () => {
         // the claim section on the console's public buy page.
         {
           text: `${EVALUATION_DAYS}-day full-experience evaluation key — no card, no call`,
-          href: EVALUATION_URL,
+          href: withHandoffEmail(EVALUATION_URL, handoffEmail),
         },
       ],
       ai: AI_COMING_SELF_HOSTED,
@@ -246,7 +250,7 @@ export const PlanGrid: FC = () => {
         'No sales call, no account required',
       ],
       ai: AI_COMING_SELF_HOSTED,
-      cta: { label: 'Buy a License', href: BUY_LICENSE_URL, primary: true },
+      cta: { label: 'Buy a License', href: withHandoffEmail(BUY_LICENSE_URL, handoffEmail), primary: true },
     },
   ];
 

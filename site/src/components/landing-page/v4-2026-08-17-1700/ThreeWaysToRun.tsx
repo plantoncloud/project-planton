@@ -14,7 +14,7 @@ import {
   Badge,
   SecondaryButton,
 } from './shared';
-import { COMMUNITY_SEAT_LIMIT, FREE_TIER_SEATS, MARKETS } from '@/data/pricing';
+import { COMMUNITY_SEAT_LIMIT, FREE_TIER_SEATS, MARKETS, SELF_SERVE_SEAT_CEILING } from '@/data/pricing';
 
 /**
  * The distribution strip. Numbers read from src/data/pricing.ts — a
@@ -70,7 +70,7 @@ export const ThreeWaysToRun: FC = () => {
           <SecondaryButton>See Full Pricing</SecondaryButton>
         </Link>
         <Typography className="text-xs text-[#555] mt-3">
-          Under 25 seats, everything is self-serve. Free tiers pause instead
+          At {SELF_SERVE_SEAT_CEILING} seats or fewer, everything is self-serve. Free tiers pause instead
           of billing.
         </Typography>
       </Box>

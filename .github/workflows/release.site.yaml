@@ -8,10 +8,11 @@
 # The build step delegates to `make -C site build` so CI and a local build
 # are the same command - install, lint, static export (including the pagefind
 # search index), and the assetPrefix copy all live in site/Makefile, not here.
-# The entitlement-keys guard inside the site build needs a sibling
-# planton-platform checkout to fully run; in this repository's CI it skips
-# that half with a loud notice by design - the authoritative run is the local
-# `make build` where both checkouts exist.
+# The displayed-vs-enforced guard inside the site build (entitlement keys
+# and displayed limits against the platform) needs a sibling planton-platform
+# checkout to fully run; in this repository's CI it skips that half with a
+# loud notice by design - the authoritative run is the local `make build`
+# where both checkouts exist.
 #
 # Path-filtered: only site/ changes (or this workflow) trigger a deploy, so
 # the catalog/CLI lanes never redeploy the website.

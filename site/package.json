@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "next dev",
     "build:packages": "yarn workspace @planton/website-shell build",
-    "build": "node scripts/check-entitlement-keys.mjs && yarn build:packages && node scripts/generate-recent-changelog.mjs && next build && pagefind --site out --output-path out/_pagefind --exclude-selectors 'pre,code'",
-    "check:entitlement-keys": "node scripts/check-entitlement-keys.mjs",
+    "build": "node scripts/check-displayed-vs-enforced.mjs && yarn build:packages && node scripts/generate-recent-changelog.mjs && next build && pagefind --site out --output-path out/_pagefind --exclude-selectors 'pre,code'",
+    "check:displayed-vs-enforced": "node scripts/check-displayed-vs-enforced.mjs",
     "start": "next start",
     "lint": "eslint ."
   },
