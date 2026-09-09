@@ -254,6 +254,8 @@ spec:
 | `spec.console.image.tag` | `string` |  |  |  |
 | `spec.console.replicas` | `int32` |  | `1` |  |
 | `spec.console.externalConfigSecretName` | `string` |  |  |  |
+| `spec.remoteRunners` | `KubernetesPlantonPlatformRemoteRunners` |  |  |  |
+| `spec.remoteRunners.enabled` | `bool` |  | `false` |  |
 
 ## Field Details
 
@@ -1114,6 +1116,33 @@ Console replicas.
 
 Name of a Secret (in the platform's namespace) whose keys are all
 injected into the console as environment variables.
+
+### spec.remoteRunners
+
+`KubernetesPlantonPlatformRemoteRunners`
+
+Runners outside this cluster — a developer's laptop deploying with the
+cloud sign-in already on it, an appliance in another network — pulling
+this platform's deploy work. OFF by default. Rides the front door:
+the deploy queue is routed through the platform hostname beside the
+native gRPC API, so it needs a Gateway API front door (ingress with a
+gateway_ref); on any other door the capability stays closed and the
+platform's status says why. The in-cluster runner is unaffected.
+
+### spec.remoteRunners.enabled
+
+`bool` · optional (explicit presence)
+
+Open the deploy queue to runners outside the cluster and advertise the
+front door's address to them. Platform default: false — an install that
+has not chosen this keeps its queue in-cluster, and a runner asking to
+enroll from outside is refused with the reason, never handed an address
+it cannot reach. What opens: the queue's workflow service, over TLS,
+without authentication of its own (the posture the hosted platform
+carries for its remote runners); the queue's administrative service
+never leaves the cluster.
+
+- default: `false`
 
 ## Outputs
 

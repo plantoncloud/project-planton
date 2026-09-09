@@ -577,15 +577,16 @@ func TestControlPlaneDeployment_RunnerBinding(t *testing.T) {
 		t.Errorf("KUBERNETES_WORKLOAD_AUTH_TRUSTED_NAMESPACES = %q, want exactly the CR namespace",
 			envMap["KUBERNETES_WORKLOAD_AUTH_TRUSTED_NAMESPACES"])
 	}
-	// Runner-connectivity advertisement: minted identity documents and the
-	// materializer's capability gate both read these.
-	if envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"] != cfg.Temporal.FrontendEndpoint {
-		t.Errorf("CONNECT_RUNNER_TEMPORAL_ENDPOINT = %q, want the in-cluster frontend",
-			envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"])
-	}
-	if envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"] != "platform.pipelines" {
-		t.Errorf("CONNECT_RUNNER_TEMPORAL_NAMESPACE = %q, want platform.pipelines",
-			envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"])
+	// The deploy-queue advertisement is NOT the in-cluster runner's: every
+	// platform reader of it is a remote-runner gate or minter, and an
+	// in-cluster address would admit a laptop and then hand it a name only
+	// pods resolve. With remote runners closed (this binding) it stays unset,
+	// which is what makes the control plane refuse a remote enrollment
+	// honestly.
+	for _, absent := range []string{"CONNECT_RUNNER_TEMPORAL_ENDPOINT", "CONNECT_RUNNER_TEMPORAL_NAMESPACE"} {
+		if v, ok := envMap[absent]; ok {
+			t.Errorf("%s = %q; the queue must not be advertised to remote runners while the capability is closed", absent, v)
+		}
 	}
 	// Single-runner direct dial: CloudOps reaches the runner at its Service
 	// with the shared bearer -- sourced from the SAME Secret key the runner
@@ -614,12 +615,51 @@ func TestControlPlaneDeployment_RunnerBinding(t *testing.T) {
 			t.Errorf("%s must be absent: this install operates no runner tunnel and ships no CA", absent)
 		}
 	}
-	// The document endpoint is the in-cluster Service -- the same
-	// reachability horizon as the advertised Temporal endpoint.
+	// The two-address contract with remote runners closed: both the remote
+	// and the platform-scoped API address are the in-cluster Service (the
+	// remote one is boot-required and truthful for the only runners that can
+	// enroll then -- this cluster's).
 	wantEndpoint := ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace) + ":80"
 	if envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"] != wantEndpoint {
 		t.Errorf("CONNECT_RUNNER_PLANTON_API_ENDPOINT = %q, want %s",
 			envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"], wantEndpoint)
+	}
+	if envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"] != wantEndpoint {
+		t.Errorf("CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT = %q, want the in-cluster Service %s",
+			envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"], wantEndpoint)
+	}
+}
+
+// With remote runners open, the addresses stamped into enrolling runners'
+// identity documents are the FRONT DOOR's -- what a laptop dials -- for both
+// the queue and the API, while platform-scoped credentials keep the in-cluster
+// Service. The in-cluster runner is untouched either way: its document is
+// rendered by the operator (see RunnerIdentityDocumentJSON), never minted.
+func TestControlPlaneDeployment_RemoteRunnersAdvertiseTheFrontDoor(t *testing.T) {
+	cfg := testControlPlaneConfig()
+	cfg.RemoteRunners = &RemoteRunnersBinding{
+		PlantonAPIEndpoint: "planton.example.com:443",
+		TemporalEndpoint:   "planton.example.com:443",
+	}
+	deploy := ControlPlaneDeployment(cfg)
+	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
+
+	if envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"] != "planton.example.com:443" {
+		t.Errorf("CONNECT_RUNNER_TEMPORAL_ENDPOINT = %q, want the front door", envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"])
+	}
+	if envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"] != "platform.pipelines" {
+		t.Errorf("CONNECT_RUNNER_TEMPORAL_NAMESPACE = %q, want platform.pipelines", envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"])
+	}
+	if envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"] != "planton.example.com:443" {
+		t.Errorf("CONNECT_RUNNER_PLANTON_API_ENDPOINT = %q, want the front door", envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"])
+	}
+	inCluster := ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace) + ":80"
+	if envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"] != inCluster {
+		t.Errorf("CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT = %q, want the in-cluster Service %s", envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"], inCluster)
+	}
+	// Never the in-cluster queue name on the remote advertisement.
+	if v := envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"]; strings.Contains(v, "svc.cluster.local") {
+		t.Errorf("the remote advertisement must never be an in-cluster name, got %s", v)
 	}
 }
 

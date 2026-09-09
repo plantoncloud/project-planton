@@ -138,6 +138,10 @@ func fullControlPlaneConfig() ControlPlaneConfig {
 		Provisioner:        "tofu",
 		DirectDialHost:     "planton-runner.default.svc.cluster.local",
 	}
+	cfg.RemoteRunners = &RemoteRunnersBinding{
+		PlantonAPIEndpoint: "planton.example.com:443",
+		TemporalEndpoint:   "planton.example.com:443",
+	}
 	vault := OpenBAOConnection("planton", "default")
 	cfg.Vault = &VaultBinding{
 		APIAddr:        vault.APIAddr,

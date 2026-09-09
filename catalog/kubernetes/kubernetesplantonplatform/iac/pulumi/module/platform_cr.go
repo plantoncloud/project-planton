@@ -258,6 +258,16 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 		}
 	}
 
+	// ---- remote runners --------------------------------------------------------
+	// Renders on presence, like build: a manifest that never mentions remote
+	// runners produces the same CR as before the field existed (the operator's
+	// default is off).
+	if rr := spec.GetRemoteRunners(); rr != nil && rr.Enabled != nil {
+		out["remoteRunners"] = map[string]interface{}{
+			"enabled": rr.GetEnabled(),
+		}
+	}
+
 	// ---- vault -----------------------------------------------------------------
 	if v := spec.GetVault(); v != nil {
 		vault := map[string]interface{}{}

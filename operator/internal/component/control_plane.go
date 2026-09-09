@@ -247,6 +247,20 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 			ReceiverURL: resources.GithubWebhookReceiverURL(publicURL),
 		}
 		cfg.Console = &resources.ConsoleBinding{URL: posture.URL}
+
+		// Remote runners ride the same door: when the install opened them and
+		// this door carries native gRPC, the queue and the API are advertised
+		// at the door's gRPC endpoint (the ingress component routes the
+		// queue's workflow service beside the API). A door that cannot carry
+		// it leaves the binding nil -- the control plane then refuses remote
+		// enrollment with the reason, and the ingress status names the door.
+		if remoteRunnersCarried(planton) {
+			endpoint := resources.GRPCEndpoint(publicURL)
+			cfg.RemoteRunners = &resources.RemoteRunnersBinding{
+				PlantonAPIEndpoint: endpoint,
+				TemporalEndpoint:   endpoint,
+			}
+		}
 	}
 
 	return cfg

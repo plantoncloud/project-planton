@@ -683,6 +683,23 @@ spec:
                     - skip
                     type: string
                 type: object
+              remoteRunners:
+                description: |-
+                  remoteRunners lets runners OUTSIDE this cluster -- a developer's laptop
+                  deploying with the cloud sign-in already on it, an appliance in another
+                  network -- pull deploy work from this install. Off by default; every
+                  field is optional. The in-cluster runner is unaffected either way.
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      enabled opens the deploy queue to runners outside this cluster and
+                      advertises the front door's address to them. Default false: an install
+                      that has not chosen this keeps its queue in-cluster, and a runner that
+                      asks to enroll from outside is refused with the reason -- never handed
+                      an address it cannot reach.
+                    type: boolean
+                type: object
               runner:
                 description: |-
                   runner configures the in-cluster worker that executes IaC deployments.
@@ -850,6 +867,12 @@ spec:
               rule: '!has(self.bootstrap) || !has(self.bootstrap.secretBackend) ||
                 self.bootstrap.secretBackend.type != ''platform'' || !has(self.vault)
                 || !has(self.vault.enabled) || self.vault.enabled'
+            - message: 'remoteRunners.enabled opens the deploy queue to runners outside
+                the cluster through the front door, but with ingress disabled there
+                is no front door a laptop could reach; set ingress.enabled: true with
+                a gatewayRef, or leave remoteRunners off'
+              rule: '!has(self.remoteRunners) || !has(self.remoteRunners.enabled)
+                || !self.remoteRunners.enabled || (has(self.ingress) && self.ingress.enabled)'
           status:
             description: PlantonPlatformStatus defines the observed state of a PlantonPlatform
               deployment.

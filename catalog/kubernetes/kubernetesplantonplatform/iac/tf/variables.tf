@@ -97,6 +97,9 @@ variable "spec" {
     build = optional(object({
       enabled = optional(bool)
     }))
+    remote_runners = optional(object({
+      enabled = optional(bool)
+    }))
     vault = optional(object({
       enabled            = optional(bool)
       init_mode          = optional(string)

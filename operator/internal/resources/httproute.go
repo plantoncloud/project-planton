@@ -51,6 +51,11 @@ type HTTPRouteConfig struct {
 	GatewayName      string
 	GatewayNamespace string
 	SectionName      string
+
+	// RemoteRunners adds the remote-runners capability's rules (the deploy
+	// queue's workflow service) to the route. Only this door renders them:
+	// it is the one that carries native gRPC.
+	RemoteRunners bool
 }
 
 // HTTPRouteName returns the HTTPRoute name: "{crName}-ingress" -- the same
@@ -61,11 +66,15 @@ func HTTPRouteName(crName string) string {
 }
 
 // HTTPRoute builds the platform's route: one rule per entry of the front-door
-// route table, each a Kubernetes-core match (PathPrefix, plus an Exact header
-// match where the table asks for one; no implementation-specific matching
-// anywhere), attached to the named Gateway for the one hostname.
+// route table (plus the remote-runners rules when that capability is on),
+// each a Kubernetes-core match (PathPrefix, plus an Exact header match where
+// the table asks for one; no implementation-specific matching anywhere),
+// attached to the named Gateway for the one hostname.
 func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
 	table := FrontDoorRoutes()
+	if cfg.RemoteRunners {
+		table = append(RemoteRunnerRoutes(), table...)
+	}
 	rules := make([]any, 0, len(table))
 	for _, route := range table {
 		rule := map[string]any{
@@ -79,12 +88,13 @@ func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
 		}
 		if route.Backend.ServesStreams() {
 			// Server streams (deploy progress, log tails) are long-lived
-			// responses on both control-plane doors; several Gateway
-			// implementations default a request timeout (Envoy Gateway: 15s)
-			// that would sever them. Zero disables the timeout per the API's
-			// definition. Timeouts are an Extended feature: a Gateway that
-			// does not implement them says so on the route's Accepted
-			// condition, which the component relays.
+			// responses on both control-plane doors, and the deploy queue's
+			// long polls hold a request open for about a minute; several
+			// Gateway implementations default a request timeout (Envoy
+			// Gateway: 15s) that would sever them. Zero disables the timeout
+			// per the API's definition. Timeouts are an Extended feature: a
+			// Gateway that does not implement them says so on the route's
+			// Accepted condition, which the component relays.
 			rule["timeouts"] = map[string]any{"request": "0s"}
 		}
 		rules = append(rules, rule)

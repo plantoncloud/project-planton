@@ -82,10 +82,17 @@ type ControlPlaneConfig struct {
 	Identity *IdentityBinding
 
 	// Runner, when set, activates the control plane's in-cluster runner boot
-	// seeds (registration + credential hash + deploy defaults) and advertises
-	// the runner-connectivity capability. Nil when the runner is disabled --
-	// the seed properties stay unset and the arm stays inert.
+	// seeds (registration + credential hash + deploy defaults) and the badge
+	// verification the in-cluster runner proves itself with. Nil when the
+	// runner is disabled -- the seed properties stay unset and the arm stays
+	// inert.
 	Runner *RunnerBinding
+
+	// RemoteRunners, when set, advertises this install's deploy queue and API
+	// to runners enrolling from outside the cluster at addresses they can
+	// reach (see RemoteRunnersBinding). Nil leaves the queue unadvertised, so
+	// remote enrollment is refused honestly.
+	RemoteRunners *RemoteRunnersBinding
 
 	// Storage wires the object-storage capability onto the platform's own
 	// Postgres (the planton.storage.provider seam's postgres arm): state-file
@@ -274,6 +281,26 @@ type RunnerBinding struct {
 	// zero registration ceremony. Follows the effective build toggle
 	// (spec.build AND spec.runner).
 	BuildEnabled bool
+}
+
+// RemoteRunnersBinding is what the install advertises to runners that enroll
+// from OUTSIDE the cluster (developer laptops, appliances in other networks):
+// the two addresses stamped into their identity documents. Present exactly
+// when the remote-runners capability is on AND the front door carries it;
+// nil otherwise, which leaves the deploy-queue advertisement UNSET so the
+// control plane refuses remote enrollment with the reason instead of minting
+// an address only this cluster's pods resolve. The in-cluster runner never
+// reads these: the operator renders its identity document itself, with the
+// in-cluster addresses.
+type RemoteRunnersBinding struct {
+	// PlantonAPIEndpoint is the control plane's native gRPC address as a
+	// runner outside the cluster dials it (host:port; :443 means TLS) -- the
+	// front door's gRPC endpoint.
+	PlantonAPIEndpoint string
+	// TemporalEndpoint is the deploy queue's address as a runner outside the
+	// cluster dials it -- the same front door, which routes the queue's
+	// workflow service beside the API.
+	TemporalEndpoint string
 }
 
 // IdentityBinding carries what the control plane needs to validate browser
@@ -528,7 +555,7 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: IdentityFederationFactsConfigMapName(cfg.CRName),
 								},
-								Optional: ptrBool(true),
+								Optional: new(true),
 							},
 						},
 					}},
@@ -620,7 +647,7 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 					Port:        controlPlaneServicePort,
 					TargetPort:  intstr.FromInt32(controlPlaneContainerPort),
 					Protocol:    corev1.ProtocolTCP,
-					AppProtocol: strPtr(controlPlaneAppProtocol),
+					AppProtocol: new(controlPlaneAppProtocol),
 				},
 				// gRPC-Web rides plain HTTP/1.1 (or h2) -- appProtocol http, so
 				// ingress controllers route it like ordinary web traffic.
@@ -629,7 +656,7 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 					Port:        controlPlaneGrpcWebPort,
 					TargetPort:  intstr.FromInt32(controlPlaneGrpcWebPort),
 					Protocol:    corev1.ProtocolTCP,
-					AppProtocol: strPtr("http"),
+					AppProtocol: new("http"),
 				},
 				// The webhook servlet: the control plane's public unauthenticated
 				// HTTP surface (OIDC discovery + JWKS, signature-verified
@@ -640,7 +667,7 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 					Port:        controlPlaneWebhookPort,
 					TargetPort:  intstr.FromInt32(controlPlaneWebhookPort),
 					Protocol:    corev1.ProtocolTCP,
-					AppProtocol: strPtr("http"),
+					AppProtocol: new("http"),
 				},
 			},
 		},
@@ -819,21 +846,22 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		{Name: "CLOUD_ACCOUNT_GCP_CUSTOMER_SERVICE_ACCOUNTS_PROJECT_NUMBER", Value: "0"},
 
 		// ── connect runner enrollment + tunnel posture ──
-		// This install operates NO runner tunnel (the tunnel exists to cross
-		// networks; the one runner this install ships shares the control
-		// plane's, so CloudOps reaches it by DIRECT dial -- the
-		// RUNNER_DIRECT_* arm below). CONNECT_RUNNER_TUNNEL_ENDPOINT is
-		// therefore deliberately absent, which is the control plane's
+		// This install operates NO runner tunnel (the tunnel exists for live
+		// cloud operations across networks; the one runner this install
+		// ships shares the control plane's, so CloudOps reaches it by DIRECT
+		// dial -- the RUNNER_DIRECT_* arm below). CONNECT_RUNNER_TUNNEL_ENDPOINT
+		// is therefore deliberately absent, which is the control plane's
 		// declared tunnel-less posture: identity documents mint WITHOUT
 		// tunnel material, and none of the CA issuance configuration exists
-		// here. The document endpoint is the control plane's in-cluster
-		// Service -- the same reachability horizon as the Temporal endpoint
-		// the join advertises, so a joined runner's whole document is
-		// truthful for exactly the network that can join at all (this
-		// cluster's; internet-remote runners are a future tunnel-server
-		// story). The day remote runners attach, the tunnel-server component
-		// earns the tunnel + CA bindings.
-		{Name: "CONNECT_RUNNER_PLANTON_API_ENDPOINT", Value: fmt.Sprintf("%s:%d",
+		// here. The API address stamped into enrolling runners' documents
+		// (the connect domain's two-address contract, remote beside
+		// platform) is the front door's gRPC endpoint when remote runners are
+		// open -- the address a laptop dials -- and the in-cluster Service
+		// otherwise (the variable is boot-required, and no remote runner is
+		// admitted without the queue advertisement below anyway). The
+		// platform-scoped address is always the in-cluster Service.
+		{Name: "CONNECT_RUNNER_PLANTON_API_ENDPOINT", Value: remoteRunnerAPIEndpoint(cfg)},
+		{Name: "CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT", Value: fmt.Sprintf("%s:%d",
 			ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace), controlPlaneServicePort)},
 		{Name: "RUNNER_HOSTNAME_SUFFIX", Value: "local"},
 		{Name: "RUNNER_TARGET_PORT", Value: "50051"},
@@ -886,15 +914,30 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 	envs = append(envs, secretBackendEnvVars(cfg.SecretBackend)...)
 	envs = append(envs, licenseEnvVars(cfg.License)...)
 
+	// Remote-runners capability: the deploy-queue advertisement
+	// (CONNECT_RUNNER_TEMPORAL_*) that minted identity documents and the
+	// materializer's capability gate both read. Set ONLY when the install
+	// opened remote runners and the front door carries the queue -- every
+	// reader of this variable on the platform is a remote-runner gate or
+	// minter (the in-cluster runner gets its queue address from its own
+	// Deployment, never from here), so leaving it unset is what makes the
+	// control plane refuse a laptop honestly ("this instance doesn't support
+	// deploying from your own machine yet") instead of handing it an address
+	// only this cluster's pods resolve.
+	if cfg.RemoteRunners != nil {
+		envs = append(envs,
+			corev1.EnvVar{Name: "CONNECT_RUNNER_TEMPORAL_ENDPOINT", Value: cfg.RemoteRunners.TemporalEndpoint},
+			corev1.EnvVar{Name: "CONNECT_RUNNER_TEMPORAL_NAMESPACE", Value: runnerTemporalNamespace},
+		)
+	}
+
 	// In-cluster runner arm: the boot seeds (slug presence is the activation
-	// gate) plus the badge-verification enablement and the
-	// runner-connectivity capability advertisement (CONNECT_RUNNER_TEMPORAL_*)
-	// that minted identity documents and the materializer's capability gate
-	// both read. No credential rides this block: the runner's registration
-	// declares its Kubernetes workload identity (namespace + the
-	// slug-named ServiceAccount), the seeded declaration provisions its
-	// identity account, and the runner proves itself per call with a
-	// projected badge the control plane verifies with the cluster itself.
+	// gate) plus the badge-verification enablement. No credential rides this
+	// block: the runner's registration declares its Kubernetes workload
+	// identity (namespace + the slug-named ServiceAccount), the seeded
+	// declaration provisions its identity account, and the runner proves
+	// itself per call with a projected badge the control plane verifies with
+	// the cluster itself.
 	if cfg.Runner != nil {
 		envs = append(envs,
 			corev1.EnvVar{Name: "PLANTON_BOOTSTRAP_RUNNER_SLUG", Value: RunnerSlug(cfg.CRName)},
@@ -908,8 +951,6 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 			corev1.EnvVar{Name: "KUBERNETES_WORKLOAD_AUTH_ENABLED", Value: "true"},
 			corev1.EnvVar{Name: "KUBERNETES_WORKLOAD_AUTH_AUDIENCE", Value: RunnerBadgeAudience},
 			corev1.EnvVar{Name: "KUBERNETES_WORKLOAD_AUTH_TRUSTED_NAMESPACES", Value: cfg.Namespace},
-			corev1.EnvVar{Name: "CONNECT_RUNNER_TEMPORAL_ENDPOINT", Value: cfg.Temporal.FrontendEndpoint},
-			corev1.EnvVar{Name: "CONNECT_RUNNER_TEMPORAL_NAMESPACE", Value: runnerTemporalNamespace},
 			// Live cloud operations (CloudOps) reach the one in-cluster
 			// runner by single-runner direct dial: the runner Service plus
 			// the shared bearer token -- read from the SAME Secret key the
@@ -981,6 +1022,21 @@ func effectiveIacModulesVersion(cfg ControlPlaneConfig) string {
 		return cfg.IacModulesVersion
 	}
 	return controlPlaneModuleArtifactsVersion
+}
+
+// remoteRunnerAPIEndpoint resolves the control-plane address stamped into the
+// identity documents of runners that ENROLL (the remote side of the connect
+// domain's two-address contract): the front door's gRPC endpoint when the
+// install has opened remote runners -- what a laptop actually dials -- and
+// the in-cluster Service otherwise. The variable is boot-required, so the
+// closed posture still needs a value; it is truthful for the only runners that
+// can enroll then (this cluster's), and no runner from outside is admitted
+// without the deploy-queue advertisement that the capability alone sets.
+func remoteRunnerAPIEndpoint(cfg ControlPlaneConfig) string {
+	if cfg.RemoteRunners != nil && cfg.RemoteRunners.PlantonAPIEndpoint != "" {
+		return cfg.RemoteRunners.PlantonAPIEndpoint
+	}
+	return fmt.Sprintf("%s:%d", ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace), controlPlaneServicePort)
 }
 
 func fgaEnvVars(fga OpenFGAConnectionInfo) []corev1.EnvVar {
@@ -1264,14 +1320,17 @@ func intOrStr(val int) *intstr.IntOrString {
 	return &v
 }
 
+//go:fix inline
 func strPtr(s string) *string {
-	return &s
+	return new(s)
 }
 
+//go:fix inline
 func ptrBool(b bool) *bool {
-	return &b
+	return new(b)
 }
 
+//go:fix inline
 func int64Ptr(i int64) *int64 {
-	return &i
+	return new(i)
 }

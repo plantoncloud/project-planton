@@ -114,6 +114,9 @@ func (i *Ingress) reconcileIngressEdge(ctx context.Context, c client.Client, pla
 	if spec.TLS == nil {
 		msg += " (unencrypted HTTP; set spec.ingress.tls for HTTPS)"
 	}
+	if reason := remoteRunnersClosedReason(planton); reason != "" {
+		msg += ". " + reason
+	}
 	log.Info("Ingress ready", "url", url)
 	return Result{Ready: true, Message: msg}, nil
 }

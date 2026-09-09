@@ -156,6 +156,7 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 		GatewayName:      ref.Name,
 		GatewayNamespace: gatewayNamespace,
 		SectionName:      ref.SectionName,
+		RemoteRunners:    remoteRunnersCarried(planton),
 	})
 	if err := i.ApplyManifests(ctx, c, planton, []*unstructured.Unstructured{route}); err != nil {
 		return Result{}, err
@@ -185,6 +186,9 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 	msg = fmt.Sprintf("Console at %s via Gateway %s/%s", url, gatewayNamespace, ref.Name)
 	if !facts.https() {
 		msg += " (unencrypted HTTP; attach to an HTTPS listener for HTTPS)"
+	}
+	if remoteRunnersCarried(planton) {
+		msg += fmt.Sprintf("; remote runners pull deploy work at %s", resources.GRPCEndpoint(url))
 	}
 	log.Info("Gateway route ready", "url", url)
 	return Result{Ready: true, Message: msg}, nil

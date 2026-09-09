@@ -261,9 +261,35 @@ type BuildSpec struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
+// RemoteRunnersSpec configures the remote-runners capability: runners in other
+// networks (developer laptops, appliances) pulling this install's deploy work.
+// The capability rides the front door: the operator routes the deploy queue's
+// service through the platform hostname, beside the native gRPC API, and
+// advertises that address to runners that enroll from outside. It needs a
+// Gateway API front door serving the hostname (the queue speaks native gRPC,
+// which only that door carries) -- on any other door the capability stays
+// closed and the ingress component's status says why. Named for the
+// CAPABILITY (remote runners), not the mechanism (a queue route).
+//
+// What is exposed: the deploy queue's WorkflowService, over TLS, without
+// authentication of its own -- the same posture the hosted platform carries
+// for its remote runners. Only the queue's workflow service is routed; its
+// administrative service never leaves the cluster.
+type RemoteRunnersSpec struct {
+	// enabled opens the deploy queue to runners outside this cluster and
+	// advertises the front door's address to them. Default false: an install
+	// that has not chosen this keeps its queue in-cluster, and a runner that
+	// asks to enroll from outside is refused with the reason -- never handed
+	// an address it cannot reach.
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
 // PlantonPlatformSpec defines the desired state of a self-hosted Planton deployment.
 // A minimal spec requires only the version field; all other fields have sensible defaults.
 // +kubebuilder:validation:XValidation:rule="!has(self.bootstrap) || !has(self.bootstrap.secretBackend) || self.bootstrap.secretBackend.type != 'platform' || !has(self.vault) || !has(self.vault.enabled) || self.vault.enabled",message="bootstrap.secretBackend type 'platform' stores secrets in the bundled vault, which spec.vault.enabled: false has opted out of; re-enable the vault or use type awsSecretsManager"
+// +kubebuilder:validation:XValidation:rule="!has(self.remoteRunners) || !has(self.remoteRunners.enabled) || !self.remoteRunners.enabled || (has(self.ingress) && self.ingress.enabled)",message="remoteRunners.enabled opens the deploy queue to runners outside the cluster through the front door, but with ingress disabled there is no front door a laptop could reach; set ingress.enabled: true with a gatewayRef, or leave remoteRunners off"
 type PlantonPlatformSpec struct {
 	// version is the Planton platform release to deploy, as vMAJOR.MINOR.PATCH
 	// (a pre-release suffix is allowed). The control plane, console, and runner
@@ -340,6 +366,13 @@ type PlantonPlatformSpec struct {
 	// them is half a product; every field is optional.
 	// +optional
 	Build *BuildSpec `json:"build,omitempty"`
+
+	// remoteRunners lets runners OUTSIDE this cluster -- a developer's laptop
+	// deploying with the cloud sign-in already on it, an appliance in another
+	// network -- pull deploy work from this install. Off by default; every
+	// field is optional. The in-cluster runner is unaffected either way.
+	// +optional
+	RemoteRunners *RemoteRunnersSpec `json:"remoteRunners,omitempty"`
 
 	// vault configures the bundled secrets manager (OpenBAO, the open-source
 	// Vault fork). Deployed by default: it is integral the way the database

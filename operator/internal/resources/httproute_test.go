@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -133,6 +134,70 @@ func TestHTTPRouteRoutesNativeGRPCByContentType(t *testing.T) {
 			t.Errorf("content type %q is not matched by the native-gRPC rule", ct)
 		}
 	}
+}
+
+// The remote-runners capability adds exactly ONE rule ahead of the table: the
+// deploy queue's workflow service, by service-segment prefix, to the queue
+// frontend's gRPC port with the streaming timeout disabled (long polls). It
+// outranks the content-type gRPC root rule by path length, and nothing else
+// of Temporal -- the operator service in particular -- is routed. Without the
+// capability the route is byte-for-byte the plain table.
+func TestHTTPRouteCarriesTheDeployQueueOnlyForRemoteRunners(t *testing.T) {
+	base := HTTPRouteConfig{CRName: "planton", Namespace: "planton", Hostname: "planton.example.com", GatewayName: "main"}
+
+	closed := HTTPRoute(base)
+	closedRules, _, _ := unstructured.NestedSlice(closed.Object, "spec", "rules")
+	if len(closedRules) != len(FrontDoorRoutes()) {
+		t.Fatalf("without remote runners the route must be the plain table (%d rules), got %d", len(FrontDoorRoutes()), len(closedRules))
+	}
+	for _, raw := range closedRules {
+		backends, _, _ := unstructured.NestedSlice(raw.(map[string]any), "backendRefs")
+		if backends[0].(map[string]any)["name"] == TemporalFrontendServiceName("planton") {
+			t.Fatal("the deploy queue must never be routed while remote runners are off")
+		}
+	}
+
+	open := base
+	open.RemoteRunners = true
+	route := HTTPRoute(open)
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	if len(rules) != len(FrontDoorRoutes())+1 {
+		t.Fatalf("remote runners add exactly one rule, got %d for %d table rows", len(rules), len(FrontDoorRoutes()))
+	}
+	queue := rules[0].(map[string]any)
+	matches, _, _ := unstructured.NestedSlice(queue, "matches")
+	path, _, _ := unstructured.NestedMap(matches[0].(map[string]any), "path")
+	if path["type"] != "PathPrefix" || path["value"] != TemporalWorkflowServicePath {
+		t.Errorf("queue rule path = %v, want PathPrefix %s (a service-segment prefix beats the content-type root rule)", path, TemporalWorkflowServicePath)
+	}
+	if _, hasHeaders, _ := unstructured.NestedSlice(matches[0].(map[string]any), "headers"); hasHeaders {
+		t.Error("the queue rule needs no header match: its path already names the one service")
+	}
+	backends, _, _ := unstructured.NestedSlice(queue, "backendRefs")
+	backend := backends[0].(map[string]any)
+	if backend["name"] != TemporalFrontendServiceName("planton") || backend["port"] != int64(TemporalFrontendGRPCPort) {
+		t.Errorf("queue rule backend = %v, want the Temporal frontend on %d", backend, TemporalFrontendGRPCPort)
+	}
+	timeouts, hasTimeout, _ := unstructured.NestedMap(queue, "timeouts")
+	if !hasTimeout || timeouts["request"] != "0s" {
+		t.Errorf("queue rule timeouts = %v; long polls hold a request for about a minute, the timeout must be disabled", timeouts)
+	}
+	for _, raw := range rules {
+		for _, m := range mustSlice(raw.(map[string]any), "matches") {
+			p, _, _ := unstructured.NestedMap(m.(map[string]any), "path")
+			if v, _ := p["value"].(string); v != TemporalWorkflowServicePath && strings.HasPrefix(v, "/temporal.") {
+				t.Errorf("only the workflow service leaves the cluster; found a route for %s", v)
+			}
+		}
+	}
+	if RemoteRunnerRoutes()[0].ServicePortName() != temporalFrontendGRPCPortName {
+		t.Errorf("the queue backend must target the chart's %q port by name", temporalFrontendGRPCPortName)
+	}
+}
+
+func mustSlice(m map[string]any, field string) []any {
+	s, _, _ := unstructured.NestedSlice(m, field)
+	return s
 }
 
 // The address device clients are told to dial follows the front door's URL:

@@ -188,6 +188,11 @@ locals {
       enabled = try(var.spec.build.enabled, null)
     } : k => v if v != null
   }
+  remote_runners_body = {
+    for k, v in {
+      enabled = try(var.spec.remote_runners.enabled, null)
+    } : k => v if v != null
+  }
   vault_body = {
     for k, v in {
       enabled          = try(var.spec.vault.enabled, null)
@@ -281,6 +286,7 @@ locals {
       bootstrap     = length(local.bootstrap_body) > 0 ? local.bootstrap_body : null
       runner        = length(local.runner_body) > 0 ? local.runner_body : null
       build         = length(local.build_body) > 0 ? local.build_body : null
+      remoteRunners = length(local.remote_runners_body) > 0 ? local.remote_runners_body : null
       vault         = length(local.vault_body) > 0 ? local.vault_body : null
       components    = length(local.components_body) > 0 ? local.components_body : null
       prerequisites = length(local.prerequisites_body) > 0 ? local.prerequisites_body : null

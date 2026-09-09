@@ -136,13 +136,32 @@ const (
 	BackendIdentity
 	// BackendConsole is the web console.
 	BackendConsole
+	// BackendTemporal is the deploy queue's frontend (native gRPC), routed
+	// through the front door ONLY when the install opens remote runners: a
+	// laptop or an appliance in another network polls its owner's deploy
+	// work here. Exactly one service is carried -- the workflow service
+	// runners use -- so the queue's administrative service never leaves the
+	// cluster (see RemoteRunnerRoutes).
+	BackendTemporal
 )
 
+// TemporalWorkflowServicePath is the request-path prefix of the deploy
+// queue's workflow service: a gRPC path is "/<package>.<Service>/<Method>",
+// and a segment-wise PathPrefix on the service segment matches every method
+// of that one service and nothing else. It is the single Temporal surface a
+// runner needs (task polling, completions, heartbeats, the SDK's
+// connect-time GetSystemInfo). The operator service -- namespace
+// registration, search attributes, cluster administration -- is deliberately
+// absent: opening the queue to runners never means opening its controls.
+const TemporalWorkflowServicePath = "/temporal.api.workflowservice.v1.WorkflowService"
+
 // ServesStreams reports whether responses through this backend may be
-// long-lived server streams (deploy progress, log tails), which a front
-// door's default request timeout would sever. Both control-plane doors do.
+// long-lived (server streams such as deploy progress and log tails, or the
+// deploy queue's long polls, which hold a request open for about a minute
+// waiting for work), which a front door's default request timeout would
+// sever. Both control-plane doors and the queue do.
 func (b FrontDoorBackend) ServesStreams() bool {
-	return b == BackendControlPlane || b == BackendControlPlaneGRPC
+	return b == BackendControlPlane || b == BackendControlPlaneGRPC || b == BackendTemporal
 }
 
 // FrontDoorHeaderMatch narrows a rule to requests whose named header carries
@@ -185,6 +204,20 @@ func FrontDoorRoutes() []FrontDoorRoute {
 	}
 }
 
+// RemoteRunnerRoutes returns the rules the remote-runners capability adds to
+// the front door, most-specific first: the deploy queue's workflow service,
+// delivered to the queue frontend. A service-segment prefix outranks the
+// content-type-matched gRPC root rule by path length (the Gateway API's
+// precedence order), so native gRPC for the queue lands on the queue and
+// every other native gRPC call still lands on the control plane. Rendered by
+// the Gateway API door only: it is the one door that carries native gRPC at
+// all, which is why the capability requires it.
+func RemoteRunnerRoutes() []FrontDoorRoute {
+	return []FrontDoorRoute{
+		{PathPrefix: TemporalWorkflowServicePath, Backend: BackendTemporal},
+	}
+}
+
 // ServiceName is the Kubernetes Service the route's backend is reached at.
 func (r FrontDoorRoute) ServiceName(crName string) string {
 	switch r.Backend {
@@ -192,6 +225,8 @@ func (r FrontDoorRoute) ServiceName(crName string) string {
 		return IdentityServiceName(crName)
 	case BackendConsole:
 		return ConsoleServiceName(crName)
+	case BackendTemporal:
+		return TemporalFrontendServiceName(crName)
 	default:
 		return ControlPlaneServiceName(crName)
 	}
@@ -208,6 +243,8 @@ func (r FrontDoorRoute) ServicePortName() string {
 		return controlPlaneGrpcPortName
 	case BackendControlPlaneWebhook:
 		return controlPlaneWebhookPortName
+	case BackendTemporal:
+		return temporalFrontendGRPCPortName
 	default:
 		return "http"
 	}
@@ -225,6 +262,8 @@ func (r FrontDoorRoute) ServicePort() int {
 		return controlPlaneServicePort
 	case BackendControlPlaneWebhook:
 		return controlPlaneWebhookPort
+	case BackendTemporal:
+		return TemporalFrontendGRPCPort
 	default:
 		return controlPlaneGrpcWebPort
 	}

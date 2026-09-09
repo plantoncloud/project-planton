@@ -172,6 +172,36 @@ func frontDoorRoutesNativeGRPC(planton *v1.PlantonPlatform) bool {
 	return isIngressEnabled(planton) && planton.Spec.Ingress.GatewayRef != nil
 }
 
+// remoteRunnersEnabled reports whether the install asked for runners outside
+// the cluster to pull its deploy work (spec.remoteRunners.enabled). Off by
+// default: opening the deploy queue to other networks is the operator's
+// deliberate act.
+func remoteRunnersEnabled(planton *v1.PlantonPlatform) bool {
+	return planton.Spec.RemoteRunners != nil &&
+		planton.Spec.RemoteRunners.Enabled != nil && *planton.Spec.RemoteRunners.Enabled
+}
+
+// remoteRunnersCarried reports whether the remote-runners capability is
+// actually served: asked for AND on a front door that carries native gRPC
+// (the deploy queue speaks nothing else). The two callers that act on it --
+// the queue route on the door, the addresses advertised by the control plane
+// -- read this one fact so they can never disagree; an install that asked on
+// a door that cannot carry it is told so in the ingress component's status
+// (remoteRunnersClosedReason).
+func remoteRunnersCarried(planton *v1.PlantonPlatform) bool {
+	return remoteRunnersEnabled(planton) && frontDoorRoutesNativeGRPC(planton)
+}
+
+// remoteRunnersClosedReason is the sentence the ingress status carries when
+// remote runners were asked for but this door cannot carry them; empty when
+// they are carried or were not asked for.
+func remoteRunnersClosedReason(planton *v1.PlantonPlatform) string {
+	if !remoteRunnersEnabled(planton) || remoteRunnersCarried(planton) {
+		return ""
+	}
+	return "Remote runners are not served through this front door: the deploy queue speaks native gRPC, which only a Gateway API front door carries. Attach the platform to a Gateway (ingress.gatewayRef) to open it, or leave remoteRunners off."
+}
+
 // gatewayLocalPort returns the workstation port sign-in URLs are pinned to in
 // gateway mode (spec.gateway.localPort, or the default).
 func gatewayLocalPort(planton *v1.PlantonPlatform) int32 {
