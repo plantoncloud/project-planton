@@ -223,6 +223,7 @@ contained dev.planton.azure.azurefirewallpolicy.v1alpha1.AzureFirewallPolicySpec
 contained dev.planton.azure.azurefrontdoorcustomdomain.v1alpha1.AzureFrontDoorCustomDomainSpec.profile_id -> AzureFrontDoorProfile
 contained dev.planton.azure.azurefrontdoorendpoint.v1alpha1.AzureFrontDoorEndpointSpec.profile_id -> AzureFrontDoorProfile
 contained dev.planton.azure.azurefrontdoorfirewallpolicy.v1alpha1.AzureFrontDoorFirewallPolicySpec.resource_group -> AzureResourceGroup
+contained dev.planton.azure.azurefrontdoororigin.v1alpha1.AzureFrontDoorOriginSpec.origin_group_id -> AzureFrontDoorOriginGroup
 contained dev.planton.azure.azurefrontdoororigingroup.v1alpha1.AzureFrontDoorOriginGroupSpec.profile_id -> AzureFrontDoorProfile
 contained dev.planton.azure.azurefrontdoorprofile.v1alpha1.AzureFrontDoorProfileSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurefrontdoorroute.v1alpha1.AzureFrontDoorRouteSpec.endpoint_id -> AzureFrontDoorEndpoint
@@ -317,6 +318,7 @@ contained dev.planton.azure.azurestoragequeue.v1alpha1.AzureStorageQueueSpec.sto
 contained dev.planton.azure.azurestorageshare.v1alpha1.AzureStorageShareSpec.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azurestoragetable.v1alpha1.AzureStorageTableSpec.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azuresubnet.v1alpha1.AzureSubnetSpec.virtual_network_id -> AzureVirtualNetwork
+contained dev.planton.azure.azuretrafficmanagerendpoint.v1alpha1.AzureTrafficManagerEndpointSpec.profile_id -> AzureTrafficManagerProfile
 contained dev.planton.azure.azuretrafficmanagerprofile.v1alpha1.AzureTrafficManagerProfileSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azureuserassignedidentity.v1alpha1.AzureUserAssignedIdentitySpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurevirtualhub.v1alpha1.AzureVirtualHubSpec.resource_group -> AzureResourceGroup
@@ -693,6 +695,8 @@ exempt    dev.planton.azure.azureeventhubdisasterrecoveryconfig.v1alpha1.AzureEv
 exempt    dev.planton.azure.azureeventhubnamespace.v1alpha1.AzureEventHubNamespaceVirtualNetworkRule.subnet_id -> AzureSubnet
 exempt    dev.planton.azure.azurefederatedidentitycredential.v1alpha1.AzureFederatedIdentityCredentialSpec.issuer -> AzureAksCluster
 exempt    dev.planton.azure.azurefrontdoorcustomdomain.v1alpha1.AzureFrontDoorCustomDomainSpec.dns_zone_id -> AzureDnsZone
+exempt    dev.planton.azure.azurefrontdoorroute.v1alpha1.AzureFrontDoorRouteSpec.origin_group_id -> AzureFrontDoorOriginGroup
+exempt    dev.planton.azure.azurefrontdoorruleset.v1alpha1.AzureFrontDoorRuleRouteConfigurationOverrideAction.origin_group_id -> AzureFrontDoorOriginGroup
 exempt    dev.planton.azure.azurefrontdoorsecuritypolicy.v1alpha1.AzureFrontDoorSecurityPolicySpec.domain_ids -> AzureFrontDoorEndpoint
 exempt    dev.planton.azure.azurefunctionapp.v1alpha1.AzureFunctionAppIpRestriction.virtual_network_subnet_id -> AzureSubnet
 exempt    dev.planton.azure.azurefunctionapp.v1alpha1.AzureFunctionAppIpRestrictionHeaders.x_azure_fdid -> AzureFrontDoorProfile
@@ -726,6 +730,7 @@ exempt    dev.planton.azure.azureservicebusnamespace.v1alpha1.AzureServiceBusNam
 exempt    dev.planton.azure.azurestorageaccount.v1alpha1.AzureStorageAccountNetworkRules.virtual_network_subnet_ids -> AzureSubnet
 exempt    dev.planton.azure.azurestorageobjectreplication.v1alpha1.AzureStorageObjectReplicationSpec.destination_storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azurestorageobjectreplication.v1alpha1.AzureStorageObjectReplicationSpec.source_storage_account_id -> AzureStorageAccount
+exempt    dev.planton.azure.azuretrafficmanagerendpoint.v1alpha1.AzureTrafficManagerNestedEndpoint.target_profile_id -> AzureTrafficManagerProfile
 exempt    dev.planton.azure.azurevirtualmachine.v1alpha1.AzureVirtualMachineSecret.key_vault_id -> AzureKeyVault
 exempt    dev.planton.azure.azurevirtualmachinescaleset.v1alpha1.AzureVirtualMachineScaleSetExtensionProtectedSettingsFromKeyVault.source_vault_id -> AzureKeyVault
 exempt    dev.planton.azure.azurevirtualmachinescaleset.v1alpha1.AzureVirtualMachineScaleSetSecret.key_vault_id -> AzureKeyVault

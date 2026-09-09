@@ -3143,12 +3143,18 @@ enum CloudResourceKind {
     service_group: azure_networking
   }];
   // AzureFrontDoorProfile is a prerequisite because an origin group is an
-  // ARM child of a referenced profile.
+  // ARM child of a referenced profile. A container kind: every origin is an
+  // ARM child of its origin group, so on a diagram the origins stand inside
+  // the group that load-balances them (the profile's room holds the group).
+  // A route or a rule that forwards TO an origin group lives in its endpoint
+  // or its rule set, never in the group, and those references say so with
+  // containment_exempt.
   AzureFrontDoorOriginGroup = 2082 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azfdog"
     prerequisites: [AzureFrontDoorProfile]
+    container_kind: true
     service_group: azure_networking
   }];
   // AzureFrontDoorOriginGroup is a prerequisite because an origin is an
@@ -4019,12 +4025,17 @@ enum CloudResourceKind {
   // AzureResourceGroup is a prerequisite because a Traffic Manager
   // profile is created inside a referenced resource group (the profile
   // itself is a global service -- the group only holds its metadata
-  // record).
+  // record). A container kind: every endpoint is an ARM child of its
+  // profile, so on a diagram the endpoints stand inside the profile that
+  // steers traffic to them. A nested endpoint that points AT another
+  // profile lives in its own parent profile, never in the one it targets,
+  // and that reference says so with containment_exempt.
   AzureTrafficManagerProfile = 2189 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "aztmprof"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_networking
   }];
   // AzureTrafficManagerProfile is a prerequisite because every

@@ -1144,7 +1144,12 @@ const (
 	// through the profile's own prerequisite declaration.)
 	CloudResourceKind_AzureFrontDoorEndpoint CloudResourceKind = 2081
 	// AzureFrontDoorProfile is a prerequisite because an origin group is an
-	// ARM child of a referenced profile.
+	// ARM child of a referenced profile. A container kind: every origin is an
+	// ARM child of its origin group, so on a diagram the origins stand inside
+	// the group that load-balances them (the profile's room holds the group).
+	// A route or a rule that forwards TO an origin group lives in its endpoint
+	// or its rule set, never in the group, and those references say so with
+	// containment_exempt.
 	CloudResourceKind_AzureFrontDoorOriginGroup CloudResourceKind = 2082
 	// AzureFrontDoorOriginGroup is a prerequisite because an origin is an
 	// ARM child of a referenced origin group (the profile and resource
@@ -1467,7 +1472,11 @@ const (
 	// AzureResourceGroup is a prerequisite because a Traffic Manager
 	// profile is created inside a referenced resource group (the profile
 	// itself is a global service -- the group only holds its metadata
-	// record).
+	// record). A container kind: every endpoint is an ARM child of its
+	// profile, so on a diagram the endpoints stand inside the profile that
+	// steers traffic to them. A nested endpoint that points AT another
+	// profile lives in its own parent profile, never in the one it targets,
+	// and that reference says so with containment_exempt.
 	CloudResourceKind_AzureTrafficManagerProfile CloudResourceKind = 2189
 	// AzureTrafficManagerProfile is a prerequisite because every
 	// endpoint is created inside a referenced profile -- it is the
@@ -4196,7 +4205,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\x96\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\x9a\xdb\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4526,8 +4535,8 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1aAzureEventHubConsumerGroup\x10\x9e\x10\x1a\x1b\xa2\xf7\x04\x17\b\r\x12\bv1alpha1\"\x06azehcgP\xd1\x01\x12B\n" +
 	"\x1eAzureEventHubAuthorizationRule\x10\x9f\x10\x1a\x1d\xa2\xf7\x04\x19\b\r\x12\bv1alpha1\"\bazehauthP\xd1\x01\x12;\n" +
 	"\x15AzureFrontDoorProfile\x10\xa0\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x04azfd0\x01:\x02\xd0\x0fP\xcd\x01\x12=\n" +
-	"\x16AzureFrontDoorEndpoint\x10\xa1\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azfde0\x01:\x02\xa0\x10P\xcd\x01\x12?\n" +
-	"\x19AzureFrontDoorOriginGroup\x10\xa2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azfdog:\x02\xa0\x10P\xcd\x01\x129\n" +
+	"\x16AzureFrontDoorEndpoint\x10\xa1\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azfde0\x01:\x02\xa0\x10P\xcd\x01\x12A\n" +
+	"\x19AzureFrontDoorOriginGroup\x10\xa2\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azfdog0\x01:\x02\xa0\x10P\xcd\x01\x129\n" +
 	"\x14AzureFrontDoorOrigin\x10\xa3\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azfdo:\x02\xa2\x10P\xcd\x01\x12;\n" +
 	"\x13AzureFrontDoorRoute\x10\xa4\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azfdrt:\x04\xa1\x10\xa3\x10P\xcd\x01\x12;\n" +
 	"\x15AzureFrontDoorRuleSet\x10\xa5\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azfdrs:\x02\xa0\x10P\xcd\x01\x12@\n" +
@@ -4606,8 +4615,8 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1aAzureNetworkWatcherFlowLog\x10\x89\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazfwlog:\x04\xd6\x0f\xd9\x0fP\xcd\x01\x12@\n" +
 	"\x17AzurePrivateDnsResolver\x10\x8a\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazpdnsr:\x04\xd6\x0f\xdb\x0fP\xcd\x01\x12Q\n" +
 	"(AzurePrivateDnsResolverForwardingRuleset\x10\x8b\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazpdnsfrs:\x02\x8a\x11P\xcd\x01\x12>\n" +
-	"\x15AzurePrivateDnsRecord\x10\x8c\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazpdnsrec:\x02\xdf\x0fP\xcd\x01\x12B\n" +
-	"\x1aAzureTrafficManagerProfile\x10\x8d\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\baztmprof:\x02\xd0\x0fP\xcd\x01\x12A\n" +
+	"\x15AzurePrivateDnsRecord\x10\x8c\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazpdnsrec:\x02\xdf\x0fP\xcd\x01\x12D\n" +
+	"\x1aAzureTrafficManagerProfile\x10\x8d\x11\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\baztmprof0\x01:\x02\xd0\x0fP\xcd\x01\x12A\n" +
 	"\x1bAzureTrafficManagerEndpoint\x10\x8e\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06aztmep:\x02\x8d\x11P\xcd\x01\x12G\n" +
 	"\x1cAzureMonitorAutoscaleSetting\x10\x8f\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\vazautoscale:\x02\xd0\x0fP\xd3\x01\x12E\n" +
 	"\x1eAzureMonitorDataCollectionRule\x10\x90\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azdcr:\x04\xd0\x0f\x82\x10P\xd3\x01\x128\n" +
