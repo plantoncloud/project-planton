@@ -223,6 +223,21 @@ var _ = ginkgo.Describe("KubernetesPostgres Validation Tests", func() {
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
+		ginkgo.It("recovery naming the source's database, owner, and app Secret should be valid (credential continuity — the DR shape)", func() {
+			input.Spec.Bootstrap = &KubernetesPostgresBootstrap{
+				Method: &KubernetesPostgresBootstrap_Recovery{
+					Recovery: &KubernetesPostgresBootstrapRecovery{
+						ObjectStore:      s3KeylessStore("s3://pg-backups/source"),
+						SourceServerName: "orders-db",
+						Database:         "orders",
+						Owner:            "orders",
+						OwnerSecretName:  "orders-db-app",
+					},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
 		ginkgo.It("recovery target with only backup_id should be valid (backup_id is not a selector)", func() {
 			input.Spec.Bootstrap = &KubernetesPostgresBootstrap{
 				Method: &KubernetesPostgresBootstrap_Recovery{

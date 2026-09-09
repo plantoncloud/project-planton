@@ -367,6 +367,47 @@ annotation left on the intermediate manifest is silently ignored -- the
 lane fails at reference resolution with the hop's instance missing, which
 reads like a naming defect and is actually a never-resolved fixture.
 
+### Real-cluster lanes: substitute install profiles and resident kinds
+
+Two more scenario annotations exist for lanes on REAL clusters, where the
+chain must fit what is already running rather than build everything from
+scratch. Both are per-scenario truths; consumer-wide profiles stay untouched.
+
+```yaml
+metadata:
+  annotations:
+    planton.dev/e2e-cluster-profile: "gcp-gke"
+    # For THIS scenario, install the named kind from this manifest instead
+    # of its consumer-scoped or published profile -- it takes the kind's
+    # slot in the chain (a substitute, not an extra instance).
+    planton.dev/e2e-prerequisite-install-manifest: "KubernetesCloudNativePgOperator=catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.gke-plugin-only.yaml"
+    # These kinds are already on the lane cluster: neither deployed nor
+    # torn down, pruned from the chain together with their own edges.
+    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager"
+```
+
+`e2e-prerequisite-install-manifest` is `<Kind>=<repo-relative path>` entries.
+It exists because a manifest-path entry in `e2e-prerequisites` only ever ADDS
+an instance -- a scenario could never say "install this kind DIFFERENTLY
+here". A GKE cluster that already runs CloudNativePG must install the
+operator kind in its plugin-only posture (the backup plugin beside the
+resident operator); that is the very shape under test, and no consumer-wide
+profile can express a per-lane fact. The substitute's own edges expand
+normally and its `e2e-prerequisites` annotation is read like any install
+manifest's. The manifest must declare the kind whose slot it takes -- one
+declaring another kind would leave the real prerequisite silently missing --
+and a kind cannot be both substituted and resident.
+
+`e2e-resident-prerequisites` is a promise about the cluster the scenario
+targets (the batch EKS cluster carried its own load-balancer controller; the
+GKE management cluster carries cert-manager and CloudNativePG from the
+Planton operator), and deploying a second copy beside a resident is exactly
+the collision the singleton kinds forbid. The runner cannot verify the
+promise, so the Kubernetes entrypoint REFUSES the annotation on any scenario
+not pinned to a real-cluster `e2e-cluster-profile` -- nothing is resident on
+a cluster the harness creates -- and a false promise fails at deploy with
+the missing resident's own error.
+
 A dependency whose `pulumi up` FAILS is still tracked for teardown: a failed
 update may have created any number of resources before erroring, and skipping
 its destroy would orphan them -- and, because Azure-style parents refuse to
@@ -397,8 +438,29 @@ reference resolution (the fixtures the script seeds into exist), before
 VALIDATE (a seeding failure stops the lane before any component deploy). The
 script runs via bash from the repo root, once per engine lane, inheriting the
 process environment (cloud CLI logins, the harness's `ARM_*`/`PLANTON_E2E_*`
-exports) plus `E2E_RUN_ID` (engine-scoped) and `E2E_SCENARIO`. A non-zero
-exit fails the lane; the dependency chain still tears down.
+exports) plus `E2E_RUN_ID` (engine-scoped), `E2E_SCENARIO`, and
+`E2E_SETUP_OUTPUT` (below). A non-zero exit fails the lane; the dependency
+chain still tears down.
+
+**Publishing seeded facts to the manifest under test.** Some facts exist only
+AFTER seeding and are exactly what the component must declare: the storage
+path of the backup the script just took, the id of a snapshot it cut, a name
+a fixture's controller generated. The script publishes them as `NAME=value`
+lines (`NAME` matching `[A-Z][A-Z0-9_]*`) into the file at
+`$E2E_SETUP_OUTPUT`, and the scenario manifest references them as
+`${E2E_SETUP:NAME}` tokens, expanded after the script returns and before
+VALIDATE. Every referenced token must be published (a residual one fails the
+lane), values are single-line, and the expanded copy keeps the scenario's
+basename so verifier dispatch is unaffected. This is the one channel by
+which the data plane may inform the manifest -- the restore proofs' "restore
+from THE backup the seed wrote" is the motivating class, and it keeps
+committed scenarios honest: no manifest hardcodes a backup name only one run
+ever produced.
+
+```bash
+# in gke-gcs-restore.setup.sh, after the backup reaches ready:
+echo "MONGO_BACKUP_DESTINATION=$(kubectl get psmdb-backup "$name" -o jsonpath='{.status.destination}')" >> "$E2E_SETUP_OUTPUT"
+```
 
 Rules that keep the seam honest:
 

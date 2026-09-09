@@ -1,0 +1,53 @@
+# The SOURCE cluster of the gcp-gke recovery proof: the database a customer
+# runs in production, owning the lane namespace. Three instances on REQUIRED
+# node anti-affinity (the GKE autoscaler adds nodes to honor it — the
+# multi-node HA posture kind could never prove), WAL archiving plus an
+# immediate base backup into the batch bucket through the Barman Cloud
+# plugin, KEYLESS: the instance pods present their GKE Workload Identity
+# (the batch bound this KSA — `<namespace>/<cluster name>` — to the backup
+# identity). The seed script writes markers and takes a backup here; the
+# recovery scenario restores from this cluster's archive and references this
+# cluster's `-app` Secret for credential continuity. The archive path carries
+# the run id: Barman refuses to archive into a path already holding another
+# cluster's WAL (a previous lane's system ID), so a shared path would leave
+# the cluster healthy but ContinuousArchiving forever false — live-caught.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesPostgres
+metadata:
+  name: e2e-pg-gke-src
+spec:
+  namespace:
+    value: e2e-pg-gke
+  create_namespace: true
+  instances: 3
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  scheduling:
+    anti_affinity_type: required
+    topology_key: kubernetes.io/hostname
+  bootstrap:
+    initdb:
+      database: appdb
+      owner: appuser
+      data_checksums: true
+  workload_identity:
+    gke:
+      service_account_email:
+        value: ${E2E_ENV:PLANTON_E2E_GKE_PG_BACKUP_GSA}
+  backup:
+    object_store:
+      destination_path: gs://${E2E_ENV:PLANTON_E2E_GKE_BACKUP_BUCKET}/postgres/${E2E_RUN_ID}/e2e-pg-gke-src
+      gcs:
+        keyless: true
+    retention_policy: 7d
+    schedules:
+      - name: initial
+        schedule: "0 0 3 * * *"
+        immediate: true

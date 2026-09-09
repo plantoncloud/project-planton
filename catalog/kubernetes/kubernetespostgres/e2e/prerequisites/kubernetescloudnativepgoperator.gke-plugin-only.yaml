@@ -1,0 +1,19 @@
+# The operator install profile the gcp-gke recovery scenario substitutes for
+# the consumer-scoped default (kubernetescloudnativepgoperator.yaml): a
+# CloudNativePG ALREADY runs on that cluster — the Planton operator installs
+# one for the platform's own database, without the backup plugin — and the
+# operator's CRDs and webhooks are cluster singletons, so the lane installs
+# ONLY the Barman Cloud plugin beside the resident. This is the adopter's own
+# shape (Planton self-hosted on GKE), and the live proof of the plugin-only
+# posture. cert-manager, the plugin's TLS issuer, is resident too and is
+# declared so on the scenario — no prerequisite edge here.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCloudNativePgOperator
+metadata:
+  name: e2e-cnpg-plugin-for-postgres-gke
+spec:
+  namespace:
+    value: cnpg-system
+  install_operator: false
+  barman_cloud_plugin:
+    enabled: true

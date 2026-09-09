@@ -192,6 +192,25 @@ value the provider validator allowed, promote the API's real constraint into
 the spec rule and note the observed rejection in the rule's comment, so
 misconfigurations fail at validation rather than at deploy.
 
+**A "keyless" or "ambient identity" claim is verified against the CLIENT,
+never inferred from a sibling arm:** "leave the key empty and the pods' cloud
+identity takes over" is a property of one storage client's credential
+constructor, not of a cloud. Before a spec field says it, read two sources at
+the pin: the operator's CRD `required` list for the credential field (Percona
+Server for MongoDB requires `credentialsSecret` on every `gcs` block — a
+keyless manifest is rejected at apply), and the storage client's constructor
+in the pinned clone, searching for the error it raises when credentials are
+absent (Percona Backup for MongoDB's Google client: "clientEmail and
+privateKey are required" — no ADC path exists, while the same project's S3
+arm is keyless through the AWS SDK's chain). A keyed client gets a REQUIRED
+credential referenceable from the catalog's identity kind (`StringValueOrRef`
+onto the identity's exported key), never an optional string whose emptiness
+quietly means "nothing". A keyless client gets the EXACT IAM grant its calls
+need on the field comment, verified live — Barman Cloud probes the bucket with
+`storage.buckets.get` before every WAL archive, so GCS keyless needs
+`roles/storage.legacyBucketReader` beside `roles/storage.objectAdmin`, and
+objectAdmin alone fails every archive (live-caught on GKE).
+
 **Validation message quality:** When adding or modifying CEL validations, every `message` string must meet the quality standards in rule `002-spec-validate` ("VALIDATION MESSAGE QUALITY"). These messages are rendered directly in user-facing UIs and CLIs. Write them like a knowledgeable colleague helping someone configure this component for the first time.
 
 #### Scenario 3: Refresh Documentation

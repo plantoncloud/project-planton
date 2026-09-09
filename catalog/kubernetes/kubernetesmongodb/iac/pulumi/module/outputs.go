@@ -8,4 +8,5 @@ const (
 	OpReplicaSet          = "replica_set"
 	OpPortForwardCommand  = "port_forward_command"
 	OpAdminPasswordSecret = "admin_password_secret"
+	OpRestoreName         = "restore_name"
 )

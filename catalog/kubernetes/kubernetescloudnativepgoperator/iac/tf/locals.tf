@@ -47,6 +47,13 @@ locals {
 
   barman_plugin_enabled = try(var.spec.barman_cloud_plugin.enabled, false)
 
+  # false in the plugin-only posture: a CloudNativePG already runs on the
+  # cluster (the Planton operator's, a Helm or GitOps install), so no
+  # operator release renders and only the plugin is managed beside it.
+  # Resolved to the spec's default (true) when unset, so both engines
+  # agree whether or not the platform's defaulting middleware ran.
+  install_operator = try(var.spec.install_operator, null) == null ? true : var.spec.install_operator
+
   namespace = var.spec.namespace
 
   # Resource-identity labels stamped on the namespace this module creates

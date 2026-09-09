@@ -1,7 +1,9 @@
 package module
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"strings"
 
 	"github.com/pkg/errors"
 	kubernetesmongodbv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesmongodb/v1alpha1"
@@ -21,8 +23,11 @@ import (
 //     here — the operator generates one.
 //   - `<name>-backup-<storage>`: object-store keys for a backup storage.
 //     Key names are exactly what the operator's PBM integration reads per
-//     backend arm. Keyless S3/GCS arms create NO Secret — the PBM agents
-//     use the pods' ambient cloud identity.
+//     backend arm. The keyless S3 arm creates NO Secret — the PBM agents
+//     use the pods' ambient AWS identity. GCS has no keyless arm (PBM's
+//     Google client requires a key); a GCS storage that names an
+//     `existing_secret_name` creates no Secret either — the operator reads
+//     the one the user brought.
 //
 // Names are deterministic (never engine-generated suffixes) so both engines
 // agree byte-for-byte and the import recipes derive them blind.
@@ -83,13 +88,20 @@ func backupCredentialData(storage *kubernetesmongodbv1alpha1.KubernetesMongodbBa
 			"AWS_SECRET_ACCESS_KEY": s3.GetAccessKeys().GetSecretAccessKey(),
 		}, true, nil
 	}
-	if gcs := storage.GetGcs(); gcs != nil && gcs.GetServiceAccountKeyJson() != "" {
+	if gcs := storage.GetGcs(); gcs != nil && gcs.GetCredentials().GetServiceAccountKey() != nil {
+		keyJSON, err := decodeServiceAccountKey(gcs.GetCredentials().GetServiceAccountKey().GetValue())
+		if err != nil {
+			return nil, false, err
+		}
 		var key struct {
 			ClientEmail string `json:"client_email"`
 			PrivateKey  string `json:"private_key"`
 		}
-		if err := json.Unmarshal([]byte(gcs.GetServiceAccountKeyJson()), &key); err != nil {
+		if err := json.Unmarshal(keyJSON, &key); err != nil {
 			return nil, false, errors.Wrap(err, "malformed GCS service account key JSON")
+		}
+		if key.ClientEmail == "" || key.PrivateKey == "" {
+			return nil, false, errors.New("the GCS service account key carries no client_email/private_key: PBM authenticates with exactly those two fields — export the key with GcpServiceAccount.user_managed_key (the generate flow), or paste the JSON key file's content")
 		}
 		return map[string]string{
 			"GCS_CLIENT_EMAIL": key.ClientEmail,
@@ -103,6 +115,22 @@ func backupCredentialData(storage *kubernetesmongodbv1alpha1.KubernetesMongodbBa
 		}, true, nil
 	}
 	return nil, false, nil
+}
+
+// decodeServiceAccountKey accepts the key file two ways — raw JSON, or the
+// base64 encoding a GcpServiceAccount resource exports as `key_base64` — and
+// returns the JSON bytes. Raw JSON is recognized by its opening brace; anything
+// else must be valid standard base64. Twin: local.gcs_key_json in locals.tf.
+func decodeServiceAccountKey(value string) ([]byte, error) {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(trimmed, "{") {
+		return []byte(trimmed), nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		return nil, errors.Wrap(err, "the GCS service account key is neither a JSON key file nor its base64 encoding (the GcpServiceAccount key_base64 output)")
+	}
+	return decoded, nil
 }
 
 func createOpaqueSecret(ctx *pulumi.Context, locals *Locals,

@@ -243,6 +243,9 @@ spec:
 | `spec.bootstrap.recovery.recoveryTarget.targetName` | `string` |  |  |  |
 | `spec.bootstrap.recovery.recoveryTarget.targetImmediate` | `bool` |  |  |  |
 | `spec.bootstrap.recovery.recoveryTarget.backupId` | `string` |  |  |  |
+| `spec.bootstrap.recovery.database` | `string` |  |  |  |
+| `spec.bootstrap.recovery.owner` | `string` |  |  |  |
+| `spec.bootstrap.recovery.ownerSecretName` | `string` |  |  |  |
 | `spec.bootstrap.pgBasebackup` | `KubernetesPostgresBootstrapPgBaseBackup` |  |  |  |
 | `spec.bootstrap.pgBasebackup.source` | `string` | yes |  |  |
 | `spec.externalClusters` | `[]KubernetesPostgresExternalCluster` |  |  |  |
@@ -758,8 +761,13 @@ Where in the store the data lives — the backend's native URI form:
 `gs://bucket/path` for GCS, and
 `https://<account>.blob.core.windows.net/<container>/<path>` for
 Azure Blob. WAL and base backups are stored under separate folders
-beneath it. One path per PostgreSQL cluster — two clusters writing
-the same path corrupt each other's archives.
+beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
+to archive into a path already holding another cluster's WAL (a
+cluster recreated under the same path after a failed attempt, or a
+recovered cluster backing up to the path it restored from), and the
+failure is quiet — the cluster reports healthy while the
+ContinuousArchiving condition stays false and no backup ever lands
+(live-caught). A recovered cluster's own backups go to a NEW path.
 
 - rule: {"required":true}
 
@@ -850,6 +858,17 @@ Keyless posture: the instance pods' GCP identity (GKE Workload
 Identity via the cluster's workload_identity field) authenticates
 to GCS — no stored key. Mutually exclusive with
 service_account_key_json.
+
+THE IDENTITY NEEDS TWO ROLES ON THE BUCKET, not one: Barman Cloud
+verifies the archive destination with a bucket-level read
+(`storage.buckets.get`) before every WAL archive, and
+`roles/storage.objectAdmin` does not carry it — an identity granted
+objectAdmin alone fails every archive with "does not have
+storage.buckets.get access", the cluster reports
+ContinuousArchivingFailing, and never becomes Ready. Grant
+`roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader`
+(a GcpGcsBucket's `iam_members`, one entry each). Live-verified on
+GKE.
 
 ### spec.bootstrap.recovery.objectStore.gcs.serviceAccountKeyJson
 
@@ -1005,6 +1024,40 @@ recovery.
 
 Restore from this specific backup ID instead of auto-selecting the
 closest one before the target.
+
+### spec.bootstrap.recovery.database
+
+`string`
+
+Name of the application database inside the recovered instance —
+the one the `<name>-app` credential and the `uri` outputs point
+at. Set it to the SOURCE cluster's application database (its
+initdb `database`). Empty = the upstream default, `app`.
+
+### spec.bootstrap.recovery.owner
+
+`string`
+
+Name of the role that owns the application database. Set it to the
+source cluster's owner role. Empty = same as `database` (the
+upstream default).
+
+### spec.bootstrap.recovery.ownerSecretName
+
+`string`
+
+CREDENTIAL CONTINUITY: the recovered data carries the source
+cluster's roles and their passwords, so the application credential
+this cluster hands out must be the source's. Name an existing
+basic-auth Secret in this namespace (`username` + `password` keys —
+exactly the shape of the source's `<source>-app` Secret, so keeping
+that Secret alive through a KubernetesSecret, an ExternalSecret, or
+the secret backend is the whole backup of the credential). The
+operator adopts it as this cluster's app Secret and the outputs
+point at it. Empty = the operator generates a fresh `<name>-app`
+with a NEW password and resets the owner role to match — fine for
+a clone that will get its own consumers, wrong for a recovery that
+must serve the source's.
 
 ### spec.bootstrap.pgBasebackup
 
@@ -1224,8 +1277,13 @@ Where in the store the data lives — the backend's native URI form:
 `gs://bucket/path` for GCS, and
 `https://<account>.blob.core.windows.net/<container>/<path>` for
 Azure Blob. WAL and base backups are stored under separate folders
-beneath it. One path per PostgreSQL cluster — two clusters writing
-the same path corrupt each other's archives.
+beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
+to archive into a path already holding another cluster's WAL (a
+cluster recreated under the same path after a failed attempt, or a
+recovered cluster backing up to the path it restored from), and the
+failure is quiet — the cluster reports healthy while the
+ContinuousArchiving condition stays false and no backup ever lands
+(live-caught). A recovered cluster's own backups go to a NEW path.
 
 - rule: {"required":true}
 
@@ -1316,6 +1374,17 @@ Keyless posture: the instance pods' GCP identity (GKE Workload
 Identity via the cluster's workload_identity field) authenticates
 to GCS — no stored key. Mutually exclusive with
 service_account_key_json.
+
+THE IDENTITY NEEDS TWO ROLES ON THE BUCKET, not one: Barman Cloud
+verifies the archive destination with a bucket-level read
+(`storage.buckets.get`) before every WAL archive, and
+`roles/storage.objectAdmin` does not carry it — an identity granted
+objectAdmin alone fails every archive with "does not have
+storage.buckets.get access", the cluster reports
+ContinuousArchivingFailing, and never becomes Ready. Grant
+`roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader`
+(a GcpGcsBucket's `iam_members`, one entry each). Live-verified on
+GKE.
 
 ### spec.backup.objectStore.gcs.serviceAccountKeyJson
 
@@ -1468,7 +1537,8 @@ field is seconds.
 
 Take the first backup immediately on creation instead of waiting
 for the first cron tick — recommended: the cluster is unprotected
-until its first base backup exists.
+until its first base backup exists. WAL archiving alone restores
+nothing — a recovery needs a base backup to replay WAL onto.
 
 ### spec.backup.schedules[].suspend
 
@@ -1496,7 +1566,15 @@ instance).
 Keyless cloud identity for the instance pods' ServiceAccount —
 annotates it so backups reach S3 (EKS IRSA), GCS (GKE Workload
 Identity), or Azure Blob (AKS Workload Identity) without stored
-keys. Pair with the backup block's keyless arm.
+keys. Pair with the backup block's keyless arm. The ServiceAccount
+the operator creates is named after the cluster (`metadata.name`,
+in `namespace`), so the cloud-side binding names exactly that pair —
+on GKE a GcpGkeWorkloadIdentityBinding with `ksa_name` = this
+cluster's name and `ksa_namespace` = its namespace, one per cluster
+(a recovery target is another cluster and needs its own). On GKE the
+GCP service account needs `roles/storage.objectAdmin` AND
+`roles/storage.legacyBucketReader` on the bucket (live-proven; see
+the gcs.keyless field).
 
 ### spec.workloadIdentity.gke
 
@@ -1640,7 +1718,12 @@ selection, tolerations, and scheduling priority.
 How strongly instances avoid sharing a node: "preferred" (the
 upstream default — best effort, still schedules on a small
 cluster) or "required" (hard rule — instances stay Pending unless
-separate nodes exist; the production posture).
+separate nodes exist; the production posture). On an autoscaled
+cluster (GKE, EKS) "required" makes the autoscaler add a node per
+instance — expect ~4 minutes per instance for the node to join and
+pull the ~270 MB image before the cluster is Ready (live-measured);
+on a fixed-size cluster with fewer nodes than instances it never
+schedules.
 
 - default: `preferred`
 - rule: anti_affinity_type must be 'preferred' (best effort) or 'required' (hard rule)

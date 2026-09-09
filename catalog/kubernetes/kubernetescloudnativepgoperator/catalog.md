@@ -79,7 +79,7 @@ The InfraPipeline creates the namespace first, then installs the operator into i
 
 These are the most important decisions when configuring the operator. Explore the full field reference in the [API Explorer](#api-explorer) tab.
 
-**One installation per cluster** -- the CRDs are cluster-scoped and the webhook service name is baked into the webhook certificate; a second installation would fight over both. The release name is fixed to `cnpg`.
+**One installation per cluster** -- the CRDs are cluster-scoped and the webhook service name is baked into the webhook certificate; a second installation would fight over both. The release name is fixed to `cnpg`. When CloudNativePG is ALREADY on the cluster (a self-hosted Planton installs one for its own database; `kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg` tells), declare `installOperator: false` with the plugin enabled: this resource then installs only the Barman Cloud plugin beside the resident operator, and destroying it leaves the operator running (live-proven). A CloudNativePG uninstalled by a non-Helm owner can leave cluster-scoped CRDs, webhooks, and RBAC behind with that owner's labels; a full install then fails Helm's ownership check ("managed-by must equal Helm") until those leftovers are deleted.
 
 **The chart pin governs** -- chart and operator versions move separately (chart `0.29.0` ships operator `1.30.0`). Pick versions from the served chart index; editing the pin later IS the upgrade.
 
@@ -120,6 +120,8 @@ Browse the [Presets](#presets) tab for ready-to-deploy configurations.
 **Standard** -- the operator alone, cluster-wide, pinned and prioritized for a production control plane. Databases run and fail over; their backup blocks wait for the plugin. Start from the **Standard** preset.
 
 **With Backup Plugin** -- the operator plus the Barman Cloud plugin — the backup-capable posture for production database fleets (cert-manager required first). Start from the **With Backup Plugin** preset.
+
+**Plugin only, beside a resident operator** -- `installOperator: false` plus the plugin: the shape for a cluster that already runs CloudNativePG (Planton self-hosted on GKE is exactly this) and needs its KubernetesPostgres backup blocks to work.
 
 ## Works With
 

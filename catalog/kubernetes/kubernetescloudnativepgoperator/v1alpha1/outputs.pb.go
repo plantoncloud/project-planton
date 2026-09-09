@@ -32,7 +32,9 @@ type KubernetesCloudNativePgOperatorStackOutputs struct {
 	// Namespace the operator (and the plugin, when enabled) runs in.
 	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// Helm release name of the operator (fixed: "cnpg" — one installation
-	// per cluster).
+	// per cluster). Empty in the plugin-only posture (install_operator
+	// false): the operator on the cluster is someone else's, and this
+	// resource never claims a handle it does not own.
 	ReleaseName string `protobuf:"bytes,2,opt,name=release_name,json=releaseName,proto3" json:"release_name,omitempty"`
 	// Helm release name of the Barman Cloud plugin when enabled; empty
 	// otherwise. KubernetesPostgres backup blocks depend on this plugin

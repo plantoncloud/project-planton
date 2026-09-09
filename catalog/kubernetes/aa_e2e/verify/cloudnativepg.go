@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -18,6 +19,12 @@ import (
 // them).
 type CnpgOperatorInstallVerifier struct {
 	Namespace string
+	// InstallOperator mirrors the manifest's install_operator (default
+	// true). False is the plugin-only posture: the operator on the cluster
+	// is someone else's (a resident install), so its Deployment is neither
+	// asserted present under the chart's name nor asserted gone on destroy
+	// — only the CRDs it must have registered (the plugin needs them) are.
+	InstallOperator bool
 	// PluginEnabled mirrors the manifest's barman_cloud_plugin.enabled —
 	// the plugin ships as a second release, so its health is asserted
 	// only when the spec asked for it.
@@ -33,19 +40,23 @@ const cnpgOperatorDeployment = "cnpg-cloudnative-pg"
 const cnpgPluginDeployment = "plugin-barman-cloud"
 
 func (v *CnpgOperatorInstallVerifier) VerifyExists(ctx context.Context, kubeconfig string) error {
-	fmt.Printf("  [verify] cloudnative-pg operator in namespace %q (plugin=%v)\n", v.Namespace, v.PluginEnabled)
+	fmt.Printf("  [verify] cloudnative-pg operator in namespace %q (operator=%v plugin=%v)\n", v.Namespace, v.InstallOperator, v.PluginEnabled)
 
 	if err := KubectlResourceExists(ctx, kubeconfig, "namespace", v.Namespace, ""); err != nil {
 		return errors.Wrapf(err, "namespace %q not found for cloudnative-pg", v.Namespace)
 	}
 
-	if err := kubectlWait(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace,
-		"condition=Available", 3*time.Minute); err != nil {
-		return errors.Wrap(err, "cloudnative-pg operator deployment not available")
+	if v.InstallOperator {
+		if err := kubectlWait(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace,
+			"condition=Available", 3*time.Minute); err != nil {
+			return errors.Wrap(err, "cloudnative-pg operator deployment not available")
+		}
 	}
 
 	// The CRDs KubernetesPostgres renders against: the Cluster itself and
-	// the two backup-facing kinds.
+	// the two backup-facing kinds. In the plugin-only posture they are the
+	// resident operator's — their presence is what proves a CloudNativePG
+	// is actually there for the plugin to register with.
 	for _, crd := range []string{
 		"clusters.postgresql.cnpg.io",
 		"scheduledbackups.postgresql.cnpg.io",
@@ -77,9 +88,28 @@ func (v *CnpgOperatorInstallVerifier) VerifyAbsent(ctx context.Context, kubeconf
 	// The CRDs intentionally SURVIVE uninstall (the chart stamps
 	// helm.sh/resource-policy: keep on them so removing the operator never
 	// cascade-deletes Cluster resources) — only the deployments' absence
-	// is asserted.
-	if err := KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace); err != nil {
-		return err
+	// is asserted. In the plugin-only posture the operator Deployment is
+	// the resident's and must STILL be there after this resource is gone:
+	// a plugin-only destroy that took the operator with it would be the
+	// defect this posture exists to rule out.
+	if v.InstallOperator {
+		if err := KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace); err != nil {
+			return err
+		}
+	} else {
+		// The resident is found by the label every CloudNativePG install
+		// carries (the Helm chart's and the Planton operator's alike), not
+		// by the chart's Deployment name — a resident installed by another
+		// hand is named by that hand.
+		residents, err := kubectlGetJSONPathList(ctx, kubeconfig, "deployment", v.Namespace,
+			"app.kubernetes.io/name=cloudnative-pg", "{range .items[*]}{.metadata.name}{\"\\n\"}{end}")
+		if err != nil {
+			return errors.Wrap(err, "listing the resident cloudnative-pg operator deployments")
+		}
+		if len(residents) == 0 {
+			return errors.New("the resident cloudnative-pg operator must survive a plugin-only destroy, but no deployment labeled app.kubernetes.io/name=cloudnative-pg remains in the namespace")
+		}
+		fmt.Printf("  [verify] resident cloudnative-pg operator %v untouched by the plugin-only destroy\n", residents)
 	}
 	if v.PluginEnabled {
 		return KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgPluginDeployment, v.Namespace)
@@ -110,21 +140,39 @@ type CnpgClusterVerifier struct {
 	// Completed (the with-backup scenario) — a REAL base backup landing
 	// in the object store through the Barman Cloud plugin.
 	BackupProof bool
+	// RecoveryProof switches on THE RECOVERY PROOF (the gke-gcs-recovery
+	// scenario): this cluster was bootstrapped from another cluster's
+	// archive, and must carry both seeded markers — A (in the base backup)
+	// and B (written after it, so only WAL replay past the base backup can
+	// have delivered it) — readable with the SOURCE's application
+	// credentials (credential continuity), with its instances spread over
+	// distinct nodes. RecoverySourceCluster names the source whose `-app`
+	// Secret holds those credentials.
+	RecoveryProof         bool
+	RecoverySourceCluster string
 }
+
+// cnpgRecoveryMarkers are the rows the recovery scenario's seed script wrote
+// into the source cluster's appdb, in the order it wrote them around the base
+// backup: A before, B after.
+var cnpgRecoveryMarkers = []string{"marker-a", "marker-b"}
 
 func (v *CnpgClusterVerifier) VerifyExists(ctx context.Context, kubeconfig string) error {
 	fmt.Printf("  [verify] cloudnative-pg cluster %q in namespace %q (instances=%d)\n",
 		v.ClusterName, v.Namespace, v.Instances)
 
 	// Ready flips once the bootstrap completed and the topology matches
-	// the spec. First-boot includes an image pull plus initdb, so the
-	// window is generous.
+	// the spec. First-boot includes an image pull plus initdb, and on a
+	// real cluster each instance may also wait for the autoscaler to add
+	// the node its anti-affinity demands and pull the images onto it
+	// (live-measured ~4 min per instance on GKE), so the window is sized
+	// for three instances on fresh nodes, not one on a warm kind node.
 	if err := kubectlWait(ctx, kubeconfig, "cluster.postgresql.cnpg.io", v.ClusterName, v.Namespace,
-		"condition=Ready", 8*time.Minute); err != nil {
+		"condition=Ready", 15*time.Minute); err != nil {
 		return errors.Wrapf(err, "cluster %q never became Ready", v.ClusterName)
 	}
 
-	if err := v.waitForReadyInstances(ctx, kubeconfig, 4*time.Minute); err != nil {
+	if err := v.waitForReadyInstances(ctx, kubeconfig, 8*time.Minute); err != nil {
 		return err
 	}
 
@@ -139,10 +187,112 @@ func (v *CnpgClusterVerifier) VerifyExists(ctx context.Context, kubeconfig strin
 		}
 	}
 
+	if v.RecoveryProof {
+		if err := v.proveRecovery(ctx, kubeconfig); err != nil {
+			return err
+		}
+	}
+
 	if !v.Behavioral {
 		return nil
 	}
 	return v.proveFailoverDurability(ctx, kubeconfig)
+}
+
+// proveRecovery is THE RECOVERY PROOF: (1) both seeded markers are present in
+// the recovered application database — A proves the base backup restored, B
+// proves WAL replay continued past it; (2) the SOURCE cluster's application
+// credential authenticates against the recovered cluster's read-write
+// Service — the credential-continuity contract the recovery declared by
+// referencing the source's `-app` Secret; (3) the instances landed on as
+// many distinct nodes as there are instances — the multi-node HA posture
+// the required anti-affinity asked for, which only a real cluster can show.
+func (v *CnpgClusterVerifier) proveRecovery(ctx context.Context, kubeconfig string) error {
+	primary, err := v.currentPrimary(ctx, kubeconfig)
+	if err != nil {
+		return err
+	}
+
+	for _, marker := range cnpgRecoveryMarkers {
+		out, err := v.psqlDB(ctx, kubeconfig, primary, "appdb",
+			fmt.Sprintf("SELECT count(*) FROM dr_markers WHERE name = '%s'", marker))
+		if err != nil {
+			return errors.Wrapf(err, "reading %s from the recovered database", marker)
+		}
+		if strings.TrimSpace(out) != "1" {
+			return errors.Errorf("RECOVERY PROOF failed: %s is missing from the recovered database (count=%q) — %s",
+				marker, strings.TrimSpace(out), recoveryMarkerMeaning(marker))
+		}
+		fmt.Printf("  [verify] RECOVERY PROOF: %s present in the recovered database — %s\n", marker, recoveryMarkerMeaning(marker))
+	}
+
+	// Credential continuity: the source's app Secret (username/password),
+	// presented over the network to the recovered cluster's -rw Service
+	// from inside an instance pod.
+	if v.RecoverySourceCluster != "" {
+		username, err := kubectlGetJSONPath(ctx, kubeconfig, "secret", v.RecoverySourceCluster+"-app", v.Namespace, "{.data.username}")
+		if err != nil {
+			return errors.Wrapf(err, "reading the source cluster's app Secret %s-app", v.RecoverySourceCluster)
+		}
+		password, err := kubectlGetJSONPath(ctx, kubeconfig, "secret", v.RecoverySourceCluster+"-app", v.Namespace, "{.data.password}")
+		if err != nil {
+			return errors.Wrapf(err, "reading the source cluster's app Secret %s-app", v.RecoverySourceCluster)
+		}
+		user, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(username))
+		pass, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(password))
+		out, err := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfig,
+			"exec", primary, "-n", v.Namespace, "-c", "postgres", "--",
+			"env", "PGPASSWORD="+string(pass),
+			"psql", "-h", v.ClusterName+"-rw", "-U", string(user), "-d", "appdb", "-tA",
+			"-c", "SELECT count(*) FROM dr_markers").CombinedOutput()
+		if err != nil {
+			return errors.Errorf("CREDENTIAL CONTINUITY failed: the source cluster's application credential (%s-app, user %s) was refused by the recovered cluster's -rw Service: %v: %s",
+				v.RecoverySourceCluster, string(user), err, string(out))
+		}
+		fmt.Printf("  [verify] CREDENTIAL CONTINUITY: the source's application user %q authenticated against %s-rw and read %s marker rows\n",
+			string(user), v.ClusterName, strings.TrimSpace(string(out)))
+	}
+
+	return v.proveNodeSpread(ctx, kubeconfig)
+}
+
+// proveNodeSpread asserts the instance pods occupy as many distinct nodes as
+// there are instances — what a REQUIRED hostname anti-affinity promises and
+// what a single-node kind cluster can never demonstrate.
+func (v *CnpgClusterVerifier) proveNodeSpread(ctx context.Context, kubeconfig string) error {
+	nodes, err := kubectlGetJSONPathList(ctx, kubeconfig, "pod", v.Namespace,
+		"cnpg.io/cluster="+v.ClusterName+",cnpg.io/podRole=instance", "{range .items[*]}{.spec.nodeName}{\"\\n\"}{end}")
+	if err != nil {
+		return errors.Wrap(err, "listing the instance pods' nodes")
+	}
+	distinct := map[string]bool{}
+	for _, n := range nodes {
+		distinct[n] = true
+	}
+	if int64(len(distinct)) < v.Instances {
+		return errors.Errorf("NODE SPREAD failed: %d instances landed on only %d distinct nodes (%v) — the required anti-affinity was not honored",
+			v.Instances, len(distinct), nodes)
+	}
+	fmt.Printf("  [verify] NODE SPREAD: %d instances on %d distinct nodes %v\n", v.Instances, len(distinct), nodes)
+	return nil
+}
+
+func recoveryMarkerMeaning(marker string) string {
+	if marker == "marker-a" {
+		return "the base backup restored"
+	}
+	return "WAL archived after the base backup was replayed (continuous archiving, not a copy)"
+}
+
+// psqlDB is psql against a named database (peer auth as the postgres OS user).
+func (v *CnpgClusterVerifier) psqlDB(ctx context.Context, kubeconfig, podName, database, sql string) (string, error) {
+	out, err := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfig,
+		"exec", podName, "-n", v.Namespace, "-c", "postgres", "--",
+		"psql", "-U", "postgres", "-d", database, "-tA", "-c", sql).CombinedOutput()
+	if err != nil {
+		return "", errors.Errorf("psql on %s (%s): %v: %s", podName, database, err, string(out))
+	}
+	return string(out), nil
 }
 
 // proveBackupCompleted waits for a Backup owned by this cluster to reach

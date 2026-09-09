@@ -1,0 +1,13 @@
+# The "resident operator" fixture for the plugin-only scenario: CloudNativePG
+# installed the ordinary way, WITHOUT the plugin, owning cnpg-system — the
+# stand-in for an operator that arrived by another hand (the Planton
+# operator's, a Helm or GitOps install). The scenario joins this namespace
+# and adds only the plugin.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCloudNativePgOperator
+metadata:
+  name: e2e-cnpg-resident
+spec:
+  namespace:
+    value: cnpg-system
+  create_namespace: true

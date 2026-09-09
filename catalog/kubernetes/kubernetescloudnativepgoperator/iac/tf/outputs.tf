@@ -7,8 +7,8 @@ output "namespace" {
 }
 
 output "release_name" {
-  description = "Helm release name of the operator (fixed \"cnpg\" — one installation per cluster; cluster-scoped CRDs and the fixed webhook service name are singletons)"
-  value       = local.release_name
+  description = "Helm release name of the operator (fixed \"cnpg\" — one installation per cluster; cluster-scoped CRDs and the fixed webhook service name are singletons); empty in the plugin-only posture, where the operator release is someone else's"
+  value       = local.install_operator ? local.release_name : ""
 }
 
 output "barman_plugin_release_name" {

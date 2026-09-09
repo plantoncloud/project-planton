@@ -44,7 +44,23 @@ type PsmdbClusterVerifier struct {
 	// names the declared storage the driver Backup writes to.
 	BackupProof   bool
 	BackupStorage string
+	// UsersSecretName is the system-users Secret the cluster runs with:
+	// `<cluster>-secrets` when the operator generates it, or the Secret
+	// the manifest brought (system_users_secret_name — the restore
+	// target's credential-continuity seam, pointing at the SOURCE's).
+	UsersSecretName string
+	// RestoreProof switches on THE RESTORE PROOF (the gke-gcs-restore
+	// scenario): this cluster declared a restore from another cluster's
+	// backup, and must show the Restore run reached ready, both seeded
+	// markers readable with the brought (source) credentials — A from the
+	// base backup, B only from the archived oplog replayed past it — and
+	// its members spread over distinct nodes.
+	RestoreProof bool
 }
+
+// psmdbRestoreMarkers are the documents the restore scenario's seed script
+// wrote into the source cluster around the backup: A before, B after.
+var psmdbRestoreMarkers = []string{"marker-a", "marker-b"}
 
 func (v *PsmdbClusterVerifier) VerifyExists(ctx context.Context, kubeconfig string) error {
 	fmt.Printf("  [verify] percona mongodb cluster %q in namespace %q (rs=%s size=%d)\n",
@@ -69,10 +85,122 @@ func (v *PsmdbClusterVerifier) VerifyExists(ctx context.Context, kubeconfig stri
 			return err
 		}
 	}
+	if v.RestoreProof {
+		if err := v.proveRestore(ctx, kubeconfig); err != nil {
+			return err
+		}
+	}
 	if !v.Behavioral {
 		return nil
 	}
 	return v.proveFailoverDurability(ctx, kubeconfig)
+}
+
+// proveRestore is THE RESTORE PROOF: (1) the Restore object the module
+// rendered for this cluster reaches state ready (the operator replayed the
+// backup and, with PITR, the archived oplog into the running set); (2) both
+// seeded markers are readable — A proves the base backup restored, B proves
+// the oplog replayed past it — authenticated with the brought system-users
+// Secret, which IS the credential-continuity contract (a restored database
+// carries the source's users, so the source's passwords must log in); (3)
+// the members landed on distinct nodes — the multi-node HA posture the
+// operator's hostname anti-affinity promises, which kind never shows.
+func (v *PsmdbClusterVerifier) proveRestore(ctx context.Context, kubeconfig string) error {
+	// The Restore object's name hashes its declaration; find it by the
+	// cluster it targets rather than guessing the hash.
+	deadline := time.Now().Add(15 * time.Minute)
+	var restoreName, last string
+	for time.Now().Before(deadline) {
+		out, err := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfig,
+			"get", "psmdb-restore", "-n", v.Namespace,
+			"-o", `jsonpath={range .items[?(@.spec.clusterName=="`+v.ClusterName+`")]}{.metadata.name}={.status.state}={.status.error}{"\n"}{end}`).CombinedOutput()
+		if err == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				parts := strings.SplitN(strings.TrimSpace(line), "=", 3)
+				if len(parts) < 2 || parts[0] == "" {
+					continue
+				}
+				restoreName = parts[0]
+				switch parts[1] {
+				case "ready":
+					fmt.Printf("  [verify] RESTORE PROOF: restore %q reached ready — the operator replayed the backup into %s\n", restoreName, v.ClusterName)
+					goto restored
+				case "error":
+					return errors.Errorf("RESTORE PROOF failed: restore %q errored: %s", restoreName, strings.Join(parts[2:], "="))
+				}
+				last = line
+			}
+		} else {
+			last = fmt.Sprintf("err=%v %s", err, string(out))
+		}
+		time.Sleep(10 * time.Second)
+	}
+	return errors.Errorf("no restore targeting cluster %q reached ready (last: %s)", v.ClusterName, last)
+
+restored:
+	// The restore replaced the data; the operator reconciles the set back
+	// to ready afterwards (for a logical restore the members stay up, for a
+	// physical one they are recreated).
+	if err := kubectlWait(ctx, kubeconfig, "psmdb", v.ClusterName, v.Namespace,
+		"jsonpath={.status.state}=ready", 8*time.Minute); err != nil {
+		return errors.Wrap(err, "cluster never returned to ready after the restore")
+	}
+
+	user, password, err := v.adminCredentials(ctx, kubeconfig)
+	if err != nil {
+		return err
+	}
+	pod0 := fmt.Sprintf("%s-%s-0", v.ClusterName, v.ReplsetName)
+	primary, err := v.currentPrimaryPod(ctx, kubeconfig, pod0, user, password)
+	if err != nil {
+		return errors.Wrapf(err, "CREDENTIAL CONTINUITY failed: the brought system-users Secret %q could not authenticate against the restored set", v.UsersSecretName)
+	}
+	fmt.Printf("  [verify] CREDENTIAL CONTINUITY: the source's databaseAdmin (from %s) authenticated against the restored set, primary %q\n", v.UsersSecretName, primary)
+
+	for _, marker := range psmdbRestoreMarkers {
+		out, err := v.mongosh(ctx, kubeconfig, primary, user, password,
+			fmt.Sprintf("print(db.getSiblingDB('e2e').dr_markers.countDocuments({_id: '%s'}));", marker))
+		if err != nil {
+			return errors.Wrapf(err, "reading %s from the restored set", marker)
+		}
+		lines := strings.Fields(strings.TrimSpace(out))
+		if len(lines) == 0 || lines[len(lines)-1] != "1" {
+			return errors.Errorf("RESTORE PROOF failed: %s is missing from the restored set (got %q) — %s",
+				marker, strings.TrimSpace(out), restoreMarkerMeaning(marker))
+		}
+		fmt.Printf("  [verify] RESTORE PROOF: %s present in the restored set — %s\n", marker, restoreMarkerMeaning(marker))
+	}
+
+	return v.proveNodeSpread(ctx, kubeconfig)
+}
+
+// proveNodeSpread asserts the replica set's members occupy as many distinct
+// nodes as there are members — what the operator's default hostname
+// anti-affinity promises, and what a single-node kind cluster never shows.
+func (v *PsmdbClusterVerifier) proveNodeSpread(ctx context.Context, kubeconfig string) error {
+	nodes, err := kubectlGetJSONPathList(ctx, kubeconfig, "pod", v.Namespace,
+		"app.kubernetes.io/instance="+v.ClusterName+",app.kubernetes.io/replset="+v.ReplsetName+",app.kubernetes.io/component=mongod",
+		"{range .items[*]}{.spec.nodeName}{\"\\n\"}{end}")
+	if err != nil {
+		return errors.Wrap(err, "listing the member pods' nodes")
+	}
+	distinct := map[string]bool{}
+	for _, n := range nodes {
+		distinct[n] = true
+	}
+	if int64(len(distinct)) < v.Size {
+		return errors.Errorf("NODE SPREAD failed: %d members landed on only %d distinct nodes (%v) — the hostname anti-affinity was not honored",
+			v.Size, len(distinct), nodes)
+	}
+	fmt.Printf("  [verify] NODE SPREAD: %d members on %d distinct nodes %v\n", v.Size, len(distinct), nodes)
+	return nil
+}
+
+func restoreMarkerMeaning(marker string) string {
+	if marker == "marker-a" {
+		return "the base backup restored"
+	}
+	return "oplog archived after the backup was replayed (PITR to latest, not a copy)"
 }
 
 func (v *PsmdbClusterVerifier) VerifyAbsent(ctx context.Context, kubeconfig string) error {
@@ -207,13 +335,18 @@ spec:
 	return errors.Errorf("backup %q never reached ready (last: %s)", backupName, last)
 }
 
-// adminCredentials reads the operator-managed system-users Secret
-// (`<cluster>-secrets`) for the databaseAdmin account — readWrite on every
-// database, the right privilege level for the marker write.
+// adminCredentials reads the cluster's system-users Secret (the operator-
+// managed `<cluster>-secrets`, or the one the manifest brought) for the
+// databaseAdmin account — readWrite on every database, the right privilege
+// level for the marker write.
 func (v *PsmdbClusterVerifier) adminCredentials(ctx context.Context, kubeconfig string) (string, string, error) {
+	secretName := v.UsersSecretName
+	if secretName == "" {
+		secretName = v.ClusterName + "-secrets"
+	}
 	read := func(key string) (string, error) {
 		out, err := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfig,
-			"get", "secret", v.ClusterName+"-secrets", "-n", v.Namespace,
+			"get", "secret", secretName, "-n", v.Namespace,
 			"-o", fmt.Sprintf("jsonpath={.data.%s}", key)).CombinedOutput()
 		if err != nil {
 			return "", errors.Errorf("failed to read system-users secret key %s: %v: %s", key, err, string(out))
@@ -319,6 +452,20 @@ func mongodbFirstBackupStorage(spec map[string]interface{}) string {
 		return ""
 	}
 	name, _ := first["name"].(string)
+	return name
+}
+
+// mongodbUsersSecretName reads a brought system-users Secret name from the
+// scenario manifest's spec map ("" = the operator-generated default).
+func mongodbUsersSecretName(spec map[string]interface{}) string {
+	if spec == nil {
+		return ""
+	}
+	raw, ok := specKey(spec, "system_users_secret_name", "systemUsersSecretName")
+	if !ok {
+		return ""
+	}
+	name, _ := raw.(string)
 	return name
 }
 

@@ -84,7 +84,21 @@ const (
 	// need the real fabric (cloud-LB provisioning, IRSA identity hops,
 	// snapshot-backed storage, node autoscaling).
 	ClusterProfileAwsEks = "aws-eks"
+
+	// ClusterProfileGcpGke is a REAL-CLUSTER profile: GKE with Workload
+	// Identity (the keyless GCS path for the Barman Cloud plugin), the pd CSI
+	// driver, multi-zone node pools with an autoscaler that adds nodes when a
+	// database's anti-affinity asks for them — the substrate the multi-node
+	// HA and object-store backup/restore proofs need. No local constructor:
+	// scenarios on it skip locally with the reason and run when the external
+	// lane declares the profile. Batch runbook: realcluster/gcp-gke/.
+	ClusterProfileGcpGke = "gcp-gke"
 )
+
+// RealClusterProfiles lists the profiles no harness-owned cluster can
+// satisfy — the ones a scenario declaring resident prerequisites must pin
+// itself to (nothing is resident on a cluster the harness creates).
+var RealClusterProfiles = []string{ClusterProfileAwsEks, ClusterProfileGcpGke}
 
 // ciliumKindConfigYAML is the kind cluster configuration for the cilium-cni
 // profile. disableDefaultCNI is the load-bearing line (upstream's own kind

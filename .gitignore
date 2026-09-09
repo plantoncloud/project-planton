@@ -73,6 +73,11 @@ web-app/src/gen/
 # ignore would otherwise leave them only on the machine that wrote them
 # and break every fresh checkout's lane.
 !catalog/**/e2e/scenarios/*.setup.sh
+# Real-cluster batch runbooks (see catalog/kubernetes/aa_e2e/realcluster/):
+# bootstrap/teardown/audit scripts ARE the runbook. The blanket ignore left
+# the aws-eks batch's scripts on the machine that wrote them, so that batch
+# was documented but not reproducible from a checkout.
+!catalog/kubernetes/aa_e2e/realcluster/**/*.sh
 **/*.env
 # Local-only provider credentials for live E2E (see forge rule "Post-Forge Live
 # E2E Validation"). NEVER commit. Note **/*.env above does not match *.env.e2e.

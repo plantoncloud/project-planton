@@ -1,0 +1,35 @@
+# Workload Identity trust for the Postgres lanes. CloudNativePG creates one
+# ServiceAccount per Cluster, named after the Cluster, in the Cluster's
+# namespace — so the binding's KSA coordinates are the scenario's names, and
+# a source cluster and a recovery target need one binding each (both read or
+# write the bucket through their own pods). The scenario namespace is owned
+# by the source fixture; the recovery scenario joins it.
+apiVersion: gcp.planton.dev/v1alpha1
+kind: GcpGkeWorkloadIdentityBinding
+metadata:
+  name: planton-e2e-gke-pg-src-wi
+spec:
+  projectId:
+    value: ${GCP_PROJECT_ID}
+  serviceAccountEmail:
+    valueFrom:
+      kind: GcpServiceAccount
+      name: planton-e2e-gke-pg-backup
+      fieldPath: status.outputs.email
+  ksaNamespace: e2e-pg-gke
+  ksaName: e2e-pg-gke-src
+---
+apiVersion: gcp.planton.dev/v1alpha1
+kind: GcpGkeWorkloadIdentityBinding
+metadata:
+  name: planton-e2e-gke-pg-dr-wi
+spec:
+  projectId:
+    value: ${GCP_PROJECT_ID}
+  serviceAccountEmail:
+    valueFrom:
+      kind: GcpServiceAccount
+      name: planton-e2e-gke-pg-backup
+      fieldPath: status.outputs.email
+  ksaNamespace: e2e-pg-gke
+  ksaName: e2e-pg-gke-dr

@@ -32,7 +32,18 @@ NAMING CONTRACT: every object derives from `metadata.name` — pods
 (`<name>-<rs>-0..N`), the per-replica-set headless Services
 (`<name>-<rs>`), the mongos Service (`<name>-mongos`, sharding only),
 and the system-users Secret (`<name>-secrets`, operator-generated
-passwords for the built-in accounts).
+passwords for the built-in accounts — unless `system_users_secret_name`
+points at one you bring).
+
+DISASTER RECOVERY IS TWO DECLARATIONS: `backup` on the cluster that
+writes (storages + scheduled tasks + PITR oplog archiving), and
+`restore` on the cluster that reads — a fresh cluster declares the
+same storage, names the backup to restore from, and comes up carrying
+the data. The restored data includes the SOURCE cluster's users and
+their passwords, so the restore target must also reference the
+source's system-users Secret (`system_users_secret_name`); back that
+Secret up alongside the data or the operator cannot log in to what it
+restored.
 
 EXPOSURE IS COMPOSED, never embedded: the cluster is in-cluster
 plumbing reachable at the exported `kube_endpoint`. The per-set
@@ -164,6 +175,13 @@ spec:
         gcs:
           bucket: mongo-archive
           prefix: test-mongodb
+          # GCS has no keyless arm: PBM authenticates with a service-account
+          # key. Here the key already lives in the cluster (an
+          # ExternalSecret-synced Secret in the operator's GCS_CLIENT_EMAIL /
+          # GCS_PRIVATE_KEY shape); `service_account_key` takes the key
+          # itself, raw or as a GcpServiceAccount's key_base64 output.
+          credentials:
+            existing_secret_name: mongo-archive-gcs-credentials
     tasks:
       - name: nightly
         schedule: "0 3 * * *"
@@ -284,7 +302,9 @@ spec:
 | `spec.backup.storages[].gcs` | `KubernetesMongodbGcsStorage` |  |  |  |
 | `spec.backup.storages[].gcs.bucket` | `string` | yes |  |  |
 | `spec.backup.storages[].gcs.prefix` | `string` |  |  |  |
-| `spec.backup.storages[].gcs.serviceAccountKeyJson` | `string` (sensitive) |  |  |  |
+| `spec.backup.storages[].gcs.credentials` | `KubernetesMongodbGcsCredentials` | yes |  |  |
+| `spec.backup.storages[].gcs.credentials.serviceAccountKey` | `string \| valueFrom` (sensitive) |  |  | GcpServiceAccount (`status.outputs.key_base64`) |
+| `spec.backup.storages[].gcs.credentials.existingSecretName` | `string` |  |  |  |
 | `spec.backup.storages[].azure` | `KubernetesMongodbAzureStorage` |  |  |  |
 | `spec.backup.storages[].azure.container` | `string` | yes |  |  |
 | `spec.backup.storages[].azure.prefix` | `string` |  |  |  |
@@ -322,6 +342,17 @@ spec:
 | `spec.unsafe.backupIfUnhealthy` | `bool` |  |  |  |
 | `spec.pause` | `bool` |  |  |  |
 | `spec.imagePullSecrets` | `[]string` |  |  |  |
+| `spec.restore` | `KubernetesMongodbRestore` |  |  |  |
+| `spec.restore.backupName` | `string` |  |  |  |
+| `spec.restore.backupSource` | `KubernetesMongodbRestoreBackupSource` |  |  |  |
+| `spec.restore.backupSource.storageName` | `string` | yes |  |  |
+| `spec.restore.backupSource.destination` | `string` | yes |  |  |
+| `spec.restore.backupSource.type` | `string` |  | `logical` |  |
+| `spec.restore.pitr` | `KubernetesMongodbRestorePitr` |  |  |  |
+| `spec.restore.pitr.type` | `string` | yes |  |  |
+| `spec.restore.pitr.date` | `string` |  |  |  |
+| `spec.restore.replsetRemapping` | `map<string, string>` |  |  |  |
+| `spec.systemUsersSecretName` | `string` |  |  |  |
 
 ## Field Details
 
@@ -986,7 +1017,11 @@ stores use their expected value (MinIO accepts any).
 `string`
 
 Key prefix inside the bucket (a folder for this cluster's
-backups).
+backups). One prefix per cluster: PBM keeps its
+backup and oplog metadata under the prefix, and a restore target
+declares this same prefix (as a storage of its own) to read the
+backups back — so two live clusters must never share one, while the
+source and its restore target deliberately do.
 
 ### spec.backup.storages[].s3.endpointUrl
 
@@ -1049,16 +1084,58 @@ Bucket name.
 
 `string`
 
-Key prefix inside the bucket.
+Key prefix inside the bucket. One prefix per cluster: PBM keeps its
+backup and oplog metadata under the prefix, and a restore target
+declares this same prefix (as a storage of its own) to read the
+backups back — so two live clusters must never share one, while the
+source and its restore target deliberately do.
 
-### spec.backup.storages[].gcs.serviceAccountKeyJson
+### spec.backup.storages[].gcs.credentials
 
-`string` · sensitive
+`KubernetesMongodbGcsCredentials` · required
 
-GCP service-account key (the JSON key file's content),
-materialized as a Kubernetes Secret the PBM agents read. Empty =
-the pods' AMBIENT GCP identity (GKE Workload Identity) — the
-keyless posture.
+The credentials the PBM agents present to GCS. REQUIRED: there is
+no keyless posture for MongoDB backups on GCS. The operator's CRD
+requires a credentials Secret on every gcs storage, and Percona
+Backup for MongoDB refuses to build its Google client without a
+client email and private key — the pods' GKE Workload Identity is
+never consulted. (Both verified at the pinned operator 1.22.0.) The
+one identity-free path is HMAC keys over the S3 interoperability
+endpoint, which is the `s3` arm with `endpoint_url:
+https://storage.googleapis.com`.
+
+- rule: {"required":true}
+
+### spec.backup.storages[].gcs.credentials.serviceAccountKey
+
+`string | valueFrom` · sensitive
+
+A GCP service-account key: the JSON key file's content, either raw
+or base64-encoded — the shape a GcpServiceAccount resource exports
+as `key_base64` when it is declared with a `user_managed_key`, so
+a chart wires the identity and the database in one run. The module
+extracts `client_email` and `private_key` into the
+`<name>-backup-<storage>` Secret the operator reads; the key file
+itself is never rendered into the custom resource. Grant the
+account `roles/storage.objectAdmin` AND
+`roles/storage.legacyBucketReader` on the bucket (a GcpGcsBucket's
+`iam_members`, one entry each): the storage clients read the
+bucket's attributes (`storage.buckets.get`) before writing, and
+objectAdmin alone does not carry that permission.
+
+- references: GcpServiceAccount (`status.outputs.key_base64`)
+- rule: write as {value: <literal>} or {valueFrom: {kind: GcpServiceAccount, name: <that resource's name>, fieldPath: status.outputs.key_base64}} -- a bare string does not parse
+
+### spec.backup.storages[].gcs.credentials.existingSecretName
+
+`string`
+
+The name of an existing Secret in this namespace already in the
+operator's shape: keys `GCS_CLIENT_EMAIL` + `GCS_PRIVATE_KEY` (a
+service-account key), or `AWS_ACCESS_KEY_ID` +
+`AWS_SECRET_ACCESS_KEY` (HMAC keys for the S3-compatible client).
+For credentials that already live in the cluster — synced by an
+ExternalSecret, or shared with a sibling cluster.
 
 ### spec.backup.storages[].azure
 
@@ -1078,7 +1155,11 @@ Blob container name.
 
 `string`
 
-Key prefix inside the container.
+Key prefix inside the container. One prefix per cluster: PBM keeps its
+backup and oplog metadata under the prefix, and a restore target
+declares this same prefix (as a storage of its own) to read the
+backups back — so two live clusters must never share one, while the
+source and its restore target deliberately do.
 
 ### spec.backup.storages[].azure.endpointUrl
 
@@ -1190,7 +1271,12 @@ zstd, s2, or none.
 
 Point-in-time recovery: continuously archive oplog chunks so a
 restore can land between backups. Requires at least one completed
-base backup to be meaningful.
+base backup to be meaningful — PBM starts archiving only after the
+first backup succeeds, and a `restore.pitr` on the target replays
+exactly these chunks (live-proven: a write made after the backup came
+back through them). The recovery point is the last CLOSED chunk
+(`oplog_span_min`), so writes in the final span before a total loss
+may not be in the archive.
 
 ### spec.backup.pitr.enabled
 
@@ -1336,8 +1422,140 @@ volumes (and resume by flipping back).
 Names of image-pull secrets (in the cluster's namespace) for
 pulling images from a private registry.
 
+### spec.restore
+
+`KubernetesMongodbRestore`
+
+Restore this cluster from a backup — the disaster-recovery and
+clone path. Declared on the cluster that RECEIVES the data: the
+operator runs a PerconaServerMongoDBRestore against it once the
+members are up. Requires `backup` with the storage the backup lives
+in (the PBM agents that perform the restore ride the backup
+configuration), and — for a backup taken by ANOTHER cluster —
+`system_users_secret_name` pointing at that cluster's system-users
+Secret, because a restored database carries the source's users and
+passwords. Each distinct declaration runs exactly once; change it
+(a different backup, a different point in time) to restore again.
+
+### spec.restore.backupName
+
+`string`
+
+The name of a PerconaServerMongoDBBackup object in this namespace
+— a backup THIS cluster (or a sibling in the namespace) took, whose
+record the operator still holds. The same-cluster rollback path.
+
+### spec.restore.backupSource
+
+`KubernetesMongodbRestoreBackupSource`
+
+A backup addressed by its location in the store — the path for a
+backup ANOTHER cluster took (disaster recovery into a fresh
+cluster, cloning an environment), where no Backup object exists
+here. Percona's "storage defined on target" recipe: the storage's
+configuration and credentials come from this cluster's own
+`backup.storages` entry.
+
+### spec.restore.backupSource.storageName
+
+`string` · required
+
+The name of the entry in this cluster's `backup.storages` that holds
+the backup — the restore reads through that storage's bucket, prefix,
+and credentials. The module copies that storage's definition into the
+restore object itself: the operator resolves a backup-source restore's
+storage from the restore object (not the cluster) when it syncs the
+store's metadata into a fresh cluster — which every disaster-recovery
+restore needs — so declaring the storage once here is enough.
+
+- rule: {"required":true}
+
+### spec.restore.backupSource.destination
+
+`string` · required
+
+Full path of the backup inside the store, in the store's native URI
+form with the backup name as the LAST segment:
+`s3://<bucket>/<prefix>/<backup-name>`, `gs://<bucket>/<prefix>/
+<backup-name>`, or `azure://<container>/<prefix>/<backup-name>`.
+The backup name is the timestamp PBM stamped when the backup
+started (e.g. 2026-09-09T12:00:00Z) — read it from the DESTINATION
+column of `kubectl get psmdb-backup` on the source cluster, or list
+the store.
+
+- rule: destination is the backup's full path in the store: s3://<bucket>/<prefix>/<backup-name>, gs://..., or azure://... — the backup name (PBM's start timestamp) is the last segment
+- rule: {"required":true}
+
+### spec.restore.backupSource.type
+
+`string` · optional (explicit presence)
+
+The backup's type — it must match how the source took it: logical
+(the default) or physical. A physical restore additionally requires
+this cluster to match the source's topology (same replica-set
+count and member count) and, if the source encrypted data at rest,
+the same encryption key.
+
+- default: `logical`
+- rule: restore type must be logical or physical (incremental chains restore through their physical base)
+
+### spec.restore.pitr
+
+`KubernetesMongodbRestorePitr`
+
+Point-in-time recovery: after replaying the base backup, replay the
+archived oplog chunks up to a moment. Requires the source cluster to
+have archived oplog (`backup.pitr.enabled`) into the same storage.
+Omitted = the base backup alone.
+
+- rule: pitr type date needs `date` as 'YYYY-MM-DD HH:MM:SS' (UTC); type latest takes no date
+
+### spec.restore.pitr.type
+
+`string` · required
+
+`latest` replays every archived oplog chunk (the smallest possible
+data loss); `date` stops at the moment in `date`.
+
+- rule: pitr type must be latest (replay everything archived) or date (stop at the moment in `date`)
+- rule: {"required":true}
+
+### spec.restore.pitr.date
+
+`string`
+
+The moment to recover to, `YYYY-MM-DD HH:MM:SS` in UTC — the
+operator's own format. Required with type `date`; must not be set
+with `latest`.
+
+### spec.restore.replsetRemapping
+
+`map<string, string>`
+
+Restore into replica sets named differently from the source's — a
+map of source replica-set name to this cluster's replica-set name.
+Omitted = names must match (the operator refuses a mismatch).
+
+### spec.systemUsersSecretName
+
+`string`
+
+Bring your own system-users Secret instead of letting the operator
+generate `<name>-secrets`: the name of an existing Secret in this
+namespace carrying the operator's built-in account keys
+(MONGODB_BACKUP_USER/PASSWORD, MONGODB_CLUSTER_ADMIN_USER/PASSWORD,
+MONGODB_CLUSTER_MONITOR_USER/PASSWORD, MONGODB_USER_ADMIN_USER/
+PASSWORD, MONGODB_DATABASE_ADMIN_USER/PASSWORD). The load-bearing
+use is disaster recovery: a cluster restoring another cluster's
+backup inherits that cluster's users, so it must authenticate with
+that cluster's passwords — point this at the source's
+`<source>-secrets` (kept alive by a KubernetesSecret, an
+ExternalSecret, or the secret backend). Empty = operator-generated.
+
 ## Validation Rules
 
+- `spec.restore_requires_backup`: a restore needs the backup block: the PBM agents that perform it are configured by spec.backup, and the restore's storage must be one of spec.backup.storages
+- `spec.restore_storage_declared`: restore.backup_source.storage_name must name one of spec.backup.storages — the restore reads the backup through that storage's configuration and credentials
 - `spec.single_replset_without_sharding`: without sharding, declare exactly one replica set — multiple sets only make sense as shards (enable sharding)
 - `spec.replset_size_or_unsafe`: a replica set smaller than 3 members cannot elect a majority — the operator rejects it unless unsafe.replset_size explicitly opts in (development only)
 - `spec.config_server_size_or_unsafe`: a config server smaller than 3 members cannot elect a majority — the operator rejects it unless unsafe.replset_size explicitly opts in (development only)
@@ -1355,9 +1573,10 @@ Reference an output from another manifest as `valueFrom: {kind: KubernetesMongod
 | `status.outputs.kube_endpoint` | `string` | In-cluster connection endpoint: `<service>.<namespace>.svc.cluster.local:27017`. For replica-set clusters, connect with `mongodb://<user>:<pass>@<endpoint>/?replicaSet=<rs>` so the driver follows failovers. |
 | `status.outputs.replica_set` | `string` | The first replica set's name (the driver's replicaSet parameter). Empty for sharded clusters — mongos needs no replicaSet parameter. |
 | `status.outputs.port_forward_command` | `string` | kubectl port-forward one-liner for reaching the database from a workstation. |
-| `status.outputs.admin_password_secret` | `KubernetesSecretKey` | The Kubernetes Secret key holding the database-admin password (the operator-managed `<name>-secrets` system-users Secret, key MONGODB_DATABASE_ADMIN_PASSWORD; the paired username key is MONGODB_DATABASE_ADMIN_USER). |
+| `status.outputs.admin_password_secret` | `KubernetesSecretKey` | The Kubernetes Secret key holding the database-admin password (the system-users Secret — the operator-managed `<name>-secrets`, or the one `system_users_secret_name` brought — key MONGODB_DATABASE_ADMIN_PASSWORD; the paired username key is MONGODB_DATABASE_ADMIN_USER). |
 | `status.outputs.admin_password_secret.name` | `string` | The name of the Kubernetes Secret. |
 | `status.outputs.admin_password_secret.key` | `string` | The key within the Kubernetes Secret. |
+| `status.outputs.restore_name` | `string` | Name of the PerconaServerMongoDBRestore object rendered for the spec's `restore` declaration (`<name>-restore-<8 hex>`, the suffix hashing the declaration) — the run whose status tells whether the restore reached ready: `kubectl get psmdb-restore <this> -n <namespace>`. Empty when no restore is declared. |
 
 ## References
 
@@ -1369,6 +1588,7 @@ Fields that can point at another resource's outputs:
 | `spec.replicaSets[].storage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
 | `spec.sharding.configServer.storage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
 | `spec.tls.issuer` | KubernetesClusterIssuer | `metadata.name` |
+| `spec.backup.storages[].gcs.credentials.serviceAccountKey` | GcpServiceAccount | `status.outputs.key_base64` |
 
 ## See Also
 

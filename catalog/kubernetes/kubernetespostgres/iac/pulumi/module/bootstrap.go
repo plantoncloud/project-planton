@@ -75,6 +75,20 @@ func buildBootstrap(locals *Locals) postgresqlv1.ClusterSpecBootstrapPtrInput {
 		recoveryArgs := postgresqlv1.ClusterSpecBootstrapRecoveryArgs{
 			Source: pulumi.String(vars.RecoverySourceExternalClusterName),
 		}
+		if recovery.GetDatabase() != "" {
+			recoveryArgs.Database = pulumi.String(recovery.GetDatabase())
+		}
+		if recovery.GetOwner() != "" {
+			recoveryArgs.Owner = pulumi.String(recovery.GetOwner())
+		}
+		if recovery.GetOwnerSecretName() != "" {
+			// Credential continuity: the recovered roles keep the SOURCE's
+			// passwords, so the app Secret this cluster hands out is the
+			// source's own (brought by name), not a freshly generated one.
+			recoveryArgs.Secret = postgresqlv1.ClusterSpecBootstrapRecoverySecretArgs{
+				Name: pulumi.String(recovery.GetOwnerSecretName()),
+			}
+		}
 		if target := recovery.GetRecoveryTarget(); target != nil {
 			targetArgs := postgresqlv1.ClusterSpecBootstrapRecoveryRecoveryTargetArgs{}
 			if target.GetTargetTime() != "" {

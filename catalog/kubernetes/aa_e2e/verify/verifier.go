@@ -410,8 +410,9 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 	// deployment and its ObjectStore CRD join the contract.
 	case "kubernetescloudnativepgoperator":
 		return &CnpgOperatorInstallVerifier{
-			Namespace:     info.Namespace,
-			PluginEnabled: manifestBarmanPluginEnabled(manifestPath),
+			Namespace:       info.Namespace,
+			InstallOperator: manifestInstallOperator(manifestPath),
+			PluginEnabled:   manifestBarmanPluginEnabled(manifestPath),
 		}, nil
 
 	// Percona operator installs: the operator Deployment Available plus
@@ -437,13 +438,15 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 		spec := manifestSpecMap(manifestPath)
 		rsName, rsSize := mongodbFirstReplset(spec)
 		return &PsmdbClusterVerifier{
-			Namespace:     info.Namespace,
-			ClusterName:   info.Name,
-			ReplsetName:   rsName,
-			Size:          rsSize,
-			Behavioral:    strings.Contains(manifestPath, "behavioral-failover"),
-			BackupProof:   strings.Contains(manifestPath, "with-backup"),
-			BackupStorage: mongodbFirstBackupStorage(spec),
+			Namespace:       info.Namespace,
+			ClusterName:     info.Name,
+			ReplsetName:     rsName,
+			Size:            rsSize,
+			Behavioral:      strings.Contains(manifestPath, "behavioral-failover"),
+			BackupProof:     strings.Contains(manifestPath, "with-backup"),
+			BackupStorage:   mongodbFirstBackupStorage(spec),
+			UsersSecretName: mongodbUsersSecretName(spec),
+			RestoreProof:    strings.Contains(manifestPath, "gke-gcs-restore"),
 		}, nil
 
 	// A Strimzi-operator-managed KRaft Kafka cluster: the Kafka resource
@@ -1129,11 +1132,15 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 	// through a live primary loss and promotion.
 	case "kubernetespostgres":
 		return &CnpgClusterVerifier{
-			Namespace:   info.Namespace,
-			ClusterName: info.Name,
-			Instances:   manifestSpecInt(manifestPath, "instances", 1),
-			Behavioral:  strings.Contains(manifestPath, "behavioral-failover"),
-			BackupProof: strings.Contains(manifestPath, "with-backup"),
+			Namespace:     info.Namespace,
+			ClusterName:   info.Name,
+			Instances:     manifestSpecInt(manifestPath, "instances", 1),
+			Behavioral:    strings.Contains(manifestPath, "behavioral-failover"),
+			BackupProof:   strings.Contains(manifestPath, "with-backup"),
+			RecoveryProof: strings.Contains(manifestPath, "gke-gcs-recovery"),
+			// The recovery reads the source's credentials from the Secret the
+			// manifest's recovery block names (`<source>-app`).
+			RecoverySourceCluster: strings.TrimSuffix(manifestNestedRecoveryOwnerSecret(manifestPath), "-app"),
 		}, nil
 
 	// cert-manager installation: the three component Deployments must be

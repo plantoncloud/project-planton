@@ -81,7 +81,12 @@ locals {
   # "percona-server-mongodb-users" (psmdb_defaults.go) — shared across
   # every cluster in the namespace — so per-cluster naming requires the
   # module to pin `<name>-secrets` (the upstream cr.yaml convention).
-  users_secret_name = "${local.cluster_name}-secrets"
+  # When the spec brings its own (system_users_secret_name — the
+  # disaster-recovery path, where the restored data carries the SOURCE
+  # cluster's users and the operator must log in with the source's
+  # passwords), that Secret is referenced and the operator generates
+  # nothing.
+  users_secret_name = try(var.spec.system_users_secret_name, "") != "" ? var.spec.system_users_secret_name : "${local.cluster_name}-secrets"
 
   sharding_enabled       = try(var.spec.sharding.enabled, false)
   first_replica_set_name = var.spec.replica_sets[0].name
@@ -122,9 +127,11 @@ locals {
   #            extracts them from the declared service-account key with
   #            jsondecode (malformed JSON fails the plan loudly).
   #   - azure: AZURE_STORAGE_ACCOUNT_NAME / AZURE_STORAGE_ACCOUNT_KEY
-  # Keyless arms (S3 without access_keys, GCS without a key) create NO
-  # Secret and render NO credentialsSecret — the PBM agents use the pods'
-  # ambient cloud identity.
+  # The keyless S3 arm (no access_keys) creates NO Secret and renders NO
+  # credentialsSecret — the PBM agents use the pods' ambient AWS identity.
+  # GCS has no keyless arm (PBM's Google client requires a key); a GCS
+  # storage naming an existing_secret_name creates no Secret either — the
+  # operator reads the one the user brought.
   # All values are strings, so this chained ternary unifies safely to
   # map(string) — no number/bool stringification risk here.
   backup_credential_secrets = local.backup == null ? {} : {
@@ -132,9 +139,9 @@ locals {
       try(s.s3.access_keys, null) != null ? {
         AWS_ACCESS_KEY_ID     = s.s3.access_keys.access_key_id
         AWS_SECRET_ACCESS_KEY = s.s3.access_keys.secret_access_key
-        } : try(s.gcs, null) != null && try(s.gcs.service_account_key_json, "") != "" ? {
-        GCS_CLIENT_EMAIL = jsondecode(s.gcs.service_account_key_json).client_email
-        GCS_PRIVATE_KEY  = jsondecode(s.gcs.service_account_key_json).private_key
+        } : try(s.gcs.credentials.service_account_key, "") != "" ? {
+        GCS_CLIENT_EMAIL = jsondecode(local.gcs_key_json[s.name]).client_email
+        GCS_PRIVATE_KEY  = jsondecode(local.gcs_key_json[s.name]).private_key
         } : try(s.azure, null) != null ? {
         AZURE_STORAGE_ACCOUNT_NAME = s.azure.storage_account
         AZURE_STORAGE_ACCOUNT_KEY  = s.azure.access_key
@@ -142,9 +149,24 @@ locals {
     )
     if(
       try(s.s3.access_keys, null) != null ||
-      (try(s.gcs, null) != null && try(s.gcs.service_account_key_json, "") != "") ||
+      try(s.gcs.credentials.service_account_key, "") != "" ||
       try(s.azure, null) != null
     )
+  }
+
+  # A declared GCS service-account key arrives two ways — the raw JSON
+  # key file, or its base64 encoding (the GcpServiceAccount `key_base64`
+  # output, so a chart wires identity and database in one run). Raw JSON
+  # is recognized by its opening brace; anything else must decode as
+  # standard base64 (a malformed value fails the plan loudly). Twin:
+  # decodeServiceAccountKey in the Pulumi module's secrets.go.
+  gcs_key_json = local.backup == null ? {} : {
+    for s in local.backup.storages : s.name => (
+      startswith(trimspace(s.gcs.credentials.service_account_key), "{")
+      ? trimspace(s.gcs.credentials.service_account_key)
+      : base64decode(trimspace(s.gcs.credentials.service_account_key))
+    )
+    if try(s.gcs.credentials.service_account_key, "") != ""
   }
 
   # ---- CR: unsafeFlags ------------------------------------------------------
@@ -383,9 +405,11 @@ locals {
 
   # ---- CR: backup ---------------------------------------------------------------
   # storages is a MAP keyed by storage name (the CRD shape); tasks and
-  # PITR reference entries by that name. credentialsSecret renders only
-  # for declared-key arms — keyless S3/GCS use the pods' ambient cloud
-  # identity.
+  # PITR reference entries by that name. credentialsSecret renders for
+  # every arm that carries credentials — the module-materialized
+  # `<name>-backup-<storage>` or the user's existing Secret — and is
+  # omitted only on the keyless S3 arm (the pods' ambient AWS identity).
+  # GCS always renders one: the CRD requires it.
   backup_storages = local.backup == null ? null : {
     for s in local.backup.storages : s.name => {
       for k, v in {
@@ -408,7 +432,7 @@ locals {
           for gk, gv in {
             bucket            = s.gcs.bucket
             prefix            = try(s.gcs.prefix, "") != "" ? s.gcs.prefix : null
-            credentialsSecret = try(s.gcs.service_account_key_json, "") != "" ? "${local.cluster_name}-backup-${s.name}" : null
+            credentialsSecret = try(s.gcs.credentials.existing_secret_name, "") != "" ? s.gcs.credentials.existing_secret_name : "${local.cluster_name}-backup-${s.name}"
           } : gk => gv if gv != null
         }
 
@@ -494,6 +518,74 @@ locals {
         } : rk => rv if rv != null
       }
     } : k => v if v != null
+  }
+
+  # ---- CR: restore -------------------------------------------------------------
+  # A Restore object is a RUN, not a state: the operator drives it to
+  # ready (or error) once and never re-reads its spec. Declarative
+  # semantics therefore hinge on the NAME — `<cluster>-restore-<8 hex>`
+  # hashing the declaration itself, so an unchanged declaration is a
+  # no-op on every apply and a changed one is a new object and a new run.
+  # The canonical string joins every field that changes WHAT is restored
+  # in a fixed order (remapping pairs sorted); the Pulumi twin
+  # (restoreName in restore.go) hashes the identical string, so both
+  # engines name the same run the same way.
+  restore = try(var.spec.restore, null)
+
+  restore_source_type = coalesce(try(local.restore.backup_source.type, null), "logical")
+
+  restore_name = local.restore == null ? null : "${local.cluster_name}-restore-${substr(sha256(join("|", [
+    try(local.restore.backup_name, ""),
+    try(local.restore.backup_source.storage_name, ""),
+    try(local.restore.backup_source.destination, ""),
+    try(local.restore.backup_source, null) != null ? local.restore_source_type : "",
+    try(local.restore.pitr.type, ""),
+    try(local.restore.pitr.date, ""),
+    join(",", sort([for k, v in try(local.restore.replset_remapping, {}) : "${k}=${v}"])),
+  ])), 0, 8)}"
+
+  # Exactly one source arm exists (spec oneof): a same-namespace Backup
+  # object by name, or a location in one of this cluster's declared
+  # storages. The backup-source arm renders the storage TWICE, deliberately:
+  # as storageName AND as the storage's full block inside backupSource. The
+  # operator reads them on two different paths — validation resolves the
+  # storage through storageName, but the metadata resync it runs when the
+  # backup is unknown to the fresh cluster's PBM (every DR restore) resolves
+  # it from backupSource.{gcs|s3|azure} alone, and a Restore without that
+  # block dies terminal with "unsupported backup storage type" — live-caught
+  # on GKE. The block is the cluster's own backup.storages rendering (minus
+  # `main`/`type`, which the Restore's schema does not carry), so credentials
+  # and prefix can never drift between the two.
+  restore_source_storage = try(local.restore.backup_source, null) == null ? null : {
+    for k, v in local.backup_storages[local.restore.backup_source.storage_name] : k => v if k != "main" && k != "type"
+  }
+
+  restore_manifest = local.restore == null ? null : {
+    apiVersion = "psmdb.percona.com/v1"
+    kind       = "PerconaServerMongoDBRestore"
+    metadata = {
+      name      = local.restore_name
+      namespace = local.namespace
+      labels    = local.labels
+    }
+    spec = {
+      for k, v in {
+        clusterName = local.cluster_name
+        backupName  = try(local.restore.backup_name, "") != "" ? local.restore.backup_name : null
+        storageName = try(local.restore.backup_source, null) != null ? local.restore.backup_source.storage_name : null
+        backupSource = try(local.restore.backup_source, null) == null ? null : merge({
+          destination = local.restore.backup_source.destination
+          type        = local.restore_source_type
+        }, local.restore_source_storage)
+        pitr = try(local.restore.pitr, null) == null ? null : {
+          for pk, pv in {
+            type = local.restore.pitr.type
+            date = try(local.restore.pitr.date, "") != "" ? local.restore.pitr.date : null
+          } : pk => pv if pv != null
+        }
+        replsetRemapping = length(try(local.restore.replset_remapping, {})) > 0 ? local.restore.replset_remapping : null
+      } : k => v if v != null
+    }
   }
 
   # ---- the PerconaServerMongoDB CR ---------------------------------------------

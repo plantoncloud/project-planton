@@ -658,3 +658,168 @@ func TestResolveDependencies_InstallManifestPathEntryErrors(t *testing.T) {
 		t.Fatalf("expected the install-manifest path-entry rejection, got %v", err)
 	}
 }
+
+// writeK8sManifest writes a Kubernetes-catalog manifest of the given kind with
+// optional metadata.annotations lines (already indented under metadata).
+func writeK8sManifest(t *testing.T, repoRoot, relPath, kind, annotationsYaml string) string {
+	t.Helper()
+	content := "apiVersion: kubernetes.planton.dev/v1alpha1\nkind: " + kind + "\nmetadata:\n  name: " + strings.ToLower(kind) + "-fixture\n"
+	if annotationsYaml != "" {
+		content += "  annotations:\n" + annotationsYaml
+	}
+	full := filepath.Join(repoRoot, relPath)
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", relPath, err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", relPath, err)
+	}
+	return full
+}
+
+// The Postgres chain as the tests below see it: KubernetesPostgres requires
+// KubernetesCloudNativePgOperator (registry), whose consumer-scoped install
+// profile chains KubernetesCertManager (its e2e-prerequisites annotation).
+const (
+	pgCnpgConsumerPrereqRel = "catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.yaml"
+	pgCnpgPluginOnlyRel     = "catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.gke-plugin-only.yaml"
+	certManagerPrereqRel    = "catalog/kubernetes/kubernetescertmanager/e2e/prerequisite.yaml"
+)
+
+func writePostgresChain(t *testing.T, repoRoot string) {
+	t.Helper()
+	writeK8sManifest(t, repoRoot, pgCnpgConsumerPrereqRel, "KubernetesCloudNativePgOperator",
+		"    planton.dev/e2e-prerequisites: \"KubernetesCertManager\"\n")
+	writeK8sManifest(t, repoRoot, certManagerPrereqRel, "KubernetesCertManager", "")
+}
+
+// TestResolveDependencies_InstallManifestSubstituteTakesTheKindsSlot guards
+// the e2e-prerequisite-install-manifest annotation: the named kind installs
+// from the scenario's manifest INSTEAD of the consumer-scoped profile, in the
+// kind's own position in the chain, and the substitute's own annotations are
+// read like any install manifest's (here it declares no cert-manager edge,
+// because the lane cluster carries one) -- unlike a manifest-path entry in
+// e2e-prerequisites, which only ever ADDS an instance.
+func TestResolveDependencies_InstallManifestSubstituteTakesTheKindsSlot(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+	substitute := writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCloudNativePgOperator", "")
+	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n")
+
+	deps, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
+	if err != nil {
+		t.Fatalf("ResolveDependencies: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Fatalf("expected exactly the substituted operator (the consumer profile's cert-manager edge must not be read), got %d: %+v", len(deps), deps)
+	}
+	if deps[0].KindSlug != "kubernetescloudnativepgoperator" || deps[0].ManifestPath != substitute {
+		t.Fatalf("expected the substitute %q in the operator's slot, got %+v", substitute, deps[0])
+	}
+}
+
+// Without the substitute the same chain deploys cert-manager first and the
+// consumer-scoped operator profile second -- the baseline the substitute
+// test contrasts against.
+func TestResolveDependencies_PostgresChainBaseline(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres", "")
+
+	deps, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
+	if err != nil {
+		t.Fatalf("ResolveDependencies: %v", err)
+	}
+	if len(deps) != 2 || deps[0].KindSlug != "kubernetescertmanager" || deps[1].KindSlug != "kubernetescloudnativepgoperator" {
+		t.Fatalf("expected [certmanager, cnpg operator], got %+v", deps)
+	}
+}
+
+// TestResolveDependencies_ResidentPrerequisitePruned guards the
+// e2e-resident-prerequisites annotation: a resident kind is neither deployed
+// nor reached through, and the rest of the chain is unchanged.
+func TestResolveDependencies_ResidentPrerequisitePruned(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-resident-prerequisites: \"KubernetesCertManager\"\n")
+
+	deps, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
+	if err != nil {
+		t.Fatalf("ResolveDependencies: %v", err)
+	}
+	if len(deps) != 1 || deps[0].KindSlug != "kubernetescloudnativepgoperator" {
+		t.Fatalf("expected only the operator (cert-manager is resident), got %+v", deps)
+	}
+}
+
+// The two annotations compose: the operator installs from its plugin-only
+// substitute and cert-manager is resident -- the exact declaration of the
+// GKE recovery lane, where CloudNativePG and cert-manager both arrived with
+// the Planton operator.
+func TestResolveDependencies_SubstituteAndResidentCompose(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+	substitute := writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCloudNativePgOperator", "")
+	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n"+
+			"    planton.dev/e2e-resident-prerequisites: \"KubernetesCertManager\"\n")
+
+	deps, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
+	if err != nil {
+		t.Fatalf("ResolveDependencies: %v", err)
+	}
+	if len(deps) != 1 || deps[0].ManifestPath != substitute {
+		t.Fatalf("expected only the substituted operator, got %+v", deps)
+	}
+}
+
+// A substitute must install the kind whose slot it takes; one declaring a
+// different kind would silently leave the real prerequisite missing.
+func TestResolveDependencies_SubstituteOfWrongKindRejected(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+	writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCertManager", "")
+	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n")
+
+	_, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
+	if err == nil || !strings.Contains(err.Error(), "must install the kind whose slot it takes") {
+		t.Fatalf("expected the wrong-kind substitute rejection, got %v", err)
+	}
+}
+
+// A kind cannot be both resident and installed from a substitute.
+func TestResolveDependencies_ResidentAndSubstituteConflictRejected(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+	writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCloudNativePgOperator", "")
+	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n"+
+			"    planton.dev/e2e-resident-prerequisites: \"KubernetesCloudNativePgOperator\"\n")
+
+	_, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
+	if err == nil || !strings.Contains(err.Error(), "both resident") {
+		t.Fatalf("expected the resident/substitute conflict rejection, got %v", err)
+	}
+}
+
+// A malformed substitute entry (no `=`) and a missing substitute file each
+// fail at resolution, before anything deploys.
+func TestResolveDependencies_SubstituteEntryShapeAndPresence(t *testing.T) {
+	repoRoot := t.TempDir()
+	writePostgresChain(t, repoRoot)
+
+	malformed := writeK8sManifest(t, repoRoot, "malformed.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator\"\n")
+	if _, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", malformed); err == nil || !strings.Contains(err.Error(), "<Kind>=<repo-relative manifest path>") {
+		t.Fatalf("expected the entry-shape rejection, got %v", err)
+	}
+
+	missing := writeK8sManifest(t, repoRoot, "missing.yaml", "KubernetesPostgres",
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator=catalog/kubernetes/nowhere.yaml\"\n")
+	if _, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", missing); err == nil || !strings.Contains(err.Error(), "not found at") {
+		t.Fatalf("expected the missing-substitute rejection, got %v", err)
+	}
+}

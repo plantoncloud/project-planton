@@ -88,10 +88,15 @@ locals {
   backup        = try(var.spec.backup, null)
 
   # Where the application credential actually lives: the operator-generated
-  # `<name>-app` normally, or the module-provided secret when initdb
-  # declares an owner password (the operator then adopts it instead of
-  # generating its own).
-  effective_app_secret_name = try(local.initdb.owner_password, "") != "" ? local.provided_app_secret_name : local.app_secret_name
+  # `<name>-app` normally, the module-provided secret when initdb declares
+  # an owner password, or the brought Secret when a recovery names the
+  # source's app Secret (credential continuity) — in both latter cases the
+  # operator adopts the Secret instead of generating its own.
+  effective_app_secret_name = (
+    try(local.recovery.owner_secret_name, "") != "" ? local.recovery.owner_secret_name :
+    try(local.initdb.owner_password, "") != "" ? local.provided_app_secret_name :
+    local.app_secret_name
+  )
 
   # basic-auth username for the provided app secret: the OWNER's name —
   # falling back to the database name and then the upstream initdb default
@@ -294,9 +299,15 @@ locals {
   # the module renders below, whose plugin block points at the
   # `<name>-recovery-source` ObjectStore with the SOURCE cluster's
   # serverName.
+  # Credential continuity: the recovered roles keep the SOURCE's passwords,
+  # so when the spec names the source's app Secret the operator adopts it
+  # (`secret`) instead of generating a fresh `<name>-app`.
   recovery_body = local.recovery == null ? null : {
     for k, v in {
-      source = local.recovery_source_external_cluster_name
+      source   = local.recovery_source_external_cluster_name
+      database = try(local.recovery.database, "") != "" ? local.recovery.database : null
+      owner    = try(local.recovery.owner, "") != "" ? local.recovery.owner : null
+      secret   = try(local.recovery.owner_secret_name, "") != "" ? { name = local.recovery.owner_secret_name } : null
       recoveryTarget = try(local.recovery.recovery_target, null) == null ? null : {
         for tk, tv in {
           targetTime      = try(local.recovery.recovery_target.target_time, "") != "" ? local.recovery.recovery_target.target_time : null
@@ -403,10 +414,15 @@ locals {
       pg_hba                   = length(try(var.spec.postgresql.pg_hba, [])) > 0 ? var.spec.postgresql.pg_hba : null
       pg_ident                 = length(try(var.spec.postgresql.pg_ident, [])) > 0 ? var.spec.postgresql.pg_ident : null
       shared_preload_libraries = length(try(var.spec.postgresql.shared_preload_libraries, [])) > 0 ? var.spec.postgresql.shared_preload_libraries : null
+      # The spec's declared defaults (method any, data_durability
+      # required) are applied HERE, not in variables.tf: that file is
+      # generator-produced and carries no defaults for optional-with-
+      # default fields, so the module renders the same body whether or
+      # not the platform's defaulting middleware ran.
       synchronous = try(var.spec.postgresql.synchronous, null) == null ? null : {
-        method         = var.spec.postgresql.synchronous.method
+        method         = coalesce(try(var.spec.postgresql.synchronous.method, null), "any")
         number         = var.spec.postgresql.synchronous.number
-        dataDurability = var.spec.postgresql.synchronous.data_durability
+        dataDurability = coalesce(try(var.spec.postgresql.synchronous.data_durability, null), "required")
       }
       enableAlterSystem = try(var.spec.postgresql.enable_alter_system, false) ? true : null
     } : k => v if v != null
@@ -500,7 +516,9 @@ locals {
     }
     spec = {
       for k, v in {
-        instances = var.spec.instances
+        # The spec's declared default (1) applied here — variables.tf is
+        # generator-produced and carries no default for the optional field.
+        instances = coalesce(try(var.spec.instances, null), 1)
         imageName = try(var.spec.image_name, "") != "" ? var.spec.image_name : null
 
         storage    = local.storage_body

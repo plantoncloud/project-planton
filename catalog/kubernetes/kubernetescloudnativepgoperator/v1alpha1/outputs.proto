@@ -14,7 +14,9 @@ message KubernetesCloudNativePgOperatorStackOutputs {
   string namespace = 1;
 
   // Helm release name of the operator (fixed: "cnpg" — one installation
-  // per cluster).
+  // per cluster). Empty in the plugin-only posture (install_operator
+  // false): the operator on the cluster is someone else's, and this
+  // resource never claims a handle it does not own.
   string release_name = 2;
 
   // Helm release name of the Barman Cloud plugin when enabled; empty

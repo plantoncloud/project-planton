@@ -1,0 +1,45 @@
+# The SOURCE cluster of the gcp-gke restore proof: the database a customer
+# runs in production, owning the lane namespace. A three-member replica set on
+# the operator's default REQUIRED hostname anti-affinity (the GKE autoscaler
+# adds nodes to honor it — the multi-node HA posture kind could never prove),
+# PBM backups into the batch bucket over the native GCS API with the backup
+# identity's KEY (MongoDB has no keyless GCS path — the key rides in as the
+# batch exported it, the GcpServiceAccount `key_base64` shape), and PITR
+# archiving the oplog between backups. The seed script writes markers and
+# takes a backup here; the restore scenario restores from that backup and
+# references this cluster's system-users Secret for credential continuity.
+# The storage prefix carries the run id so no two lanes ever share a PBM
+# archive (PBM keys its metadata by the storage path).
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesMongodb
+metadata:
+  name: e2e-mdb-gke-src
+spec:
+  namespace:
+    value: e2e-mdb-gke
+  create_namespace: true
+  replica_sets:
+    - name: rs0
+      size: 3
+      storage:
+        size: 2Gi
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+  backup:
+    storages:
+      - name: gcs
+        main: true
+        gcs:
+          bucket: ${E2E_ENV:PLANTON_E2E_GKE_BACKUP_BUCKET}
+          prefix: mongo/${E2E_RUN_ID}/e2e-mdb-gke-src
+          credentials:
+            service_account_key:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_MONGO_BACKUP_KEY_B64}
+    pitr:
+      enabled: true
+      oplog_span_min: 1

@@ -24,6 +24,15 @@ import (
 //     conflict). Installed AFTER the operator so the plugin's CNPG-I
 //     registration always lands on a running operator.
 //
+// PLUGIN-ONLY POSTURE (spec.install_operator false): a CloudNativePG
+// already runs on the cluster — the Planton operator installs one for the
+// platform's own database, and Helm/GitOps installs are common — and the
+// operator's CRDs and webhooks are cluster singletons, so no operator
+// release renders at all. Only the plugin release is managed, into the
+// declared namespace beside the resident operator, and it registers with
+// that operator over CNPG-I exactly as it would with one this module
+// installed. The operator-release outputs are then honestly empty.
+//
 // CERT-MANAGER DEPENDENCY (deliberate, documented): the plugin chart
 // renders cert-manager Issuer/Certificate resources UNCONDITIONALLY — its
 // operator↔sidecar TLS is issued by cert-manager. Without cert-manager on
@@ -56,41 +65,49 @@ func Resources(ctx *pulumi.Context, stackInput *kubernetescloudnativepgoperatorv
 	}
 
 	// ------------------------------ operator release ----------------------
-	mergedValues, err := buildHelmValues(locals)
-	if err != nil {
-		return errors.Wrap(err, "failed to build helm values")
-	}
+	// pluginDeps is what the plugin release waits on: the operator release
+	// when this module installs it (the plugin registers with the operator
+	// over CNPG-I, so the operator and its CRDs must exist first — uninstall
+	// unwinds in reverse for free); only the namespace in the plugin-only
+	// posture, where the resident operator is already running.
+	pluginDeps := operatorDeps
+	operatorReleaseName := ""
+	if locals.InstallOperator {
+		mergedValues, err := buildHelmValues(locals)
+		if err != nil {
+			return errors.Wrap(err, "failed to build helm values")
+		}
 
-	operatorRelease, err := helmv3.NewRelease(ctx, vars.ReleaseName, &helmv3.ReleaseArgs{
-		Name:      pulumi.String(vars.ReleaseName),
-		Namespace: pulumi.String(locals.Namespace),
-		Chart:     pulumi.String(vars.HelmChartName),
-		Version:   pulumi.String(locals.ChartVersion),
-		RepositoryOpts: &helmv3.RepositoryOptsArgs{
-			Repo: pulumi.String(vars.HelmChartRepo),
-		},
-		Values: pulumi.ToMap(mergedValues),
-		// The module owns namespace creation (create_namespace flag).
-		CreateNamespace: pulumi.Bool(false),
-		// Wait for the operator to become Available — an operator that
-		// never becomes ready (a PodMonitor rendered without the
-		// Prometheus operator CRDs is THE classic install failure) should
-		// fail THIS deploy with a readiness timeout, not surface later as
-		// Cluster resources that mysteriously never reconcile.
-		Atomic:        pulumi.Bool(true),
-		CleanupOnFail: pulumi.Bool(true),
-		Timeout:       pulumi.Int(vars.HelmTimeoutSeconds),
-	}, append([]pulumi.ResourceOption{
-		pulumi.Provider(kubernetesProvider)},
-		dependsOn(operatorDeps)...)...)
-	if err != nil {
-		return errors.Wrap(err, "failed to install cloudnative-pg helm release")
+		operatorRelease, err := helmv3.NewRelease(ctx, vars.ReleaseName, &helmv3.ReleaseArgs{
+			Name:      pulumi.String(vars.ReleaseName),
+			Namespace: pulumi.String(locals.Namespace),
+			Chart:     pulumi.String(vars.HelmChartName),
+			Version:   pulumi.String(locals.ChartVersion),
+			RepositoryOpts: &helmv3.RepositoryOptsArgs{
+				Repo: pulumi.String(vars.HelmChartRepo),
+			},
+			Values: pulumi.ToMap(mergedValues),
+			// The module owns namespace creation (create_namespace flag).
+			CreateNamespace: pulumi.Bool(false),
+			// Wait for the operator to become Available — an operator that
+			// never becomes ready (a PodMonitor rendered without the
+			// Prometheus operator CRDs is THE classic install failure) should
+			// fail THIS deploy with a readiness timeout, not surface later as
+			// Cluster resources that mysteriously never reconcile.
+			Atomic:        pulumi.Bool(true),
+			CleanupOnFail: pulumi.Bool(true),
+			Timeout:       pulumi.Int(vars.HelmTimeoutSeconds),
+		}, append([]pulumi.ResourceOption{
+			pulumi.Provider(kubernetesProvider)},
+			dependsOn(operatorDeps)...)...)
+		if err != nil {
+			return errors.Wrap(err, "failed to install cloudnative-pg helm release")
+		}
+		pluginDeps = []pulumi.Resource{operatorRelease}
+		operatorReleaseName = vars.ReleaseName
 	}
 
 	// ------------------------------ plugin release ------------------------
-	// Ordered AFTER the operator release: the plugin registers itself with
-	// the operator over CNPG-I, so the operator (and its CRDs) must exist
-	// first. Uninstall unwinds in reverse for free.
 	barmanPluginReleaseName := ""
 	if locals.BarmanPluginEnabled {
 		_, err := helmv3.NewRelease(ctx, vars.PluginReleaseName, &helmv3.ReleaseArgs{
@@ -111,8 +128,9 @@ func Resources(ctx *pulumi.Context, stackInput *kubernetescloudnativepgoperatorv
 			Atomic:        pulumi.Bool(true),
 			CleanupOnFail: pulumi.Bool(true),
 			Timeout:       pulumi.Int(vars.HelmTimeoutSeconds),
-		}, pulumi.Provider(kubernetesProvider),
-			pulumi.DependsOn([]pulumi.Resource{operatorRelease}))
+		}, append([]pulumi.ResourceOption{
+			pulumi.Provider(kubernetesProvider)},
+			dependsOn(pluginDeps)...)...)
 		if err != nil {
 			return errors.Wrap(err, "failed to install plugin-barman-cloud helm release")
 		}
@@ -120,7 +138,9 @@ func Resources(ctx *pulumi.Context, stackInput *kubernetescloudnativepgoperatorv
 	}
 
 	ctx.Export(OpNamespace, pulumi.String(locals.Namespace))
-	ctx.Export(OpReleaseName, pulumi.String(vars.ReleaseName))
+	// Empty in the plugin-only posture — the operator release is someone
+	// else's; this resource never claims a handle it does not own.
+	ctx.Export(OpReleaseName, pulumi.String(operatorReleaseName))
 	// Empty when the plugin arm is off — KubernetesPostgres backup blocks
 	// key off this handle to know whether object-store backups can work.
 	ctx.Export(OpBarmanPluginReleaseName, pulumi.String(barmanPluginReleaseName))

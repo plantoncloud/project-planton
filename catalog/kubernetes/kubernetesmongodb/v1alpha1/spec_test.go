@@ -62,6 +62,25 @@ func s3Storage(name string) *KubernetesMongodbBackupStorage {
 	}
 }
 
+// gcsStorage returns a minimal valid GCS backup storage: a literal
+// service-account key (GCS has no keyless arm — the credentials message is
+// required).
+func gcsStorage(name string) *KubernetesMongodbBackupStorage {
+	return &KubernetesMongodbBackupStorage{
+		Name: name,
+		Backend: &KubernetesMongodbBackupStorage_Gcs{
+			Gcs: &KubernetesMongodbGcsStorage{
+				Bucket: "mongo-backups",
+				Credentials: &KubernetesMongodbGcsCredentials{
+					Source: &KubernetesMongodbGcsCredentials_ServiceAccountKey{
+						ServiceAccountKey: literal(`{"type":"service_account","client_email":"mongo-backup@my-project.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n"}`),
+					},
+				},
+			},
+		},
+	}
+}
+
 // validBackup returns a minimal valid backup block (one S3 storage, no
 // tasks) for tests that mutate one backup rule at a time.
 func validBackup() *KubernetesMongodbBackup {
@@ -233,19 +252,76 @@ var _ = ginkgo.Describe("KubernetesMongodb Validation Tests", func() {
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
-		ginkgo.It("backup to GCS with a service-account key should be valid", func() {
+		ginkgo.It("backup to GCS with a literal service-account key should be valid", func() {
 			input.Spec.Backup = &KubernetesMongodbBackup{
-				Storages: []*KubernetesMongodbBackupStorage{
-					{
-						Name: "gcs-store",
-						Backend: &KubernetesMongodbBackupStorage_Gcs{
-							Gcs: &KubernetesMongodbGcsStorage{
-								Bucket:                "mongo-backups",
-								ServiceAccountKeyJson: `{"type":"service_account","project_id":"my-project"}`,
-							},
-						},
+				Storages: []*KubernetesMongodbBackupStorage{gcsStorage("gcs-store")},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to GCS with the key referenced from a GcpServiceAccount should be valid", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = &KubernetesMongodbGcsCredentials{
+				Source: &KubernetesMongodbGcsCredentials_ServiceAccountKey{
+					ServiceAccountKey: valueFrom(cloudresourcekind.CloudResourceKind_GcpServiceAccount, "mongo-backup", "status.outputs.key_base64"),
+				},
+			}
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to GCS with an existing credentials Secret should be valid", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = &KubernetesMongodbGcsCredentials{
+				Source: &KubernetesMongodbGcsCredentials_ExistingSecretName{ExistingSecretName: "gcs-backup-credentials"},
+			}
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("a bring-your-own system-users Secret should be valid", func() {
+			input.Spec.SystemUsersSecretName = "source-mongodb-secrets"
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from a same-namespace Backup object should be valid", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly-2026-09-09"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from a declared storage's location with PITR to latest should be valid (the DR shape)", func() {
+			input.Spec.SystemUsersSecretName = "source-mongodb-secrets"
+			input.Spec.Backup = &KubernetesMongodbBackup{
+				Storages: []*KubernetesMongodbBackupStorage{gcsStorage("gcs-store")},
+				Pitr:     &KubernetesMongodbPitr{Enabled: true},
+			}
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "gcs-store",
+						Destination: "gs://mongo-backups/prod/2026-09-09T12:00:00Z",
+						Type:        stringPtr("logical"),
 					},
 				},
+				Pitr: &KubernetesMongodbRestorePitr{Type: "latest"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore with PITR to a date and replica-set remapping should be valid", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "primary",
+						Destination: "s3://mongo-backups/2026-09-09T12:00:00Z",
+					},
+				},
+				Pitr:             &KubernetesMongodbRestorePitr{Type: "date", Date: "2026-09-09 12:30:00"},
+				ReplsetRemapping: map[string]string{"rs0": "rs1"},
 			}
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
@@ -701,13 +777,111 @@ var _ = ginkgo.Describe("KubernetesMongodb Validation Tests", func() {
 		})
 
 		ginkgo.It("gcs without a bucket should fail (required)", func() {
-			input.Spec.Backup = &KubernetesMongodbBackup{
-				Storages: []*KubernetesMongodbBackupStorage{
-					{
-						Name:    "gcs-store",
-						Backend: &KubernetesMongodbBackupStorage_Gcs{Gcs: &KubernetesMongodbGcsStorage{}},
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Bucket = ""
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("gcs without credentials should fail (required — there is no keyless GCS posture)", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("gcs credentials with no source arm should fail (oneof required)", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = &KubernetesMongodbGcsCredentials{}
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore without the backup block should fail (restore_requires_backup)", func() {
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly-2026-09-09"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from a storage the backup block does not declare should fail (restore_storage_declared)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "elsewhere",
+						Destination: "s3://mongo-backups/2026-09-09T12:00:00Z",
 					},
 				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore with no source should fail (oneof required)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore destination without a URI scheme should fail (destination_uri)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "primary",
+						Destination: "mongo-backups/2026-09-09T12:00:00Z",
+					},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore type incremental should fail (type_enum — chains restore through their physical base)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "primary",
+						Destination: "s3://mongo-backups/2026-09-09T12:00:00Z",
+						Type:        stringPtr("incremental"),
+					},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR type date without a date should fail (pitr.date_pairing)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "date"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR type latest with a date should fail (pitr.date_pairing)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "latest", Date: "2026-09-09 12:30:00"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR date in RFC3339 form should fail (the operator's format is 'YYYY-MM-DD HH:MM:SS')", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "date", Date: "2026-09-09T12:30:00Z"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR with an unknown type should fail (pitr.type_enum)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "oplog"},
 			}
 			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
 		})

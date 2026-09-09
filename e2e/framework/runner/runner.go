@@ -159,7 +159,15 @@ func RunComponentTest(ctx context.Context, tc *provider.ComponentTestContext, ha
 	// seeding failure must stop the lane before any component deploy.
 	if setupScript, annErr := ManifestAnnotation(tc.ManifestPath, SetupScriptAnnotation); annErr == nil && setupScript != "" {
 		setupStart := time.Now()
-		setupErr := runSetupScript(tc, setupScript, expandRunID)
+		// The script may publish values the manifest under test consumes
+		// (${E2E_SETUP:NAME} tokens -- a restore proof's "the backup the
+		// seed just wrote"); the expanded copy is what every later phase
+		// deploys and verifies against.
+		seededPath, setupErr := runSetupScript(tc, setupScript, expandRunID)
+		if setupErr == nil {
+			tc.ManifestPath = seededPath
+			verifyCtx = context.WithValue(ctx, provider.ManifestPathKey{}, tc.ManifestPath)
+		}
 		result.Phases = append(result.Phases, PhaseResult{
 			Phase:    PhaseSetup,
 			Duration: time.Since(setupStart),

@@ -163,11 +163,64 @@ var _ = ginkgo.Describe("KubernetesCloudNativePgOperator Validation Tests", func
 			}
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
+
+		ginkgo.It("plugin-only posture (install_operator false + plugin enabled) should be valid", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{
+				Enabled:      true,
+				ChartVersion: stringPtr("0.7.0"),
+				Resources: &kubernetes.ContainerResources{
+					Requests: &kubernetes.CpuMemory{Cpu: "50m", Memory: "64Mi"},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("plugin-only posture with the defaulted optionals present should be valid (chart_version, replicas, max_concurrent_reconciles are defaults, not dead config)", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			input.Spec.ChartVersion = stringPtr("0.29.0")
+			input.Spec.Replicas = int32Ptr(1)
+			input.Spec.MaxConcurrentReconciles = int32Ptr(10)
+			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{Enabled: true}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
 	})
 
 	ginkgo.Describe("When invalid input is passed", func() {
 		ginkgo.It("missing namespace should fail (required)", func() {
 			input.Spec.Namespace = nil
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("install_operator false without the plugin should fail (plugin_only_requires_plugin — nothing would deploy)", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("install_operator false with the plugin declared but disabled should fail (plugin_only_requires_plugin)", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{Enabled: false}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("plugin-only posture carrying operator helm_values should fail (plugin_only_no_operator_config)", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{Enabled: true}
+			input.Spec.HelmValues = "replicaCount: 2\n"
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("plugin-only posture carrying an operator watch scope should fail (plugin_only_no_operator_config)", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{Enabled: true}
+			input.Spec.Watch = &KubernetesCloudNativePgOperatorWatch{ClusterWide: boolPtr(false), Namespaces: []string{"team-a"}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("plugin-only posture carrying an operator image override should fail (plugin_only_no_operator_config)", func() {
+			input.Spec.InstallOperator = boolPtr(false)
+			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{Enabled: true}
+			input.Spec.Image = &KubernetesCloudNativePgOperatorImage{Repository: "mirror.example.com/cloudnative-pg"}
 			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
 		})
 

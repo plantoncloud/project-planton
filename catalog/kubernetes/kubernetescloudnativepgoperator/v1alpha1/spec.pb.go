@@ -51,6 +51,14 @@ const (
 // issued by cert-manager, so the plugin arm requires cert-manager on the
 // cluster (KubernetesCertManager).
 //
+// A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG — installed by the Planton
+// operator, by Helm, by GitOps — cannot take a second copy (see above),
+// and a resident operator that came without the plugin cannot back
+// anything up. `install_operator: false` is the posture for that cluster:
+// this resource then manages ONLY the plugin, beside whichever CloudNativePG
+// is already there, and every KubernetesPostgres on the cluster gains
+// object-store backups.
+//
 // The typed fields below cover the chart's meaningful configuration
 // surface; `helm_values` remains as the escape hatch for chart values
 // beyond them (merged last, Helm `-f` semantics, identical on both
@@ -141,9 +149,33 @@ type KubernetesCloudNativePgOperatorSpec struct {
 	// fields (webhook tuning, update strategy, security contexts, topology
 	// spread, host network, ...) — never the substitute for them. Do not
 	// put secrets here.
-	HelmValues    string `protobuf:"bytes,17,opt,name=helm_values,json=helmValues,proto3" json:"helm_values,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HelmValues string `protobuf:"bytes,17,opt,name=helm_values,json=helmValues,proto3" json:"helm_values,omitempty"`
+	// *
+	// Install the operator release. Default true. Set false on a cluster
+	// that ALREADY runs CloudNativePG (the Planton operator installs one for
+	// the platform's own database; a Helm or GitOps install counts too):
+	// the operator's CRDs and webhooks are cluster singletons, so a second
+	// copy would fight the resident one — instead this resource manages only
+	// the Barman Cloud plugin (`barman_cloud_plugin.enabled` is then
+	// required), installing it into `namespace` beside the resident
+	// operator, and every KubernetesPostgres on the cluster gains
+	// object-store backups. The operator-shaping fields (`crds`, `replicas`,
+	// `resources`, `watch`, `operator_config`, `max_concurrent_reconciles`,
+	// `monitoring`, `priority_class_name`, `node_selector`, `tolerations`,
+	// `image_pull_secrets`, `image`, `helm_values`) describe a release this
+	// resource does not own in that posture and must stay unset. Destroying
+	// a plugin-only declaration removes the plugin and leaves the resident
+	// operator running (live-proven). Deciding which posture applies: `kubectl
+	// get deploy -A -l app.kubernetes.io/name=cloudnative-pg` — a hit means
+	// plugin-only. Beware the reverse case too: a CloudNativePG that was
+	// UNINSTALLED by a non-Helm owner (the Planton operator's, a raw
+	// manifest) can leave its cluster-scoped CRDs, webhooks, and RBAC behind
+	// with that owner's labels, and a full install here then fails at the
+	// Helm ownership check ("managed-by must equal Helm") — delete the
+	// leftovers first; nothing here adopts them.
+	InstallOperator *bool `protobuf:"varint,18,opt,name=install_operator,json=installOperator,proto3,oneof" json:"install_operator,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *KubernetesCloudNativePgOperatorSpec) Reset() {
@@ -293,6 +325,13 @@ func (x *KubernetesCloudNativePgOperatorSpec) GetHelmValues() string {
 		return x.HelmValues
 	}
 	return ""
+}
+
+func (x *KubernetesCloudNativePgOperatorSpec) GetInstallOperator() bool {
+	if x != nil && x.InstallOperator != nil {
+		return *x.InstallOperator
+	}
+	return false
 }
 
 // *
@@ -606,7 +645,7 @@ var File_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto 
 
 const file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"Fcatalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/spec.proto\x12?dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a#catalog/kubernetes/kubernetes.proto\x1a%catalog/kubernetes/workload_pod.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xf7\x0e\n" +
+	"Fcatalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/spec.proto\x12?dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a#catalog/kubernetes/kubernetes.proto\x1a%catalog/kubernetes/workload_pod.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xca\x18\n" +
 	"#KubernetesCloudNativePgOperatorSpec\x12j\n" +
 	"\tnamespace\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x18\xbaH\x03\xc8\x01\x01\x88\xd4a\xa0\x1f\x92\xd4a\tspec.nameR\tnamespace\x12)\n" +
 	"\x10create_namespace\x18\x02 \x01(\bR\x0fcreateNamespace\x124\n" +
@@ -629,16 +668,20 @@ const file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_prot
 	"\x12image_pull_secrets\x18\x0f \x03(\tBJ\xaa\xa6\x1dFNames of existing Kubernetes Secrets (references), not secret materialR\x10imagePullSecrets\x12{\n" +
 	"\x05image\x18\x10 \x01(\v2e.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImageR\x05image\x12\x1f\n" +
 	"\vhelm_values\x18\x11 \x01(\tR\n" +
-	"helmValues\x1aA\n" +
+	"helmValues\x128\n" +
+	"\x10install_operator\x18\x12 \x01(\bB\b\x8a\xa6\x1d\x04trueH\x03R\x0finstallOperator\x88\x01\x01\x1aA\n" +
 	"\x13OperatorConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x10\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\x81\t\xbaH\xfd\b\x1a\x8b\x03\n" +
+	" spec.plugin_only_requires_plugin\x12\xdd\x01install_operator false means this resource manages only the Barman Cloud plugin beside a CloudNativePG that is already on the cluster — enable barman_cloud_plugin, or drop install_operator to install the operator itself\x1a\x86\x01!(has(this.install_operator) && this.install_operator == false) || (has(this.barman_cloud_plugin) && this.barman_cloud_plugin.enabled)\x1a\xec\x05\n" +
+	"#spec.plugin_only_no_operator_config\x12\xcb\x02with install_operator false the operator release is not managed here, so operator-shaping fields are dead configuration — remove crds, resources, watch, operator_config, monitoring, priority_class_name, node_selector, tolerations, image_pull_secrets, image, and helm_values (the plugin's own knobs live under barman_cloud_plugin)\x1a\xf6\x02!(has(this.install_operator) && this.install_operator == false) || (!has(this.crds) && !has(this.resources) && !has(this.watch) && this.operator_config.size() == 0 && !has(this.monitoring) && this.priority_class_name == '' && this.node_selector.size() == 0 && this.tolerations.size() == 0 && this.image_pull_secrets.size() == 0 && !has(this.image) && this.helm_values == '')B\x10\n" +
 	"\x0e_chart_versionB\v\n" +
 	"\t_replicasB\x1c\n" +
-	"\x1a_max_concurrent_reconciles\"Z\n" +
+	"\x1a_max_concurrent_reconcilesB\x13\n" +
+	"\x11_install_operator\"Z\n" +
 	"#KubernetesCloudNativePgOperatorCrds\x12'\n" +
 	"\ainstall\x18\x01 \x01(\bB\b\x8a\xa6\x1d\x04trueH\x00R\ainstall\x88\x01\x01B\n" +
 	"\n" +

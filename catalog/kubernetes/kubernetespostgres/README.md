@@ -77,7 +77,9 @@ the new primary automatically.
   sizes can only grow — the operator rejects shrinks)
 - **`spec.bootstrap`**: exactly one of `initdb` (fresh empty database —
   the standard path), `recovery` (restore from an object-store backup —
-  disaster recovery, cloning, PITR), or `pg_basebackup` (physical
+  disaster recovery, cloning, PITR; `database`/`owner`/
+  `owner_secret_name` carry the source's application credential into
+  the recovered cluster), or `pg_basebackup` (physical
   streaming from a declared external cluster — same-major-version
   migration)
 
@@ -150,7 +152,15 @@ flag tells the Barman Cloud plugin to use that ambient identity.
 The cloud-side half of each keyless contract (IRSA trust policy, GCP WI
 binding, Entra federated credential) is written against the cluster's
 own ServiceAccount — CloudNativePG names it after the cluster, in the
-cluster's namespace.
+cluster's namespace — so it is one binding per cluster, a recovery
+target included. On GKE the GCP service account needs
+`roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader` on
+the bucket: Barman calls `storage.buckets.get` before every WAL archive
+and `objectAdmin` alone 403s every archive (live-caught; the cluster
+reports healthy while `ContinuousArchiving` stays false). The whole
+GKE disaster-recovery resource set — identity, binding, bucket, operator
+plugin, source cluster, recovery target — is laid out in
+[GUIDE.md](GUIDE.md).
 
 ## Stack Outputs
 
@@ -285,6 +295,14 @@ spec:
       source_server_name: orders-db
       recovery_target:
         target_time: "2026-07-20T06:00:00Z" # PITR — omit for full recovery
+      # The recovered data carries the source's roles and passwords. Name
+      # the source's application database and owner, and bring the source's
+      # app Secret (kept alive by a KubernetesSecret / ExternalSecret) so
+      # this cluster hands out credentials that actually work. Omit
+      # owner_secret_name for a clone that gets a fresh password.
+      database: orders
+      owner: orders
+      owner_secret_name: orders-db-app
   workload_identity:
     eks:
       role_arn:

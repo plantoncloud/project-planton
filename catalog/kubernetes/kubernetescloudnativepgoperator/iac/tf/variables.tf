@@ -17,11 +17,9 @@ variable "spec" {
     namespace        = string
     create_namespace = optional(bool, false)
     chart_version    = optional(string)
-
     crds = optional(object({
       install = optional(bool)
     }))
-
     replicas = optional(number)
     resources = optional(object({
       limits = optional(object({
@@ -33,15 +31,12 @@ variable "spec" {
         memory = optional(string, "")
       }))
     }))
-
     watch = optional(object({
       cluster_wide = optional(bool)
       namespaces   = optional(list(string), [])
     }))
-
     operator_config           = optional(map(string), {})
     max_concurrent_reconciles = optional(number)
-
     barman_cloud_plugin = optional(object({
       enabled       = optional(bool, false)
       chart_version = optional(string)
@@ -56,12 +51,10 @@ variable "spec" {
         }))
       }))
     }))
-
     monitoring = optional(object({
       pod_monitor_enabled = optional(bool, false)
       grafana_dashboard   = optional(bool, false)
     }))
-
     priority_class_name = optional(string, "")
     node_selector       = optional(map(string), {})
     tolerations = optional(list(object({
@@ -71,13 +64,12 @@ variable "spec" {
       effect             = optional(string, "")
       toleration_seconds = optional(number)
     })), [])
-
     image_pull_secrets = optional(list(string), [])
     image = optional(object({
       repository = optional(string, "")
       tag        = optional(string, "")
     }))
-
-    helm_values = optional(string, "")
+    helm_values      = optional(string, "")
+    install_operator = optional(bool)
   })
 }

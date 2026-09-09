@@ -141,7 +141,15 @@ type KubernetesPostgresSpec struct {
 	// Keyless cloud identity for the instance pods' ServiceAccount —
 	// annotates it so backups reach S3 (EKS IRSA), GCS (GKE Workload
 	// Identity), or Azure Blob (AKS Workload Identity) without stored
-	// keys. Pair with the backup block's keyless arm.
+	// keys. Pair with the backup block's keyless arm. The ServiceAccount
+	// the operator creates is named after the cluster (`metadata.name`,
+	// in `namespace`), so the cloud-side binding names exactly that pair —
+	// on GKE a GcpGkeWorkloadIdentityBinding with `ksa_name` = this
+	// cluster's name and `ksa_namespace` = its namespace, one per cluster
+	// (a recovery target is another cluster and needs its own). On GKE the
+	// GCP service account needs `roles/storage.objectAdmin` AND
+	// `roles/storage.legacyBucketReader` on the bucket (live-proven; see
+	// the gcs.keyless field).
 	WorkloadIdentity *kubernetes.KubernetesWorkloadIdentity `protobuf:"bytes,14,opt,name=workload_identity,json=workloadIdentity,proto3" json:"workload_identity,omitempty"`
 	// *
 	// TLS certificates for client connections. By default the operator
@@ -959,7 +967,18 @@ func (x *KubernetesPostgresImport) GetSchemaOnly() bool {
 }
 
 // *
-// Recovery bootstrap: restore from an object-store backup.
+// Recovery bootstrap: restore from an object-store backup. This is the
+// disaster-recovery path — a FRESH cluster (a new name, usually a new
+// namespace or cluster) replays the source's base backup and every WAL
+// segment archived after it, so rows written up to the last archived
+// segment come back. Live-proven on GKE: rows written before AND after
+// the base backup were both present in the recovered database. The
+// recovered cluster needs its own `workload_identity` (its ServiceAccount
+// is named after IT, so a Workload Identity binding per cluster) and, if
+// it declares `backup`, its own destination path (see `destination_path`).
+// Recovery is a one-time bootstrap: once the cluster exists this block is
+// inert, and a wrong `source_server_name` or store surfaces as a cluster
+// that never leaves the bootstrap phase.
 type KubernetesPostgresBootstrapRecovery struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *
@@ -979,8 +998,33 @@ type KubernetesPostgresBootstrapRecovery struct {
 	// Stop replaying WAL at a point in time instead of recovering
 	// everything (PITR). Omitted = full recovery to the archive's end.
 	RecoveryTarget *KubernetesPostgresRecoveryTarget `protobuf:"bytes,3,opt,name=recovery_target,json=recoveryTarget,proto3" json:"recovery_target,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// *
+	// Name of the application database inside the recovered instance —
+	// the one the `<name>-app` credential and the `uri` outputs point
+	// at. Set it to the SOURCE cluster's application database (its
+	// initdb `database`). Empty = the upstream default, `app`.
+	Database string `protobuf:"bytes,4,opt,name=database,proto3" json:"database,omitempty"`
+	// *
+	// Name of the role that owns the application database. Set it to the
+	// source cluster's owner role. Empty = same as `database` (the
+	// upstream default).
+	Owner string `protobuf:"bytes,5,opt,name=owner,proto3" json:"owner,omitempty"`
+	// *
+	// CREDENTIAL CONTINUITY: the recovered data carries the source
+	// cluster's roles and their passwords, so the application credential
+	// this cluster hands out must be the source's. Name an existing
+	// basic-auth Secret in this namespace (`username` + `password` keys —
+	// exactly the shape of the source's `<source>-app` Secret, so keeping
+	// that Secret alive through a KubernetesSecret, an ExternalSecret, or
+	// the secret backend is the whole backup of the credential). The
+	// operator adopts it as this cluster's app Secret and the outputs
+	// point at it. Empty = the operator generates a fresh `<name>-app`
+	// with a NEW password and resets the owner role to match — fine for
+	// a clone that will get its own consumers, wrong for a recovery that
+	// must serve the source's.
+	OwnerSecretName string `protobuf:"bytes,6,opt,name=owner_secret_name,json=ownerSecretName,proto3" json:"owner_secret_name,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *KubernetesPostgresBootstrapRecovery) Reset() {
@@ -1032,6 +1076,27 @@ func (x *KubernetesPostgresBootstrapRecovery) GetRecoveryTarget() *KubernetesPos
 		return x.RecoveryTarget
 	}
 	return nil
+}
+
+func (x *KubernetesPostgresBootstrapRecovery) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *KubernetesPostgresBootstrapRecovery) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *KubernetesPostgresBootstrapRecovery) GetOwnerSecretName() string {
+	if x != nil {
+		return x.OwnerSecretName
+	}
+	return ""
 }
 
 // *
@@ -1576,7 +1641,8 @@ type KubernetesPostgresBackupSchedule struct {
 	// *
 	// Take the first backup immediately on creation instead of waiting
 	// for the first cron tick — recommended: the cluster is unprotected
-	// until its first base backup exists.
+	// until its first base backup exists. WAL archiving alone restores
+	// nothing — a recovery needs a base backup to replay WAL onto.
 	Immediate bool `protobuf:"varint,3,opt,name=immediate,proto3" json:"immediate,omitempty"`
 	// *
 	// Suspend the schedule (keeps the resource, stops the backups).
@@ -1668,8 +1734,13 @@ type KubernetesPostgresObjectStore struct {
 	// `gs://bucket/path` for GCS, and
 	// `https://<account>.blob.core.windows.net/<container>/<path>` for
 	// Azure Blob. WAL and base backups are stored under separate folders
-	// beneath it. One path per PostgreSQL cluster — two clusters writing
-	// the same path corrupt each other's archives.
+	// beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
+	// to archive into a path already holding another cluster's WAL (a
+	// cluster recreated under the same path after a failed attempt, or a
+	// recovered cluster backing up to the path it restored from), and the
+	// failure is quiet — the cluster reports healthy while the
+	// ContinuousArchiving condition stays false and no backup ever lands
+	// (live-caught). A recovered cluster's own backups go to a NEW path.
 	DestinationPath string `protobuf:"bytes,1,opt,name=destination_path,json=destinationPath,proto3" json:"destination_path,omitempty"`
 	// *
 	// Object-store backend. Exactly one arm; the arm's credential posture
@@ -1977,6 +2048,17 @@ type KubernetesPostgresGcsObjectStore struct {
 	// Identity via the cluster's workload_identity field) authenticates
 	// to GCS — no stored key. Mutually exclusive with
 	// service_account_key_json.
+	//
+	// THE IDENTITY NEEDS TWO ROLES ON THE BUCKET, not one: Barman Cloud
+	// verifies the archive destination with a bucket-level read
+	// (`storage.buckets.get`) before every WAL archive, and
+	// `roles/storage.objectAdmin` does not carry it — an identity granted
+	// objectAdmin alone fails every archive with "does not have
+	// storage.buckets.get access", the cluster reports
+	// ContinuousArchivingFailing, and never becomes Ready. Grant
+	// `roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader`
+	// (a GcpGcsBucket's `iam_members`, one entry each). Live-verified on
+	// GKE.
 	Keyless bool `protobuf:"varint,1,opt,name=keyless,proto3" json:"keyless,omitempty"`
 	// *
 	// GCP service-account key (the JSON key file's content), materialized
@@ -2391,7 +2473,12 @@ type KubernetesPostgresScheduling struct {
 	// How strongly instances avoid sharing a node: "preferred" (the
 	// upstream default — best effort, still schedules on a small
 	// cluster) or "required" (hard rule — instances stay Pending unless
-	// separate nodes exist; the production posture).
+	// separate nodes exist; the production posture). On an autoscaled
+	// cluster (GKE, EKS) "required" makes the autoscaler add a node per
+	// instance — expect ~4 minutes per instance for the node to join and
+	// pull the ~270 MB image before the cluster is Ready (live-measured);
+	// on a fixed-size cluster with fewer nodes than instances it never
+	// schedules.
 	AntiAffinityType *string `protobuf:"bytes,1,opt,name=anti_affinity_type,json=antiAffinityType,proto3,oneof" json:"anti_affinity_type,omitempty"`
 	// *
 	// Topology key the anti-affinity spreads across. Upstream default:
@@ -2636,11 +2723,14 @@ const file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDesc = "
 	"\vschema_only\x18\x05 \x01(\bR\n" +
 	"schemaOnly:\xfb\x02\xbaH\xf7\x02\x1a\xd1\x01\n" +
 	"3spec.bootstrap.initdb.import.microservice_single_db\x12_the microservice import shape takes exactly one database — use the monolith shape for several\x1a9this.type != 'microservice' || this.databases.size() == 1\x1a\xa0\x01\n" +
-	"0spec.bootstrap.initdb.import.roles_monolith_only\x129importing roles is only available with the monolith shape\x1a1this.type == 'monolith' || this.roles.size() == 0\"\xd8\x02\n" +
+	"0spec.bootstrap.initdb.import.roles_monolith_only\x129importing roles is only available with the monolith shape\x1a1this.type == 'monolith' || this.roles.size() == 0\"\xb6\x03\n" +
 	"#KubernetesPostgresBootstrapRecovery\x12|\n" +
 	"\fobject_store\x18\x01 \x01(\v2Q.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStoreB\x06\xbaH\x03\xc8\x01\x01R\vobjectStore\x124\n" +
 	"\x12source_server_name\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x10sourceServerName\x12}\n" +
-	"\x0frecovery_target\x18\x03 \x01(\v2T.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresRecoveryTargetR\x0erecoveryTarget\"\xe4\x03\n" +
+	"\x0frecovery_target\x18\x03 \x01(\v2T.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresRecoveryTargetR\x0erecoveryTarget\x12\x1a\n" +
+	"\bdatabase\x18\x04 \x01(\tR\bdatabase\x12\x14\n" +
+	"\x05owner\x18\x05 \x01(\tR\x05owner\x12*\n" +
+	"\x11owner_secret_name\x18\x06 \x01(\tR\x0fownerSecretName\"\xe4\x03\n" +
 	" KubernetesPostgresRecoveryTarget\x12\x1f\n" +
 	"\vtarget_time\x18\x01 \x01(\tR\n" +
 	"targetTime\x12\x1d\n" +

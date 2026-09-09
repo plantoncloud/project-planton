@@ -33,6 +33,14 @@ blocks then declare WHERE backups land. The plugin's internal TLS is
 issued by cert-manager, so the plugin arm requires cert-manager on the
 cluster (KubernetesCertManager).
 
+A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG — installed by the Planton
+operator, by Helm, by GitOps — cannot take a second copy (see above),
+and a resident operator that came without the plugin cannot back
+anything up. `install_operator: false` is the posture for that cluster:
+this resource then manages ONLY the plugin, beside whichever CloudNativePG
+is already there, and every KubernetesPostgres on the cluster gains
+object-store backups.
+
 The typed fields below cover the chart's meaningful configuration
 surface; `helm_values` remains as the escape hatch for chart values
 beyond them (merged last, Helm `-f` semantics, identical on both
@@ -158,6 +166,7 @@ spec:
 | `spec.image.repository` | `string` |  |  |  |
 | `spec.image.tag` | `string` |  |  |  |
 | `spec.helmValues` | `string` |  |  |  |
+| `spec.installOperator` | `bool` |  | `true` |  |
 
 ## Field Details
 
@@ -491,6 +500,40 @@ fields (webhook tuning, update strategy, security contexts, topology
 spread, host network, ...) — never the substitute for them. Do not
 put secrets here.
 
+### spec.installOperator
+
+`bool` · optional (explicit presence)
+
+Install the operator release. Default true. Set false on a cluster
+that ALREADY runs CloudNativePG (the Planton operator installs one for
+the platform's own database; a Helm or GitOps install counts too):
+the operator's CRDs and webhooks are cluster singletons, so a second
+copy would fight the resident one — instead this resource manages only
+the Barman Cloud plugin (`barman_cloud_plugin.enabled` is then
+required), installing it into `namespace` beside the resident
+operator, and every KubernetesPostgres on the cluster gains
+object-store backups. The operator-shaping fields (`crds`, `replicas`,
+`resources`, `watch`, `operator_config`, `max_concurrent_reconciles`,
+`monitoring`, `priority_class_name`, `node_selector`, `tolerations`,
+`image_pull_secrets`, `image`, `helm_values`) describe a release this
+resource does not own in that posture and must stay unset. Destroying
+a plugin-only declaration removes the plugin and leaves the resident
+operator running (live-proven). Deciding which posture applies: `kubectl
+get deploy -A -l app.kubernetes.io/name=cloudnative-pg` — a hit means
+plugin-only. Beware the reverse case too: a CloudNativePG that was
+UNINSTALLED by a non-Helm owner (the Planton operator's, a raw
+manifest) can leave its cluster-scoped CRDs, webhooks, and RBAC behind
+with that owner's labels, and a full install here then fails at the
+Helm ownership check ("managed-by must equal Helm") — delete the
+leftovers first; nothing here adopts them.
+
+- default: `true`
+
+## Validation Rules
+
+- `spec.plugin_only_requires_plugin`: install_operator false means this resource manages only the Barman Cloud plugin beside a CloudNativePG that is already on the cluster — enable barman_cloud_plugin, or drop install_operator to install the operator itself
+- `spec.plugin_only_no_operator_config`: with install_operator false the operator release is not managed here, so operator-shaping fields are dead configuration — remove crds, resources, watch, operator_config, monitoring, priority_class_name, node_selector, tolerations, image_pull_secrets, image, and helm_values (the plugin's own knobs live under barman_cloud_plugin)
+
 ## Outputs
 
 Reference an output from another manifest as `valueFrom: {kind: KubernetesCloudNativePgOperator, name: <resource-name>, fieldPath: status.outputs.<output>}`.
@@ -498,7 +541,7 @@ Reference an output from another manifest as `valueFrom: {kind: KubernetesCloudN
 | Output | Type | Description |
 |---|---|---|
 | `status.outputs.namespace` | `string` | Namespace the operator (and the plugin, when enabled) runs in. |
-| `status.outputs.release_name` | `string` | Helm release name of the operator (fixed: "cnpg" — one installation per cluster). |
+| `status.outputs.release_name` | `string` | Helm release name of the operator (fixed: "cnpg" — one installation per cluster). Empty in the plugin-only posture (install_operator false): the operator on the cluster is someone else's, and this resource never claims a handle it does not own. |
 | `status.outputs.barman_plugin_release_name` | `string` | Helm release name of the Barman Cloud plugin when enabled; empty otherwise. KubernetesPostgres backup blocks depend on this plugin being present. |
 
 ## References

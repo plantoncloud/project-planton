@@ -36,6 +36,14 @@ type Locals struct {
 	// each release carries its own pin.
 	BarmanPluginEnabled      bool
 	BarmanPluginChartVersion string
+
+	// InstallOperator is false in the plugin-only posture: a CloudNativePG
+	// already runs on the cluster (the Planton operator's, a Helm or GitOps
+	// install), so this resource renders no operator release and manages
+	// only the plugin beside it. Resolved to the spec's default (true)
+	// when unset, so both engines agree whether or not the platform's
+	// defaulting middleware ran.
+	InstallOperator bool
 }
 
 // initializeLocals extracts and transforms spec fields into module-local
@@ -70,6 +78,11 @@ func initializeLocals(_ *pulumi.Context, stackInput *kubernetescloudnativepgoper
 		pluginChartVersion = vars.DefaultPluginChartVersion
 	}
 
+	installOperator := true
+	if spec.InstallOperator != nil {
+		installOperator = *spec.InstallOperator
+	}
+
 	return &Locals{
 		Spec:                     spec,
 		Labels:                   labels,
@@ -77,5 +90,6 @@ func initializeLocals(_ *pulumi.Context, stackInput *kubernetescloudnativepgoper
 		ChartVersion:             chartVersion,
 		BarmanPluginEnabled:      pluginEnabled,
 		BarmanPluginChartVersion: pluginChartVersion,
+		InstallOperator:          installOperator,
 	}
 }

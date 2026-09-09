@@ -549,8 +549,10 @@ func buildBackup(locals *Locals) map[string]interface{} {
 
 // buildBackupStorages renders storages as a MAP keyed by storage name (the
 // CRD shape); tasks and PITR reference entries by that name.
-// credentialsSecret renders only for declared-key arms — keyless S3/GCS
-// use the pods' ambient cloud identity.
+// credentialsSecret renders for every arm that carries credentials — the
+// module-materialized `<name>-backup-<storage>` or the user's existing
+// Secret — and is omitted only on the keyless S3 arm (the pods' ambient AWS
+// identity). GCS always renders one: the CRD requires it.
 func buildBackupStorages(storages []*kubernetesmongodbv1alpha1.KubernetesMongodbBackupStorage, clusterName string) map[string]interface{} {
 	out := map[string]interface{}{}
 	for _, storage := range storages {
@@ -602,15 +604,24 @@ func buildBackupS3(s3 *kubernetesmongodbv1alpha1.KubernetesMongodbS3Storage, clu
 
 func buildBackupGcs(gcs *kubernetesmongodbv1alpha1.KubernetesMongodbGcsStorage, clusterName, storageName string) map[string]interface{} {
 	out := map[string]interface{}{
-		"bucket": gcs.GetBucket(),
+		"bucket":            gcs.GetBucket(),
+		"credentialsSecret": gcsCredentialsSecretName(gcs, clusterName, storageName),
 	}
 	if gcs.GetPrefix() != "" {
 		out["prefix"] = gcs.GetPrefix()
 	}
-	if gcs.GetServiceAccountKeyJson() != "" {
-		out["credentialsSecret"] = clusterName + "-backup-" + storageName
-	}
 	return out
+}
+
+// gcsCredentialsSecretName is the Secret the operator's GCS client reads: the
+// module-materialized `<name>-backup-<storage>` when the spec declares a
+// service-account key, or the user's own Secret when it names one. The spec
+// oneof guarantees exactly one arm.
+func gcsCredentialsSecretName(gcs *kubernetesmongodbv1alpha1.KubernetesMongodbGcsStorage, clusterName, storageName string) string {
+	if existing := gcs.GetCredentials().GetExistingSecretName(); existing != "" {
+		return existing
+	}
+	return clusterName + "-backup-" + storageName
 }
 
 func buildBackupAzure(azure *kubernetesmongodbv1alpha1.KubernetesMongodbAzureStorage, clusterName, storageName string) map[string]interface{} {

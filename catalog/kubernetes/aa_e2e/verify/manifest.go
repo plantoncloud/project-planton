@@ -179,6 +179,41 @@ func manifestBarmanPluginEnabled(manifestPath string) bool {
 	return enabled
 }
 
+// manifestNestedRecoveryOwnerSecret reads spec.bootstrap.recovery.owner_secret_name
+// (either field-name convention) from a KubernetesPostgres manifest — "" when
+// the manifest declares no recovery or brings no Secret.
+func manifestNestedRecoveryOwnerSecret(manifestPath string) string {
+	spec := manifestSpecMap(manifestPath)
+	if spec == nil {
+		return ""
+	}
+	bootstrap, _ := spec["bootstrap"].(map[string]interface{})
+	recovery, _ := bootstrap["recovery"].(map[string]interface{})
+	for _, key := range []string{"ownerSecretName", "owner_secret_name"} {
+		if value, ok := recovery[key].(string); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+// manifestInstallOperator reports whether the CloudNativePG operator manifest
+// installs the operator release (spec.installOperator, default true). False
+// is the plugin-only posture: a resident operator the verifier must neither
+// expect to own nor expect to disappear.
+func manifestInstallOperator(manifestPath string) bool {
+	spec := manifestSpecMap(manifestPath)
+	if spec == nil {
+		return true
+	}
+	for _, key := range []string{"installOperator", "install_operator"} {
+		if value, ok := spec[key].(bool); ok {
+			return value
+		}
+	}
+	return true
+}
+
 // manifestAnnotation reads one metadata.annotations value, "" when absent or
 // unreadable -- for verifiers whose destroy assertions depend on what the
 // scenario declared (a deploy that was designed to be refused never created

@@ -107,11 +107,12 @@ func TestStackOutputsConformance(t *testing.T) {
 					"name": "orders-mongo-secrets",
 					"key":  "MONGODB_DATABASE_ADMIN_PASSWORD",
 				},
+				"restore_name": "orders-mongo-restore-9412eb87",
 			},
 			mustPopulate: []string{
 				"namespace", "cluster_name", "service", "kube_endpoint",
 				"replica_set", "port_forward_command",
-				"admin_password_secret",
+				"admin_password_secret", "restore_name",
 			},
 		},
 		{

@@ -16,6 +16,15 @@
 #      conflict). Installed AFTER the operator so the plugin's CNPG-I
 #      registration always lands on a running operator.
 #
+# PLUGIN-ONLY POSTURE (spec.install_operator false): a CloudNativePG
+# already runs on the cluster — the Planton operator installs one for the
+# platform's own database, and Helm/GitOps installs are common — and the
+# operator's CRDs and webhooks are cluster singletons, so no operator
+# release renders at all. Only the plugin release is managed, into the
+# declared namespace beside the resident operator, and it registers with
+# that operator over CNPG-I exactly as it would with one this module
+# installed. The operator-release output is then honestly empty.
+#
 # CERT-MANAGER DEPENDENCY (deliberate, documented): the plugin chart
 # renders cert-manager Issuer/Certificate resources UNCONDITIONALLY — its
 # operator↔sidecar TLS is issued by cert-manager. Without cert-manager on
@@ -40,8 +49,10 @@ resource "kubernetes_namespace_v1" "cloudnative_pg" {
   }
 }
 
-# The operator release.
+# The operator release — absent in the plugin-only posture.
 resource "helm_release" "cloudnative_pg" {
+  count = local.install_operator ? 1 : 0
+
   name       = local.release_name
   repository = local.helm_chart_repo
   chart      = local.helm_chart_name
@@ -71,9 +82,12 @@ resource "helm_release" "cloudnative_pg" {
   depends_on = [kubernetes_namespace_v1.cloudnative_pg]
 }
 
-# The Barman Cloud plugin release. Ordered AFTER the operator release: the
-# plugin registers itself with the operator over CNPG-I, so the operator
-# (and its CRDs) must exist first. Destroy unwinds in reverse for free.
+# The Barman Cloud plugin release. Ordered AFTER the operator release when
+# this module installs one: the plugin registers itself with the operator
+# over CNPG-I, so the operator (and its CRDs) must exist first — destroy
+# unwinds in reverse for free. In the plugin-only posture the operator
+# release has count 0 and the dependency is vacuous; the resident operator
+# is already running.
 resource "helm_release" "barman_cloud_plugin" {
   count = local.barman_plugin_enabled ? 1 : 0
 

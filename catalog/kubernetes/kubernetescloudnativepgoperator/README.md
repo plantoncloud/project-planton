@@ -120,6 +120,15 @@ identical on both engines) for anything beyond it.
   topology spread, host network, ...) — never the primary interface. It
   scopes to the OPERATOR chart only; the plugin release renders from its
   own typed fields and chart defaults.
+- **`spec.install_operator`**: default true. `false` = the plugin-only
+  posture for a cluster that ALREADY runs CloudNativePG (a self-hosted
+  Planton installs one; check with `kubectl get deploy -A -l
+  app.kubernetes.io/name=cloudnative-pg`): only the Barman Cloud plugin
+  installs, beside the resident operator, `barman_cloud_plugin.enabled`
+  becomes required, the operator-shaping fields must stay unset, and
+  destroy leaves the resident operator running (live-proven on GKE). See
+  [GUIDE.md](GUIDE.md) for the leftover-CRD trap a non-Helm uninstall
+  leaves behind.
 
 ## Environment Injection
 
@@ -140,7 +149,7 @@ plugin arm's prerequisite:
 | Output | Purpose |
 |---|---|
 | `namespace` | Namespace the operator (and the plugin, when enabled) runs in |
-| `release_name` | Helm release name of the operator (always `cnpg`) |
+| `release_name` | Helm release name of the operator (always `cnpg`; empty in the plugin-only posture, where the operator is someone else's) |
 | `barman_plugin_release_name` | Helm release name of the Barman Cloud plugin when enabled; empty otherwise — KubernetesPostgres backup blocks depend on this plugin being present |
 
 ## Composing in Infra Charts
@@ -168,6 +177,21 @@ spec:
   namespace:
     value: cnpg-system
   create_namespace: true
+```
+
+### Plugin only, beside a CloudNativePG that is already on the cluster
+
+```yaml
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCloudNativePgOperator
+metadata:
+  name: cnpg-plugin
+spec:
+  namespace:
+    value: cnpg-system # the resident operator's namespace
+  install_operator: false
+  barman_cloud_plugin:
+    enabled: true
 ```
 
 ### Backup-capable (Barman Cloud plugin; cert-manager on the cluster)

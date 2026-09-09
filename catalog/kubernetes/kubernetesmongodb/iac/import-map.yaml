@@ -27,6 +27,26 @@ spec:
       where_to_find: >-
         The CR's metadata.name (equals the Planton resource name) —
         `kubectl get psmdb -A` (NAME column).
+    # ── the PerconaServerMongoDBRestore run (when spec.restore is declared) ─
+    # Its name hashes the declaration, so it rides in as a stack output
+    # rather than a derivation the recipe could recompute.
+    - name: api_version
+      tofu_resource_name: restore
+      derivations:
+        - literal: psmdb.percona.com/v1
+      where_to_find: Always "psmdb.percona.com/v1" — the Restore CR's group/version.
+    - name: kind
+      tofu_resource_name: restore
+      derivations:
+        - literal: PerconaServerMongoDBRestore
+      where_to_find: Always "PerconaServerMongoDBRestore" — the run the module renders for spec.restore.
+    - name: name
+      tofu_resource_name: restore
+      derivations:
+        - from_stack_output: restore_name
+      where_to_find: >-
+        The Restore object's metadata.name (`<name>-restore-<8 hex>`) —
+        the `restore_name` output, or `kubectl get psmdb-restore -n <namespace>`.
     # ── shared namespace segment for every namespaced object ───────────
     - name: namespace
       derivations:

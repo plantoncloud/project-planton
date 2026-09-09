@@ -79,10 +79,23 @@ discover every member through the headless Service; connect with
   password. Secrets never appear inline in the rendered resource.
 - **Backups are PBM + PITR** — named storages (S3 or any S3-compatible
   store via `endpoint_url`, GCS, Azure Blob; declared credentials
-  materialize as `<name>-backup-<storage>` Secrets, keyless arms use
-  the pods' ambient cloud identity), five-field cron tasks with
-  retention and logical/physical/incremental types, and point-in-time
-  recovery archiving oplog chunks to the main storage.
+  materialize as `<name>-backup-<storage>` Secrets; the keyless posture
+  exists for real S3 only — GCS always needs a service-account key,
+  which a `GcpServiceAccount` can supply by reference), five-field cron
+  tasks with retention and logical/physical/incremental types, and
+  point-in-time recovery archiving oplog chunks to the main storage.
+- **Restore is a declaration, not a runbook** — `spec.restore` names a
+  backup (a same-namespace Backup object, or a location in one of the
+  cluster's declared storages for a backup another cluster took) and an
+  optional point in time; the cluster comes up carrying the data. A
+  restored database carries the SOURCE cluster's users and passwords,
+  so a cluster restoring another's backup points
+  `system_users_secret_name` at the source's `<source>-secrets` — back
+  that Secret up with the data. A restore that fails stays failed
+  (`kubectl get psmdb-restore` shows why; change the declaration to run
+  again). The full GKE disaster-recovery resource set — keyed identity,
+  bucket with its two roles, operator, source, restore target — is laid
+  out in [GUIDE.md](GUIDE.md); it was proven live on both engines.
 - **The version is the image** — `image_name` chooses the MongoDB
   version (e.g. `percona/percona-server-mongodb:8.0.19-7` — MongoDB
   8.0); changing it on a live cluster performs a SmartUpdate rolling
@@ -136,9 +149,22 @@ discover every member through the headless Service; connect with
   operator-generated into the same `<name>-user-<username>` Secret)
 - **`spec.backup`**: named `storages` (S3/S3-compatible, GCS, Azure
   Blob — the first or the one marked `main` receives PITR oplog
-  chunks), `tasks` (five-field cron, `storage_name`, `type`
-  logical/physical/incremental/incremental-base, `keep` retention),
-  and `pitr` (continuous oplog archiving between backups)
+  chunks; GCS requires `credentials` — a `service_account_key`, raw or
+  a GcpServiceAccount's `key_base64` output, or an
+  `existing_secret_name`), `tasks` (five-field cron, `storage_name`,
+  `type` logical/physical/incremental/incremental-base, `keep`
+  retention), and `pitr` (continuous oplog archiving between backups)
+- **`spec.restore`**: `backup_name` (a Backup object here) or
+  `backup_source` (`storage_name` + the backup's `destination` path +
+  `type`), optional `pitr` (`latest`, or `date` with
+  `YYYY-MM-DD HH:MM:SS`), optional `replset_remapping`; requires
+  `spec.backup` with the storage the backup lives in — the module copies
+  that storage's definition into the restore object, because the operator
+  resolves a backup-source restore's storage from the restore itself when
+  it syncs the store's metadata into a fresh cluster
+- **`spec.system_users_secret_name`**: bring your own system-users
+  Secret (the restore-from-another-cluster requirement); empty = the
+  operator generates `<name>-secrets`
 - **`spec.update_strategy`**: `SmartUpdate` (default) /
   `RollingUpdate` / `OnDelete`
 - **`spec.log_collector`**: declare it to turn on the fluent-bit

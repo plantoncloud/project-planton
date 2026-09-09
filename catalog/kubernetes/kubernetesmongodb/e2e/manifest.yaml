@@ -114,6 +114,13 @@ spec:
         gcs:
           bucket: mongo-archive
           prefix: test-mongodb
+          # GCS has no keyless arm: PBM authenticates with a service-account
+          # key. Here the key already lives in the cluster (an
+          # ExternalSecret-synced Secret in the operator's GCS_CLIENT_EMAIL /
+          # GCS_PRIVATE_KEY shape); `service_account_key` takes the key
+          # itself, raw or as a GcpServiceAccount's key_base64 output.
+          credentials:
+            existing_secret_name: mongo-archive-gcs-credentials
     tasks:
       - name: nightly
         schedule: "0 3 * * *"

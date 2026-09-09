@@ -6,7 +6,9 @@
 #   2. declared-credential Secrets (user passwords, backup-storage keys)
 #      — secrets always travel via secret references, never inline in a
 #      custom resource,
-#   3. the psmdb.percona.com/v1 PerconaServerMongoDB CR itself.
+#   3. the psmdb.percona.com/v1 PerconaServerMongoDB CR itself,
+#   4. the PerconaServerMongoDBRestore run, when the spec declares a
+#      restore (see locals.tf for the run-once naming contract).
 #
 # The CR applies through kubectl_manifest (alekc/kubectl): unlike the
 # hashicorp provider's kubernetes_manifest resource it needs no cluster
@@ -111,4 +113,21 @@ resource "kubectl_manifest" "mongodb" {
     kubernetes_secret_v1.user_password_secret,
     kubernetes_secret_v1.backup_credentials_secret,
   ]
+}
+
+# ---- the PerconaServerMongoDBRestore run -----------------------------------------
+# Rendered only when the spec declares a restore; names the cluster and is
+# applied after it. The operator gates the run on the members and their PBM
+# agents being up and then replays the backup INTO the running cluster — the
+# module never waits on that controller-driven verb (no wait_for), the same
+# posture as the cluster itself; the run's outcome is the Restore object's
+# own status.
+resource "kubectl_manifest" "restore" {
+  count = local.restore == null ? 0 : 1
+
+  yaml_body = yamlencode(local.restore_manifest)
+
+  server_side_apply = true
+
+  depends_on = [kubectl_manifest.mongodb]
 }

@@ -35,6 +35,42 @@ case where `createNamespace: true` is wrong: wire `spec.namespace` to a
 dedicated KubernetesNamespace —
 [namespace-ownership pattern](../../_patterns/namespace-ownership.md).
 
+## Disaster recovery on GKE: the resource set
+
+"Highly available, backed up, restorable" is five catalog resources on the
+GCP side and the Kubernetes side together — every one a kind in this catalog,
+wired by reference, proven live on GKE: a three-member replica set spread
+over three nodes, PBM backups plus oplog archiving landing in a GCS bucket,
+and a fresh replica set restored from that backup and rolled forward to the
+latest archived oplog.
+
+| # | Resource | What it is for | Wiring |
+|---|---|---|---|
+| 1 | `GcpServiceAccount` (e.g. `mongo-backup`) | The identity PBM presents to GCS — KEYED: `user_managed_key: {}` (Percona Backup for MongoDB has no Workload Identity path; a key is the only GCS credential it accepts) | exports `key_base64` |
+| 2 | `GcpGcsBucket` | The backup store | `iam_members`: **two** roles for the identity — `roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader` (the storage client reads bucket attributes before writing) — `member` by reference to #1's `status.outputs.member` |
+| 3 | `KubernetesPerconaMongoOperator` | The engine (must watch the database's namespace) | — |
+| 4 | `KubernetesMongodb` (the production database) | HA + backups | `replica_sets[0].size: 3` on the default hostname anti-affinity, `backup.storages[gcs]` with `bucket`, a per-cluster `prefix`, and `credentials.service_account_key` by reference to #1's `status.outputs.key_base64`; `backup.tasks` for the schedule; `backup.pitr.enabled: true` |
+| 5 | `KubernetesMongodb` (the restore target, on the bad day) | Restore | the SAME `backup.storages[gcs]` entry (name, bucket, prefix, credentials); `restore.backup_source.storage_name` = that entry, `destination` = the backup's full path (`gs://<bucket>/<prefix>/<PBM timestamp>` — list the bucket, or the DESTINATION column of `kubectl get psmdb-backup` while the source lives), `restore.pitr.type: latest`; `system_users_secret_name` = the source's `<name>-secrets` |
+
+Two rules the set stands on:
+
+- **Credential continuity.** A restored database carries the source's users
+  and passwords, and the operator logs in with the system-users Secret. The
+  restore target must reference the source's `<name>-secrets`
+  (`system_users_secret_name`), so that Secret must outlive the source —
+  back it up with the data (a `KubernetesSecret` / `ExternalSecret`
+  declaration, or the secret backend).
+- **The key is a live credential.** Rotate it like a password (recreate the
+  `GcpServiceAccount` key and re-apply); never paste it into a manifest — the
+  reference to `key_base64` keeps it in state and in the operator's Secret
+  only.
+
+The validated manifests for this set are the `gcp-gke` lane's own:
+`e2e/fixture-gke-source.yaml` (#4), `e2e/scenarios/gke-gcs-restore.yaml`
+(#5), and the GCP side under `../aa_e2e/realcluster/gcp-gke/manifests/`
+(#1–#2). The `03-gke-replica-set-gcs-backups` preset is #4 as a starting
+point.
+
 ## On the diagram
 
 Database and operator render as separate nodes (operator in whichever

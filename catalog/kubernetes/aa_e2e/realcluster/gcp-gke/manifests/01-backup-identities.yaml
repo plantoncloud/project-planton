@@ -1,0 +1,39 @@
+# The two backup identities — one per database engine, because the two
+# engines authenticate to GCS differently and the identity shape follows:
+#
+#   - Postgres (CloudNativePG + the Barman Cloud plugin) is KEYLESS: the
+#     instance pods present their GKE Workload Identity, so the account has
+#     no key and the trust is a GcpGkeWorkloadIdentityBinding per KSA
+#     (02-workload-identity.yaml).
+#   - MongoDB (Percona + PBM) is KEYED: PBM's Google client refuses to start
+#     without a client email and private key (no ADC path exists), so the
+#     account exports a user-managed key and the KubernetesMongodb manifest
+#     wires it in by reference (`credentials.service_account_key` <-
+#     `status.outputs.key_base64`).
+#
+# Both get object-admin on the batch bucket (03-backup-bucket.yaml).
+apiVersion: gcp.planton.dev/v1alpha1
+kind: GcpServiceAccount
+metadata:
+  name: planton-e2e-gke-pg-backup
+spec:
+  serviceAccountId: planton-e2e-gke-pg-backup
+  projectId:
+    value: ${GCP_PROJECT_ID}
+  displayName: Planton E2E (gcp-gke) - Postgres backups via Workload Identity
+  description: Keyless identity the CloudNativePG instance pods assume through GKE Workload Identity to write WAL and base backups to the batch bucket
+---
+apiVersion: gcp.planton.dev/v1alpha1
+kind: GcpServiceAccount
+metadata:
+  name: planton-e2e-gke-mongo-backup
+spec:
+  serviceAccountId: planton-e2e-gke-mongo-backup
+  projectId:
+    value: ${GCP_PROJECT_ID}
+  displayName: Planton E2E (gcp-gke) - MongoDB backups via service-account key
+  description: Keyed identity Percona Backup for MongoDB presents to GCS (PBM has no Workload Identity path); the key rides into the cluster as the operator's credentials Secret
+  # The generate flow: GCP mints the key pair and the private key is exported
+  # as `key_base64` — a live, long-lived credential the lane hands to the
+  # KubernetesMongodb manifests through the env-file contract.
+  userManagedKey: {}

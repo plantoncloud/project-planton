@@ -1,0 +1,67 @@
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesPostgres
+metadata:
+  name: prod-db
+spec:
+  namespace:
+    value: prod-db
+  create_namespace: true
+  # One primary + two replicas, on a HARD anti-affinity rule: on GKE the
+  # cluster autoscaler adds nodes to honor it, so the instances really are
+  # on three nodes.
+  instances: 3
+  storage:
+    size: 100Gi
+  wal_storage:
+    size: 20Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  postgresql:
+    synchronous:
+      method: any
+      number: 1
+      data_durability: required
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      data_checksums: true
+  backup:
+    object_store:
+      # One destination path per cluster — a recovered cluster archives
+      # to a NEW path; Barman refuses a path holding another cluster's WAL.
+      destination_path: gs://<backups-bucket>/prod-db
+      gcs:
+        # KEYLESS: the instance pods present their GKE Workload Identity
+        # (workload_identity below). The identity needs TWO bucket roles —
+        # roles/storage.objectAdmin AND roles/storage.legacyBucketReader
+        # (Barman checks the bucket before every WAL archive).
+        keyless: true
+      wal:
+        compression: zstd
+      data:
+        compression: gzip
+    retention_policy: 30d
+    schedules:
+      - name: daily
+        schedule: "0 0 2 * * *" # SIX-field cron, seconds first — 02:00 nightly
+        immediate: true
+  # Workload Identity: a GcpGkeWorkloadIdentityBinding must bind the
+  # cluster's own ServiceAccount (named prod-db, in namespace prod-db) to
+  # this GcpServiceAccount.
+  workload_identity:
+    gke:
+      service_account_email:
+        valueFrom:
+          kind: GcpServiceAccount
+          name: prod-db-backup
+          fieldPath: status.outputs.email
+  scheduling:
+    anti_affinity_type: required
+  update_strategy:
+    primary_update_method: switchover
