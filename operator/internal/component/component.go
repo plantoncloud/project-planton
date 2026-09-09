@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -169,7 +170,25 @@ func (b *Base) ApplyManifests(ctx context.Context, c client.Client, planton *v1.
 			client.FieldOwner(SSAFieldManager),
 		}
 
-		if err := c.Patch(ctx, obj, client.Apply, opts...); err != nil {
+		err := c.Patch(ctx, obj, client.Apply, opts...)
+		if err != nil && isImmutableJobChange(obj, err) {
+			// A Job's pod template is immutable: a chart upgrade that changes
+			// a migration Job (a new image, new labels) cannot be patched onto
+			// the completed run, only replaced -- which is exactly what Helm
+			// does for a hook with the before-hook-creation policy. Delete the
+			// old run (background propagation: its pods are done) and apply
+			// the new one, so the new migration runs once. Patching the same
+			// content is a no-op and never reaches here, so a Job that has not
+			// changed is never re-run.
+			log.Info("Replacing Job whose template changed",
+				"name", obj.GetName(), "namespace", obj.GetNamespace())
+			if derr := c.Delete(ctx, obj, client.PropagationPolicy(metav1.DeletePropagationBackground)); derr != nil && !apierrors.IsNotFound(derr) {
+				return fmt.Errorf("replacing Job %s/%s whose template changed: deleting the completed run: %w",
+					obj.GetNamespace(), obj.GetName(), derr)
+			}
+			err = c.Patch(ctx, obj, client.Apply, opts...)
+		}
+		if err != nil {
 			return fmt.Errorf("applying %s %s/%s: %w",
 				obj.GetKind(), obj.GetNamespace(), obj.GetName(), err)
 		}
@@ -180,6 +199,18 @@ func (b *Base) ApplyManifests(ctx context.Context, c client.Client, planton *v1.
 		)
 	}
 	return nil
+}
+
+// isImmutableJobChange reports whether a server-side apply was refused because
+// a batch/v1 Job's immutable pod template differs from the rendered one -- the
+// one refusal ApplyManifests answers by replacing the object. Any other
+// invalid-object error stays an error: deleting a Job over a mistake in the
+// manifest would hide the mistake.
+func isImmutableJobChange(obj *unstructured.Unstructured, err error) bool {
+	if obj.GetKind() != "Job" || obj.GroupVersionKind().Group != "batch" {
+		return false
+	}
+	return apierrors.IsInvalid(err) && strings.Contains(err.Error(), "immutable")
 }
 
 // IsStatefulSetReady checks if a StatefulSet has at least one ready replica.
