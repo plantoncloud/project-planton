@@ -60,6 +60,12 @@ Bring your own Tekton pipeline while retaining platform deployment orchestration
 
 [Learn about Self-Managed Pipelines](/docs/ci-cd/self-managed-pipelines)
 
+### CI/CD on Your Laptop
+
+Push to GitHub and your own laptop builds the commit in a pod and deploys it to your cloud — Planton Desktop, Docker Desktop, and the `gh` sign-in you already have. No Planton account, no public endpoint, no GitHub App, no YAML; a build cluster that costs nothing while idle.
+
+[Learn about CI/CD on Your Laptop](/docs/ci-cd/on-your-laptop)
+
 ### Secrets and Variables
 
 Runtime configuration management through organization-scoped and environment-scoped secrets and variables. Secrets live provider-native in your own secret backend and resolve just-in-time in the Runner. Variables support literal values or dynamic references to infrastructure outputs.
@@ -99,5 +105,6 @@ graph LR
 - [Getting Started Guide](/docs/ci-cd/getting-started) — Deploy your first service
 - [What is a Service?](/docs/ci-cd/what-is-a-service) — Understand the core concept
 - [Pipelines](/docs/ci-cd/pipelines) — Learn the CI/CD workflow
+- [CI/CD on Your Laptop](/docs/ci-cd/on-your-laptop) — Build and deploy from a push with nothing hosted
 - [Deployment Stage](/docs/ci-cd/deployment-stage) — Understand deployment execution
 - [Kubernetes Dashboard](/docs/ci-cd/kubernetes-dashboard) — Monitor and debug running services
