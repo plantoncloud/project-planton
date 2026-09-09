@@ -532,6 +532,27 @@ spec:
                       When empty (and gatewayRef is unset), the cluster's default
                       IngressClass is used.
                     type: string
+                  reachability:
+                    default: auto
+                    description: |-
+                      reachability declares whether the public internet can reach this
+                      front door. The operator cannot observe that from inside the cluster,
+                      and the capabilities that need an inbound path from the internet --
+                      keyless cloud connections, GitHub webhook delivery -- are offered only
+                      where the door is public. "auto" (default) resolves from the door's
+                      shape: a hostname served over HTTPS is public, anything else private.
+                      Declare "private" for an HTTPS door only your network can reach
+                      (split DNS, a corporate CA); declare "public" to affirm it. Only
+                      "public" is refused on a disabled ingress -- a port-forward door is
+                      never reached from the internet -- while "private" there is simply
+                      true. A definition older than this field refuses the declaration
+                      outright (server-side apply never prunes an unknown field), and the
+                      refusal names the operator to upgrade.
+                    enum:
+                    - auto
+                    - public
+                    - private
+                    type: string
                   tls:
                     description: |-
                       tls enables HTTPS. When absent, Planton is served over plain HTTP and
@@ -584,6 +605,12 @@ spec:
                     or set tls.issuer to have a certificate issued for the listener
                     to reference'
                   rule: '!has(self.gatewayRef) || !has(self.tls) || !has(self.tls.secretName)'
+                - message: 'reachability: public declares an address the internet
+                    reaches, but with enabled: false the platform is reached only
+                    through kubectl port-forward from the machine running it; set
+                    enabled: true, or leave reachability at auto'
+                  rule: '!has(self.reachability) || self.reachability != "public"
+                    || self.enabled'
               license:
                 description: |-
                   license delivers the deployment's license key -- inline or by Secret
@@ -763,13 +790,6 @@ spec:
                       capabilities).
                     type: boolean
                   initMode:
-                    allOf:
-                    - enum:
-                      - auto
-                      - manual
-                    - enum:
-                      - auto
-                      - manual
                     default: auto
                     description: |-
                       initMode controls how OpenBAO is initialized after deployment.
@@ -779,6 +799,9 @@ spec:
                       "manual": the operator deploys the chart but leaves initialization
                         to the user. The component reports Deploying until manually
                         initialized and unsealed.
+                    enum:
+                    - auto
+                    - manual
                     type: string
                   storageClassName:
                     description: |-

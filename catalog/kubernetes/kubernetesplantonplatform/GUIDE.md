@@ -18,6 +18,24 @@ the first visit). Everything else — storage, replicas, the runner's
 cloud identity, the opt-in components — changes cleanly on a running
 platform.
 
+## Tell the platform whether the internet reaches its door
+
+`ingress.reachability` is the one fact about the front door the operator
+cannot observe from inside the cluster. Everything the platform offers
+that needs an inbound path from the internet — keyless cloud connections,
+where the cloud fetches the platform's identity documents from the door,
+and GitHub webhook delivery — is offered only where the door is public.
+`auto` (the default) reads a hostname served over HTTPS as public and
+anything else as private, which is right for most installs. Two shapes
+need a word from you: an HTTPS address only your network reaches (split
+DNS, a corporate CA, an internal load balancer) is `private`, so those
+doors stay honestly closed instead of failing at the cloud's first fetch;
+and a door whose TLS terminates outside the cluster (an internet-facing
+ALB with an ACM certificate, hence no in-cluster `tls` block) is `public`,
+or `auto` will read it as private. Changing the declaration is safe on a
+running platform; it changes which doors the console offers, never the
+platform's address.
+
 ## Version is the upgrade lever, and it is never automated
 
 `version` is required with no default, deliberately: a module-owned

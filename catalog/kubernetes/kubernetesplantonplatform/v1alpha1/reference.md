@@ -99,6 +99,7 @@ spec:
       issuer:
         name: letsencrypt
         kind: ClusterIssuer
+    reachability: public
   gateway:
     local_port: 8080
   identity:
@@ -187,6 +188,7 @@ spec:
 | `spec.ingress.gatewayRef.name` | `string \| valueFrom` | yes |  | KubernetesGateway (`status.outputs.gateway_name`) |
 | `spec.ingress.gatewayRef.namespace` | `string \| valueFrom` |  |  | KubernetesGateway (`status.outputs.namespace`) |
 | `spec.ingress.gatewayRef.sectionName` | `string` |  |  |  |
+| `spec.ingress.reachability` | `string` |  | `auto` |  |
 | `spec.gateway` | `KubernetesPlantonPlatformGateway` |  |  |  |
 | `spec.gateway.localPort` | `int32` |  | `8080` |  |
 | `spec.identity` | `KubernetesPlantonPlatformIdentity` |  |  |  |
@@ -433,6 +435,7 @@ cert-manager issuer).
 - rule: tls requires hostname: a certificate cannot be brought or issued for an auto-derived hostname
 - rule: gateway_ref and ingress_class_name name two different front doors; set one — gateway_ref attaches to a Gateway API Gateway, ingress_class_name renders an Ingress
 - rule: with gateway_ref the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference
+- rule: reachability: public declares an address the internet reaches, but with enabled: false the platform is reached only through kubectl port-forward from the machine running it; set enabled: true, or leave reachability at auto
 
 ### spec.ingress.enabled
 
@@ -555,6 +558,27 @@ literal namespace with `value:`.
 Pins the route to one named listener of the Gateway. When empty, the
 route attaches to every listener whose hostname admits the
 platform's hostname.
+
+### spec.ingress.reachability
+
+`string` · optional (explicit presence)
+
+Whether the public internet can reach this front door — the one fact
+about the door the operator cannot observe from inside the cluster.
+The capabilities that need an inbound path from the internet (keyless
+cloud connections, where the cloud fetches the issuer's discovery
+document; GitHub webhook delivery) are offered only where the door is
+public. `auto` (default) resolves from the door's shape: a hostname
+served over HTTPS is public, anything else private. Declare `private`
+for an HTTPS door only your network reaches (split DNS, a corporate
+CA, an internal load balancer); declare `public` to affirm it. Only
+`public` is refused when enabled is false — a port-forward door is
+never reached from the internet — while `private` there is simply
+true. Requires a planton-operator chart that knows this field (0.11.0
+or newer); an older definition refuses the declaration.
+
+- default: `auto`
+- rule: {"string":{"in":["","auto","public","private"]}}
 
 ### spec.gateway
 

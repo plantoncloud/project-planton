@@ -57,7 +57,7 @@ resource's outputs.
 |---|---|---|---|
 | `namespace` | yes | — | The platform's namespace (literal or KubernetesNamespace reference) |
 | `version` | yes | — | The platform version — THE deliberate choice |
-| `ingress` | no | off | Real URL via the cluster's front door — an Ingress controller (`ingress_class_name`) XOR a Gateway API Gateway (`gateway_ref`, whose `name` and `namespace` are KubernetesGateway references: `valueFrom` for a Planton-managed Gateway, `value:` for one created outside Planton); `tls` takes a Secret XOR a cert-manager issuer and requires `hostname` (with `gateway_ref` the listener owns the certificate, so only `issuer` applies) |
+| `ingress` | no | off | Real URL via the cluster's front door — an Ingress controller (`ingress_class_name`) XOR a Gateway API Gateway (`gateway_ref`, whose `name` and `namespace` are KubernetesGateway references: `valueFrom` for a Planton-managed Gateway, `value:` for one created outside Planton); `tls` takes a Secret XOR a cert-manager issuer and requires `hostname` (with `gateway_ref` the listener owns the certificate, so only `issuer` applies); `reachability` (`auto`/`public`/`private`) declares whether the public internet reaches the door — the one fact the operator cannot see from inside the cluster, and what decides the doors that need an inbound path (keyless cloud connections, GitHub webhooks); `auto` reads a hostname over HTTPS as public |
 | `gateway.local_port` | no | `8080` | The port-forward door's port — baked into sign-in at first boot |
 | `storage` | no | cluster default | Platform-wide class + size; every component can override |
 | `database.postgresql.replicas` | no | `1` | 2+ = streaming replication with automatic failover, live |

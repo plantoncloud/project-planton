@@ -365,5 +365,58 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("the Gateway's HTTPS listener owns the certificate"))
 		})
+
+		// The reachability declaration is judged for the one contradiction only:
+		// "public" on a door that does not exist. A "private" declaration on a
+		// disabled ingress is a true statement about a port-forward door, and the
+		// other ingress fields (hostname, class, annotations) are likewise accepted
+		// and ignored on a disabled block -- refusing the truth would make this the
+		// one field coupled to enabled.
+		It("rejects reachability public on a disabled ingress", func() {
+			p := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "cel-public-port-forward", Namespace: namespace},
+				Spec: plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0", Ingress: &plantonaiv1.IngressSpec{
+					Enabled: false, Reachability: plantonaiv1.IngressReachabilityPublic,
+				}},
+			}
+			err := k8sClient.Create(ctx, p)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("reached only through kubectl port-forward"))
+		})
+
+		It("accepts reachability private on a disabled ingress and defaults an omitted declaration to auto", func() {
+			private := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "cel-private-port-forward", Namespace: namespace},
+				Spec: plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0", Ingress: &plantonaiv1.IngressSpec{
+					Enabled: false, Reachability: plantonaiv1.IngressReachabilityPrivate,
+				}},
+			}
+			Expect(k8sClient.Create(ctx, private)).To(Succeed())
+
+			omitted := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "cel-reachability-omitted", Namespace: namespace},
+				Spec: plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0", Ingress: &plantonaiv1.IngressSpec{
+					Enabled: true, Hostname: "planton.example.com",
+				}},
+			}
+			Expect(k8sClient.Create(ctx, omitted)).To(Succeed())
+			stored := &plantonaiv1.PlantonPlatform{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: omitted.Name, Namespace: namespace}, stored)).To(Succeed())
+			// The CRD default is what every consumer of the field relies on: a
+			// manifest that never mentions reachability reads as "auto", never "".
+			Expect(stored.Spec.Ingress.Reachability).To(Equal(plantonaiv1.IngressReachabilityAuto))
+		})
+
+		It("rejects a reachability word outside the declared three", func() {
+			p := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "cel-reachability-unknown", Namespace: namespace},
+				Spec: plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0", Ingress: &plantonaiv1.IngressSpec{
+					Enabled: true, Hostname: "planton.example.com", Reachability: "internet",
+				}},
+			}
+			err := k8sClient.Create(ctx, p)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("supported values"))
+		})
 	})
 })

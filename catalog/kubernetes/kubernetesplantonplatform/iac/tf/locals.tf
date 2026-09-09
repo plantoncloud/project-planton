@@ -122,6 +122,9 @@ locals {
       gatewayRef       = local.ingress_gateway_ref
       annotations      = length(try(var.spec.ingress.annotations, {})) > 0 ? var.spec.ingress.annotations : null
       tls              = local.ingress_tls
+      # Rendered on presence, like every defaulted three-state string: an
+      # omitted value is left to the CRD's own default (auto).
+      reachability = try(var.spec.ingress.reachability, "") != "" ? var.spec.ingress.reachability : null
     } : k => v if v != null
   }
 

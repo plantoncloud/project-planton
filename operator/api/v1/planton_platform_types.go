@@ -77,6 +77,31 @@ const (
 	OpenBAOInitModeManual OpenBAOInitMode = "manual"
 )
 
+// IngressReachability is the one fact about the front door the operator
+// cannot observe from inside the cluster: whether the public internet can
+// reach it. Everything the platform offers that needs an inbound path from
+// the internet -- keyless cloud connections (the cloud fetches the issuer's
+// discovery document), GitHub webhook delivery -- derives from this
+// declaration, so a wrong "public" fails at the cloud's first fetch and a
+// wrong "private" hides doors that would have worked.
+//
+// "auto" (default): resolved from the door's shape -- a hostname served over
+// HTTPS is treated as public, anything else (a plain-HTTP door, a
+// port-forward) as private. The shape of every real install; the right
+// answer for a hand-written manifest.
+// "public": the explicit affirmation the install journey writes after asking
+// the person, prefilled from the door's shape.
+// "private": the honest word for an HTTPS door only a network can reach --
+// split DNS, a corporate CA, an internal load balancer.
+// +kubebuilder:validation:Enum=auto;public;private
+type IngressReachability string
+
+const (
+	IngressReachabilityAuto    IngressReachability = "auto"
+	IngressReachabilityPublic  IngressReachability = "public"
+	IngressReachabilityPrivate IngressReachability = "private"
+)
+
 // ImageSpec allows overriding the container image for a component.
 // When not specified, the operator uses its built-in default image repository
 // and derives the tag from spec.version.
@@ -514,6 +539,7 @@ type RedisSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.tls) || (has(self.hostname) && self.hostname != \"\")",message="tls requires hostname: a certificate cannot be brought or issued for an auto-derived hostname"
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayRef) || !has(self.ingressClassName) || self.ingressClassName == \"\"",message="gatewayRef and ingressClassName name two different front doors; set one -- gatewayRef attaches to a Gateway API Gateway, ingressClassName renders an Ingress"
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayRef) || !has(self.tls) || !has(self.tls.secretName)",message="with gatewayRef the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference"
+// +kubebuilder:validation:XValidation:rule="!has(self.reachability) || self.reachability != \"public\" || self.enabled",message="reachability: public declares an address the internet reaches, but with enabled: false the platform is reached only through kubectl port-forward from the machine running it; set enabled: true, or leave reachability at auto"
 type IngressSpec struct {
 	// enabled controls whether a front-door route is created.
 	// When false, use kubectl port-forward for access.
@@ -560,6 +586,23 @@ type IngressSpec struct {
 	// matches the hostname and HTTPS is inferred from that listener.
 	// +optional
 	TLS *IngressTLSSpec `json:"tls,omitempty"`
+
+	// reachability declares whether the public internet can reach this
+	// front door. The operator cannot observe that from inside the cluster,
+	// and the capabilities that need an inbound path from the internet --
+	// keyless cloud connections, GitHub webhook delivery -- are offered only
+	// where the door is public. "auto" (default) resolves from the door's
+	// shape: a hostname served over HTTPS is public, anything else private.
+	// Declare "private" for an HTTPS door only your network can reach
+	// (split DNS, a corporate CA); declare "public" to affirm it. Only
+	// "public" is refused on a disabled ingress -- a port-forward door is
+	// never reached from the internet -- while "private" there is simply
+	// true. A definition older than this field refuses the declaration
+	// outright (server-side apply never prunes an unknown field), and the
+	// refusal names the operator to upgrade.
+	// +kubebuilder:default="auto"
+	// +optional
+	Reachability IngressReachability `json:"reachability,omitempty"`
 }
 
 // GatewayParentRef names the Gateway API Gateway an HTTPRoute attaches to.
@@ -822,7 +865,6 @@ type OpenBAOSpec struct {
 	//   to the user. The component reports Deploying until manually
 	//   initialized and unsealed.
 	// +kubebuilder:default="auto"
-	// +kubebuilder:validation:Enum=auto;manual
 	// +optional
 	InitMode OpenBAOInitMode `json:"initMode,omitempty"`
 

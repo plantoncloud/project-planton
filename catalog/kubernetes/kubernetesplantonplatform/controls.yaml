@@ -27,15 +27,16 @@ spec:
       notes: In-cluster traffic between platform components rides ClusterIP services in one namespace.
     - control_id: no-public-access
       status: enforced_by_default
+      field_path: ingress.reachability
       evidence:
         type: module_default
-        reference: Ingress is OFF by default — a zero-config platform is reachable only through kubectl port-forward (cluster-credential holders). Exposure is a deliberate ingress.enabled=true.
+        reference: Ingress is OFF by default — a zero-config platform is reachable only through kubectl port-forward (cluster-credential holders). Exposure is a deliberate ingress.enabled=true, and ingress.reachability declares whether the public internet reaches the door (auto reads a hostname over HTTPS as public; private keeps every door that needs an inbound path from the internet closed even on an HTTPS address).
     - control_id: restricted-ingress
       status: configurable
-      field_path: ingress.ingress_class_name
+      field_path: ingress.reachability
       evidence:
         type: spec_default
-        reference: When exposed, the platform rides the cluster's front door — an Ingress controller (class selection and controller-specific fencing such as internal schemes and allow-lists ride ingress.ingress_class_name and ingress.annotations) or a Gateway API Gateway (ingress.gateway_ref, where the Gateway's listeners and allowedRoutes do the fencing and the platform never edits them).
+        reference: When exposed, the platform rides the cluster's front door — an Ingress controller (class selection and controller-specific fencing such as internal schemes and allow-lists ride ingress.ingress_class_name and ingress.annotations) or a Gateway API Gateway (ingress.gateway_ref, where the Gateway's listeners and allowedRoutes do the fencing and the platform never edits them) — and ingress.reachability records the resulting posture (public or private) so the platform offers only the doors that posture can honor.
     - control_id: edge-protection
       status: not_applicable
       notes: Web application firewalls live on the cluster's edge (the ingress controller or the cloud load balancer in front of it), outside this spec — ingress.annotations carries controller-specific wiring where the edge supports it.

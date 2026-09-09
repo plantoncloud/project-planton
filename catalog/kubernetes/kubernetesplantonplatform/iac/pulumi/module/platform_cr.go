@@ -140,6 +140,14 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 			}
 			ingress["tls"] = tls
 		}
+		// The reachability declaration renders on presence, like every
+		// defaulted three-state string: an omitted value is left to the
+		// CRD's own default (auto) rather than spelled out here, so a
+		// manifest that never mentions reachability produces the same CR
+		// before and after the field existed.
+		if i.Reachability != nil && i.GetReachability() != "" {
+			ingress["reachability"] = i.GetReachability()
+		}
 		if len(ingress) > 0 {
 			out["ingress"] = ingress
 		}

@@ -144,6 +144,30 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 			gomega.Expect(err).To(gomega.BeNil())
 		})
 
+		// The reachability declaration: every word is accepted on an enabled
+		// door, and "private" is accepted even on a disabled one because it is
+		// true there (a port-forward door is reached only from the machine
+		// running it). Only the contradiction is refused, in the invalid block.
+		ginkgo.It("should accept every reachability word on an enabled door", func() {
+			for _, word := range []string{"auto", "public", "private"} {
+				input := minimalValidPlatform()
+				input.Spec.Ingress = &KubernetesPlantonPlatformIngress{
+					Enabled:      true,
+					Hostname:     "planton.example.com",
+					Reachability: strPtr(word),
+				}
+				err := protovalidate.Validate(input)
+				gomega.Expect(err).To(gomega.BeNil(), "reachability %q", word)
+			}
+		})
+
+		ginkgo.It("should accept reachability private on a disabled ingress", func() {
+			input := minimalValidPlatform()
+			input.Spec.Ingress = &KubernetesPlantonPlatformIngress{Reachability: strPtr("private")}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).To(gomega.BeNil())
+		})
+
 		ginkgo.It("should accept runner workload identity and database growth", func() {
 			input := minimalValidPlatform()
 			replicas := int32(2)
@@ -264,6 +288,25 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 				Hostname:   "planton.example.com",
 				GatewayRef: &KubernetesPlantonPlatformGatewayRef{Name: literalRef("main")},
 				Tls:        &KubernetesPlantonPlatformIngressTls{SecretName: "planton-tls"},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		ginkgo.It("should fail on reachability public with the ingress disabled (a port-forward door is never public)", func() {
+			input := minimalValidPlatform()
+			input.Spec.Ingress = &KubernetesPlantonPlatformIngress{Reachability: strPtr("public")}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.ContainSubstring("reached only through kubectl port-forward"))
+		})
+
+		ginkgo.It("should fail on a reachability word outside auto, public, private", func() {
+			input := minimalValidPlatform()
+			input.Spec.Ingress = &KubernetesPlantonPlatformIngress{
+				Enabled:      true,
+				Hostname:     "planton.example.com",
+				Reachability: strPtr("internet"),
 			}
 			err := protovalidate.Validate(input)
 			gomega.Expect(err).NotTo(gomega.BeNil())

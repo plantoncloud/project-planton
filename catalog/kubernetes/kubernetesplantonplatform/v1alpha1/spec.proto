@@ -355,6 +355,11 @@ message KubernetesPlantonPlatformIngress {
     message: "with gateway_ref the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference"
     expression: "!has(this.gateway_ref) || !has(this.tls) || this.tls.secret_name == ''"
   };
+  option (buf.validate.message).cel = {
+    id: "spec.ingress.public_requires_enabled"
+    message: "reachability: public declares an address the internet reaches, but with enabled: false the platform is reached only through kubectl port-forward from the machine running it; set enabled: true, or leave reachability at auto"
+    expression: "!has(this.reachability) || this.reachability != 'public' || this.enabled"
+  };
 
   /**
    * Expose the platform through the cluster's front door. With no
@@ -405,6 +410,33 @@ message KubernetesPlantonPlatformIngress {
    * field (0.9.0 or newer); an older definition refuses the declaration.
    */
   KubernetesPlantonPlatformGatewayRef gateway_ref = 6;
+
+  /**
+   * Whether the public internet can reach this front door — the one fact
+   * about the door the operator cannot observe from inside the cluster.
+   * The capabilities that need an inbound path from the internet (keyless
+   * cloud connections, where the cloud fetches the issuer's discovery
+   * document; GitHub webhook delivery) are offered only where the door is
+   * public. `auto` (default) resolves from the door's shape: a hostname
+   * served over HTTPS is public, anything else private. Declare `private`
+   * for an HTTPS door only your network reaches (split DNS, a corporate
+   * CA, an internal load balancer); declare `public` to affirm it. Only
+   * `public` is refused when enabled is false — a port-forward door is
+   * never reached from the internet — while `private` there is simply
+   * true. Requires a planton-operator chart that knows this field (0.11.0
+   * or newer); an older definition refuses the declaration.
+   */
+  optional string reachability = 7 [
+    (dev.planton.shared.options.default) = "auto",
+    (buf.validate.field).string = {
+      in: [
+        "",
+        "auto",
+        "public",
+        "private"
+      ]
+    }
+  ];
 }
 
 /**

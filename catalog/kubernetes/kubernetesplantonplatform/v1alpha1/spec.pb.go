@@ -742,7 +742,22 @@ type KubernetesPlantonPlatformIngress struct {
 	// operator reads those facts and explains any mismatch in the
 	// platform's status. Requires a planton-operator chart that knows this
 	// field (0.9.0 or newer); an older definition refuses the declaration.
-	GatewayRef    *KubernetesPlantonPlatformGatewayRef `protobuf:"bytes,6,opt,name=gateway_ref,json=gatewayRef,proto3" json:"gateway_ref,omitempty"`
+	GatewayRef *KubernetesPlantonPlatformGatewayRef `protobuf:"bytes,6,opt,name=gateway_ref,json=gatewayRef,proto3" json:"gateway_ref,omitempty"`
+	// *
+	// Whether the public internet can reach this front door — the one fact
+	// about the door the operator cannot observe from inside the cluster.
+	// The capabilities that need an inbound path from the internet (keyless
+	// cloud connections, where the cloud fetches the issuer's discovery
+	// document; GitHub webhook delivery) are offered only where the door is
+	// public. `auto` (default) resolves from the door's shape: a hostname
+	// served over HTTPS is public, anything else private. Declare `private`
+	// for an HTTPS door only your network reaches (split DNS, a corporate
+	// CA, an internal load balancer); declare `public` to affirm it. Only
+	// `public` is refused when enabled is false — a port-forward door is
+	// never reached from the internet — while `private` there is simply
+	// true. Requires a planton-operator chart that knows this field (0.11.0
+	// or newer); an older definition refuses the declaration.
+	Reachability  *string `protobuf:"bytes,7,opt,name=reachability,proto3,oneof" json:"reachability,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -817,6 +832,13 @@ func (x *KubernetesPlantonPlatformIngress) GetGatewayRef() *KubernetesPlantonPla
 		return x.GatewayRef
 	}
 	return nil
+}
+
+func (x *KubernetesPlantonPlatformIngress) GetReachability() string {
+	if x != nil && x.Reachability != nil {
+		return *x.Reachability
+	}
+	return ""
 }
 
 // *
@@ -2376,8 +2398,7 @@ const file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawD
 	"\x1eKubernetesPlantonPlatformRedis\x12\xc9\x01\n" +
 	"\fstorage_size\x18\x01 \x01(\tB\xa5\x01\xbaH\xa1\x01\xba\x01\x9a\x01\n" +
 	"\x1bredis.storage_size_quantity\x125storage_size must be a Kubernetes quantity like \"1Gi\"\x1aDthis.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')\xd8\x01\x01R\vstorageSize\x12,\n" +
-	"\x12storage_class_name\x18\x02 \x01(\tR\x10storageClassName\"\xcc\n" +
-	"\n" +
+	"\x12storage_class_name\x18\x02 \x01(\tR\x10storageClassName\"\x82\x0e\n" +
 	" KubernetesPlantonPlatformIngress\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12,\n" +
@@ -2385,13 +2406,16 @@ const file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawD
 	"\vannotations\x18\x04 \x03(\v2l.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.AnnotationsEntryR\vannotations\x12p\n" +
 	"\x03tls\x18\x05 \x01(\v2^.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngressTlsR\x03tls\x12\x7f\n" +
 	"\vgateway_ref\x18\x06 \x01(\v2^.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGatewayRefR\n" +
-	"gatewayRef\x1a>\n" +
+	"gatewayRef\x12O\n" +
+	"\freachability\x18\a \x01(\tB&\xbaH\x1br\x19R\x00R\x04autoR\x06publicR\aprivate\x8a\xa6\x1d\x04autoH\x00R\freachability\x88\x01\x01\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xff\x05\xbaH\xfb\x05\x1a\xaa\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xd3\b\xbaH\xcf\b\x1a\xaa\x01\n" +
 	"\"spec.ingress.tls_requires_hostname\x12]tls requires hostname: a certificate cannot be brought or issued for an auto-derived hostname\x1a%!has(this.tls) || this.hostname != ''\x1a\x8b\x02\n" +
 	"*spec.ingress.gateway_ref_xor_ingress_class\x12\xa3\x01gateway_ref and ingress_class_name name two different front doors; set one — gateway_ref attaches to a Gateway API Gateway, ingress_class_name renders an Ingress\x1a7!has(this.gateway_ref) || this.ingress_class_name == ''\x1a\xbd\x02\n" +
-	")spec.ingress.gateway_ref_owns_certificate\x12\xc7\x01with gateway_ref the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference\x1aF!has(this.gateway_ref) || !has(this.tls) || this.tls.secret_name == ''\"\xc1\x02\n" +
+	")spec.ingress.gateway_ref_owns_certificate\x12\xc7\x01with gateway_ref the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference\x1aF!has(this.gateway_ref) || !has(this.tls) || this.tls.secret_name == ''\x1a\xd1\x02\n" +
+	"$spec.ingress.public_requires_enabled\x12\xde\x01reachability: public declares an address the internet reaches, but with enabled: false the platform is reached only through kubectl port-forward from the machine running it; set enabled: true, or leave reachability at auto\x1aH!has(this.reachability) || this.reachability != 'public' || this.enabledB\x0f\n" +
+	"\r_reachability\"\xc1\x02\n" +
 	"#KubernetesPlantonPlatformGatewayRef\x12\x81\x01\n" +
 	"\x04name\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB9\xbaH\x03\xc8\x01\x01\xb2\xa6\x1d\vattached to\x88\xd4a\xca\x1f\x92\xd4a\x1bstatus.outputs.gateway_nameR\x04name\x12s\n" +
 	"\tnamespace\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xca\x1f\x92\xd4a\x18status.outputs.namespaceR\tnamespace\x12!\n" +
@@ -2617,6 +2641,7 @@ func file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_init(
 		return
 	}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[5].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[7].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[10].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[11].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[12].OneofWrappers = []any{}

@@ -58,6 +58,8 @@ variable "spec" {
           kind = optional(string)
         }))
       }))
+      # auto | public | private; empty rides the CRD default (auto).
+      reachability = optional(string, "")
     }))
     gateway = optional(object({
       local_port = optional(number)

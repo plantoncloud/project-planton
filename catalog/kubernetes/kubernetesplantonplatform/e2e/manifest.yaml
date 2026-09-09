@@ -39,6 +39,7 @@ spec:
       issuer:
         name: letsencrypt
         kind: ClusterIssuer
+    reachability: public
   gateway:
     local_port: 8080
   identity:
