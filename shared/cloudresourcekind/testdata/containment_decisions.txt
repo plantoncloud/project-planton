@@ -273,7 +273,6 @@ contained dev.planton.azure.azurenetworkinterface.v1alpha1.AzureNetworkInterface
 contained dev.planton.azure.azurenetworkinterface.v1alpha1.AzureNetworkInterfaceSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurenetworksecuritygroup.v1alpha1.AzureNetworkSecurityGroupSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurenetworkwatcherflowlog.v1alpha1.AzureNetworkWatcherFlowLogSpec.network_watcher_resource_group -> AzureResourceGroup
-contained dev.planton.azure.azurenetworkwatcherflowlog.v1alpha1.AzureNetworkWatcherFlowLogSpec.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azureplantonrunner.v1alpha1.AzurePlantonRunnerSpec.container_app_environment_id -> AzureContainerAppEnvironment
 contained dev.planton.azure.azureplantonrunner.v1alpha1.AzurePlantonRunnerSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurepointtositevpngateway.v1alpha1.AzurePointToSiteVpnGatewaySpec.resource_group -> AzureResourceGroup
@@ -716,6 +715,7 @@ exempt    dev.planton.azure.azuremonitordiagnosticsetting.v1alpha1.AzureMonitorD
 exempt    dev.planton.azure.azuremonitordiagnosticsetting.v1alpha1.AzureMonitorDiagnosticSettingSpec.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azuremssqlserver.v1alpha1.AzureMssqlServerVirtualNetworkRule.subnet_id -> AzureSubnet
 exempt    dev.planton.azure.azuremysqlflexibleserver.v1alpha1.AzureMysqlFlexibleServerSpec.private_dns_zone_id -> AzurePrivateDnsZone
+exempt    dev.planton.azure.azurenetworkwatcherflowlog.v1alpha1.AzureNetworkWatcherFlowLogSpec.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azurepostgresqlflexibleserver.v1alpha1.AzurePostgresqlFlexibleServerSpec.private_dns_zone_id -> AzurePrivateDnsZone
 exempt    dev.planton.azure.azureprivatednsresolver.v1alpha1.AzurePrivateDnsResolverSpec.virtual_network_id -> AzureVirtualNetwork
 exempt    dev.planton.azure.azureprivatednsresolvervirtualnetworklink.v1alpha1.AzurePrivateDnsResolverVirtualNetworkLinkSpec.virtual_network_id -> AzureVirtualNetwork
