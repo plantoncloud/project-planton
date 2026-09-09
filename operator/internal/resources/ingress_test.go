@@ -22,10 +22,10 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 	ing := Ingress(baseIngressConfig())
 
 	paths := ing.Spec.Rules[0].HTTP.Paths
-	// Four of the table's five rows: the header-matched native-gRPC row has
+	// Seven of the table's eight rows: the header-matched native-gRPC row has
 	// no portable Ingress form and is skipped, never flattened to a path.
-	if len(paths) != 4 {
-		t.Fatalf("expected 4 paths, got %d", len(paths))
+	if len(paths) != 7 {
+		t.Fatalf("expected 7 paths, got %d", len(paths))
 	}
 	for _, p := range paths {
 		if p.Backend.Service.Port.Name == controlPlaneGrpcPortName {
@@ -74,7 +74,26 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 			identity.Backend.Service.Name, identity.Backend.Service.Port.Name)
 	}
 
-	console := paths[3]
+	// The keyless issuer's two documents at the root the specification pins
+	// them to, and the webhook namespace: all three to the control plane's
+	// webhook port, by name. Exactly the two discovery paths -- never the
+	// whole /.well-known, which ACME challenges share.
+	for idx, want := range []string{OIDCDiscoveryPath, OIDCJWKSPath, WebhooksPathPrefix} {
+		p := paths[3+idx]
+		if p.Path != want || *p.PathType != networkingv1.PathTypePrefix {
+			t.Errorf("path[%d] = %s (%s), want %s (Prefix)", 3+idx, p.Path, *p.PathType, want)
+		}
+		if p.Backend.Service.Name != controlPlaneSvcName || p.Backend.Service.Port.Name != "webhook" {
+			t.Errorf("%s backend = %s:%s, want %s:webhook", want, p.Backend.Service.Name, p.Backend.Service.Port.Name, controlPlaneSvcName)
+		}
+	}
+	for _, p := range paths {
+		if p.Path == "/.well-known" || p.Path == "/github" {
+			t.Errorf("path %s claims a namespace the door shares with others (ACME challenges; the console's GitHub App setup page)", p.Path)
+		}
+	}
+
+	console := paths[6]
 	if console.Path != "/" || *console.PathType != networkingv1.PathTypePrefix {
 		t.Errorf("console path = %s (%s), want / (Prefix)", console.Path, *console.PathType)
 	}

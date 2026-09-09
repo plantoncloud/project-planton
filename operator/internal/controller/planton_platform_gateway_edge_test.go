@@ -176,7 +176,7 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 			Expect(parent["name"]).To(Equal("main"))
 			Expect(parent["namespace"]).To(Equal(gatewayNamespace))
 			rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
-			Expect(rules).To(HaveLen(5), "one rule per entry of the front-door route table")
+			Expect(rules).To(HaveLen(8), "one rule per entry of the front-door route table")
 			var paths []string
 			for _, r := range rules {
 				rule := r.(map[string]any)
@@ -185,26 +185,41 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 				Expect(path["type"]).To(Equal("PathPrefix"), "every rule is Kubernetes-core path matching")
 				paths = append(paths, path["value"].(string))
 			}
-			// The root prefix appears twice: first narrowed to native gRPC by
-			// an Exact content-type header match, then the console catch-all.
-			Expect(paths).To(Equal([]string{resources.APIPathPrefix, resources.StoragePathPrefix, resources.IdentityPathPrefix, "/", "/"}))
-			grpcMatches, _, _ := unstructured.NestedSlice(rules[3].(map[string]any), "matches")
+			// The keyless issuer's two documents and the webhook namespace reach
+			// the control plane's webhook port; the root prefix appears twice:
+			// first narrowed to native gRPC by an Exact content-type header
+			// match, then the console catch-all.
+			Expect(paths).To(Equal([]string{
+				resources.APIPathPrefix, resources.StoragePathPrefix, resources.IdentityPathPrefix,
+				resources.OIDCDiscoveryPath, resources.OIDCJWKSPath, resources.WebhooksPathPrefix, "/", "/",
+			}))
+			for _, idx := range []int{3, 4, 5} {
+				backends, _, _ := unstructured.NestedSlice(rules[idx].(map[string]any), "backendRefs")
+				Expect(backends[0].(map[string]any)["port"]).To(Equal(int64(8086)), "rule %d delivers to the control plane's webhook port", idx)
+			}
+			grpcMatches, _, _ := unstructured.NestedSlice(rules[6].(map[string]any), "matches")
 			grpcHeaders, _, _ := unstructured.NestedSlice(grpcMatches[0].(map[string]any), "headers")
 			Expect(grpcHeaders).To(HaveLen(1), "the native-gRPC rule is the root prefix plus one header match")
 			Expect(grpcHeaders[0].(map[string]any)["name"]).To(Equal(resources.GRPCContentTypeHeader))
-			consoleMatches, _, _ := unstructured.NestedSlice(rules[4].(map[string]any), "matches")
+			consoleMatches, _, _ := unstructured.NestedSlice(rules[7].(map[string]any), "matches")
 			_, consoleHasHeaders, _ := unstructured.NestedSlice(consoleMatches[0].(map[string]any), "headers")
 			Expect(consoleHasHeaders).To(BeFalse(), "the console catch-all is a bare prefix")
 			timeouts, found, _ := unstructured.NestedMap(rules[0].(map[string]any), "timeouts")
 			Expect(found).To(BeTrue(), "the API rule disables the request timeout for server streams")
 			Expect(timeouts["request"]).To(Equal("0s"))
-			_, found, _ = unstructured.NestedMap(rules[3].(map[string]any), "timeouts")
+			_, found, _ = unstructured.NestedMap(rules[6].(map[string]any), "timeouts")
 			Expect(found).To(BeTrue(), "the native-gRPC rule disables the request timeout for server streams")
-			_, found, _ = unstructured.NestedMap(rules[4].(map[string]any), "timeouts")
+			_, found, _ = unstructured.NestedMap(rules[7].(map[string]any), "timeouts")
 			Expect(found).To(BeFalse(), "console pages keep the Gateway's default timeout")
+			_, found, _ = unstructured.NestedMap(rules[3].(map[string]any), "timeouts")
+			Expect(found).To(BeFalse(), "discovery documents are ordinary short responses")
 
 			status, url := ingressStatus(nn)
 			Expect(url).To(Equal("https://planton.example.com"), "the scheme follows the HTTPS listener, no tls block needed")
+			var withReach plantonaiv1.PlantonPlatform
+			Expect(k8sClient.Get(ctx, nn, &withReach)).To(Succeed())
+			Expect(withReach.Status.Reachability).To(Equal(plantonaiv1.IngressReachabilityPublic),
+				"auto on an HTTPS listener resolves public, published beside the URL")
 			Expect(status.Phase).NotTo(Equal(plantonaiv1.ComponentPhaseReady))
 			Expect(status.Message).To(ContainSubstring("waiting for the controller of Gateway gw-system/main to accept"))
 
@@ -217,6 +232,29 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 	})
 
 	Context("when the Gateway does not admit the platform", func() {
+		It("publishes the declared word when the person overrides auto with private", func() {
+			gw := createGateway("main-private", []any{
+				listener("https", "HTTPS", 443, "*.example.com", "All", "wildcard-example-com"),
+			}, nil)
+			defer deleteGateway(gw)
+
+			p := createPlatform("gw-private", &plantonaiv1.IngressSpec{
+				Enabled:      true,
+				Hostname:     "planton.example.com",
+				GatewayRef:   &plantonaiv1.GatewayParentRef{Name: "main-private", Namespace: gatewayNamespace},
+				Reachability: plantonaiv1.IngressReachabilityPrivate,
+			})
+			defer deletePlatform(p)
+			nn := types.NamespacedName{Name: p.Name, Namespace: namespace}
+			reconcileTwice(nn)
+
+			var updated plantonaiv1.PlantonPlatform
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			Expect(updated.Status.ConsoleURL).To(Equal("https://planton.example.com"))
+			Expect(updated.Status.Reachability).To(Equal(plantonaiv1.IngressReachabilityPrivate),
+				"a declared word stands over the door's HTTPS shape")
+		})
+
 		It("names the missing Gateway and the ones that exist", func() {
 			gw := createGateway("elsewhere", []any{listener("http", "HTTP", 80, "", "All")}, nil)
 			defer deleteGateway(gw)

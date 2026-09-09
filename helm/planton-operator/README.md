@@ -114,9 +114,13 @@ Never route a Gateway of your own to the platform's port-forward Service: pages
 load, but the platform still believes it lives at `http://localhost:8080` and
 sign-in sends the browser there. Declare the Gateway on the platform instead.
 
-One hostname serves the web console and the API the browser calls (the API lives
-under the `/rpc` path of that origin). The platform reports its URL in
-`status.consoleUrl` (the `URL` column of `kubectl get plantonplatform`), and the
+One hostname serves the web console, the API the browser calls (under the `/rpc`
+path of that origin), the keyless identity issuer's discovery documents (under
+`/.well-known`), and inbound webhooks (under `/webhooks`). The platform reports its
+URL in `status.consoleUrl` (the `URL` column of `kubectl get plantonplatform`) and
+whether the internet reaches it in `status.reachability` (the `Reachability`
+column; declared with `spec.ingress.reachability`, resolved from the door's shape
+when left at `auto`), and the
 ingress component's status explains any misconfiguration in plain language
 (missing class, missing TLS secret, cert-manager not installed, a Gateway that
 does not admit the hostname or the namespace).

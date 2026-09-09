@@ -31,6 +31,18 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 	if !strings.Contains(config, "http://planton-console.planton-ns.svc.cluster.local:80") {
 		t.Error("the catch-all must route to the console Service")
 	}
+	// The port-forward door is an honest issuer too: the discovery document a
+	// developer fetches at localhost names the door it is served at, and the
+	// webhook namespace reaches the same port.
+	for _, loc := range []string{OIDCDiscoveryPath, OIDCJWKSPath, WebhooksPathPrefix} {
+		if !strings.Contains(config, "location "+loc+" {") {
+			t.Errorf("the %s location must be routed:\n%s", loc, config)
+		}
+	}
+	if !strings.Contains(config, "set $controlplane_webhook_upstream http://planton-control-plane.planton-ns.svc.cluster.local:8086;") ||
+		!strings.Contains(config, "proxy_pass $controlplane_webhook_upstream") {
+		t.Errorf("the webhook port needs its own request-time upstream:\n%s", config)
+	}
 	// The header-matched native-gRPC row is skipped on this door: exactly one
 	// root location (the console), and no upstream on the raw gRPC port.
 	if n := strings.Count(config, "location / {"); n != 1 {

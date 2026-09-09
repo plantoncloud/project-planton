@@ -146,6 +146,10 @@ func fullControlPlaneConfig() ControlPlaneConfig {
 	}
 	cfg.SecretBackend = &SecretBackendBinding{Type: "aws-secrets-manager", AwsRegion: "ap-south-1"}
 	cfg.License = &LicenseBinding{SecretName: "acme-license", SecretKey: "license-key"}
+	// The closed arm: it renders one more name (the reason) than the offered
+	// arm, and the contract lists the widest environment.
+	cfg.WebIdentity = &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: false, ClosedReason: "fixture reason"}
+	cfg.GithubWebhooks = &GithubWebhooksBinding{Reachable: false, ReceiverURL: "https://planton.example.com/webhooks/github"}
 	return cfg
 }
 

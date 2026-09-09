@@ -164,7 +164,7 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 	// The URL is published as soon as the listener facts are known -- the
 	// rest of the platform converges while the route is being accepted.
 	url := resources.PublicURL(hostname, facts.https())
-	planton.Status.ConsoleURL = url
+	publishFrontDoor(planton, url)
 
 	if spec.TLS != nil && spec.TLS.Issuer != nil {
 		if msg, err := i.certificateServedByListener(ctx, c, planton, hostname, facts); err != nil {

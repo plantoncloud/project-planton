@@ -40,6 +40,13 @@ import (
 // client reaches the control plane through a port-forward to its raw gRPC
 // port, and the README says so.
 //
+// The control plane's webhook port is the fourth backend: the keyless issuer's
+// two discovery documents at the root the specification pins them to, and the
+// inbound webhooks under a namespace of their own (see WebhooksPathPrefix). It
+// is routed on every door, the port-forward one included, so the discovery
+// document a developer fetches at http://localhost:8080 is honest about the
+// door it is served at.
+//
 // Order is most-specific first. Renderers that match by longest prefix (the
 // Ingress, the Gateway API) do not depend on it; nginx does not either
 // (longest-prefix location wins), but the rendered config reads in the same
@@ -59,6 +66,28 @@ const (
 	// routing the "/storage" root keeps room for future storage surfaces
 	// without another edge change.
 	StoragePathPrefix = "/storage"
+
+	// OIDCDiscoveryPath and OIDCJWKSPath are the keyless identity issuer's two
+	// documents, pinned to the issuer's root by the OpenID Connect
+	// specification: the front door IS the issuer, so they cannot live under
+	// a namespace. Routed as the two exact paths (each a segment-wise prefix
+	// of exactly itself), never the whole "/.well-known": that namespace is
+	// shared with cert-manager's ACME HTTP-01 challenges and with any
+	// well-known file the console may one day serve, and a rule that claimed
+	// it whole would send those to a port that answers only these two.
+	OIDCDiscoveryPath = "/.well-known/openid-configuration"
+	OIDCJWKSPath      = "/.well-known/jwks.json"
+
+	// WebhooksPathPrefix is the path namespace of the control plane's inbound
+	// webhooks. Mirrors the control plane's WebhookPathNamespaceFilter.NAMESPACE
+	// -- the two cannot import each other, and the boot-contract floor is
+	// where a change to one is reconciled with the other. A namespace for the
+	// same reason the browser API has one: at the root, the GitHub receiver
+	// ("/github") and the console's GitHub App setup page ("/github/app/setup")
+	// are one prefix, and a portable rule cannot tell them apart. GitHub is
+	// handed the full receiver URL, so the namespace costs the provider
+	// nothing.
+	WebhooksPathPrefix = "/webhooks"
 
 	// ConsolePathPrefix is the catch-all: everything no other rule claims is
 	// a web console page.
@@ -98,6 +127,11 @@ const (
 	// BackendControlPlaneGRPC is the control plane's raw gRPC port, the door
 	// for native gRPC clients (CLI, runner).
 	BackendControlPlaneGRPC
+	// BackendControlPlaneWebhook is the control plane's public unauthenticated
+	// HTTP surface: the keyless issuer's discovery documents and the
+	// signature-verified webhook receivers. Every request here proves itself
+	// (a signature, or nothing to protect); no session, no bearer.
+	BackendControlPlaneWebhook
 	// BackendIdentity is the identity server (sign-in pages, OIDC endpoints).
 	BackendIdentity
 	// BackendConsole is the web console.
@@ -139,6 +173,9 @@ func FrontDoorRoutes() []FrontDoorRoute {
 		{PathPrefix: APIPathPrefix, Backend: BackendControlPlane},
 		{PathPrefix: StoragePathPrefix, Backend: BackendControlPlane},
 		{PathPrefix: IdentityPathPrefix, Backend: BackendIdentity},
+		{PathPrefix: OIDCDiscoveryPath, Backend: BackendControlPlaneWebhook},
+		{PathPrefix: OIDCJWKSPath, Backend: BackendControlPlaneWebhook},
+		{PathPrefix: WebhooksPathPrefix, Backend: BackendControlPlaneWebhook},
 		{
 			PathPrefix: ConsolePathPrefix,
 			Header:     &FrontDoorHeaderMatch{Name: GRPCContentTypeHeader, Values: GRPCContentTypes},
@@ -169,6 +206,8 @@ func (r FrontDoorRoute) ServicePortName() string {
 		return controlPlaneGrpcWebPortName
 	case BackendControlPlaneGRPC:
 		return controlPlaneGrpcPortName
+	case BackendControlPlaneWebhook:
+		return controlPlaneWebhookPortName
 	default:
 		return "http"
 	}
@@ -184,9 +223,20 @@ func (r FrontDoorRoute) ServicePort() int {
 		return consoleServicePort
 	case BackendControlPlaneGRPC:
 		return controlPlaneServicePort
+	case BackendControlPlaneWebhook:
+		return controlPlaneWebhookPort
 	default:
 		return controlPlaneGrpcWebPort
 	}
+}
+
+// GithubWebhookReceiverURL renders where GitHub delivers to a platform whose
+// front door is the given URL: the webhook namespace plus the GitHub receiver's
+// own path. The path after the namespace is the control plane's controller
+// mapping (POST /github), the same one hosted's dedicated webhooks hostname
+// routes at the root.
+func GithubWebhookReceiverURL(frontDoorURL string) string {
+	return frontDoorURL + WebhooksPathPrefix + "/github"
 }
 
 // APIURL renders the base URL a browser client is given for the API: the

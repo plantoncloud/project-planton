@@ -27,6 +27,11 @@ spec:
       jsonPath: .status.consoleUrl
       name: URL
       type: string
+    - description: Whether the public internet reaches the front door, as the operator
+        concluded
+      jsonPath: .status.reachability
+      name: Reachability
+      type: string
     - description: License delivery mode (Community when none configured)
       jsonPath: .status.license
       name: License
@@ -1186,6 +1191,20 @@ spec:
                 - Ready
                 - Error
                 - Upgrading
+                type: string
+              reachability:
+                description: |-
+                  reachability is what the operator concluded about whether the public
+                  internet reaches the front door: "public" or "private", never "auto".
+                  Published beside consoleUrl by the component that owns the door, so a
+                  person who left spec.ingress.reachability at its default reads the
+                  answer next to the address it is an answer about. Every internet-facing
+                  posture the control plane advertises (the keyless identity issuer,
+                  GitHub webhook delivery) derives from this one word.
+                enum:
+                - auto
+                - public
+                - private
                 type: string
               version:
                 description: version is the currently deployed Planton platform version.

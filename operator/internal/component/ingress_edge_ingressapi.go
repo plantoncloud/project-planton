@@ -92,7 +92,7 @@ func (i *Ingress) reconcileIngressEdge(ctx context.Context, c client.Client, pla
 	// depends on the ingress being Ready, only on the URL existing, so the
 	// rest of the platform converges while the person points their DNS.
 	url := resources.PublicURL(cfg.Hostname, spec.TLS != nil)
-	planton.Status.ConsoleURL = url
+	publishFrontDoor(planton, url)
 
 	// A cert-manager-issued certificate gates readiness: until it is
 	// actually issued, the advertised HTTPS door answers with the ingress

@@ -914,6 +914,16 @@ type PlantonPlatformStatus struct {
 	// +optional
 	ConsoleURL string `json:"consoleUrl,omitempty"`
 
+	// reachability is what the operator concluded about whether the public
+	// internet reaches the front door: "public" or "private", never "auto".
+	// Published beside consoleUrl by the component that owns the door, so a
+	// person who left spec.ingress.reachability at its default reads the
+	// answer next to the address it is an answer about. Every internet-facing
+	// posture the control plane advertises (the keyless identity issuer,
+	// GitHub webhook delivery) derives from this one word.
+	// +optional
+	Reachability IngressReachability `json:"reachability,omitempty"`
+
 	// license echoes how the license key is delivered to the control plane
 	// (Community, InlineKey, or SecretRef) -- configuration echo like
 	// version, feeding the kubectl column. Whether the key VERIFIES and
@@ -980,6 +990,7 @@ type ComponentStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,description="Deployment lifecycle phase"
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`,description="Deployed platform version"
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.consoleUrl`,description="Web console URL once ingress is admitted"
+// +kubebuilder:printcolumn:name="Reachability",type=string,JSONPath=`.status.reachability`,description="Whether the public internet reaches the front door, as the operator concluded"
 // +kubebuilder:printcolumn:name="License",type=string,JSONPath=`.status.license`,description="License delivery mode (Community when none configured)"
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`,description="Why the platform is in its phase, in plain language"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

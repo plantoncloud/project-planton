@@ -230,6 +230,22 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 			RelayPublicBaseURL:   publicURL,
 			RelayInternalBaseURL: resources.ControlPlaneRelayInternalBaseURL(planton.Name, planton.Namespace),
 		}
+
+		// The front door is the keyless identity issuer, and every posture
+		// that needs an inbound path from the internet derives from the ONE
+		// posture computed for it -- never from a hand-set literal. The
+		// posture resolves exactly when the URL does (same inputs), so it is
+		// always known here.
+		posture, _ := frontDoorPosture(planton)
+		cfg.WebIdentity = &resources.WebIdentityBinding{
+			IssuerURL:    posture.URL,
+			Offered:      posture.KeylessOffered(),
+			ClosedReason: posture.KeylessClosedReason(),
+		}
+		cfg.GithubWebhooks = &resources.GithubWebhooksBinding{
+			Reachable:   posture.Public(),
+			ReceiverURL: resources.GithubWebhookReceiverURL(publicURL),
+		}
 	}
 
 	return cfg

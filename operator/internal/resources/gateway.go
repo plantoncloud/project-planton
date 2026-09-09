@@ -120,12 +120,17 @@ func GatewayNginxConfig(crName, namespace string) string {
 			return "$identity_upstream"
 		case BackendConsole:
 			return "$console_upstream"
+		case BackendControlPlaneWebhook:
+			return "$controlplane_webhook_upstream"
 		default:
 			return "$controlplane_upstream"
 		}
 	}
+	// One upstream per backend the path-only rows reach (the header-matched
+	// native-gRPC row is skipped below, so its port declares no upstream).
 	for _, r := range []FrontDoorRoute{
-		{Backend: BackendControlPlane}, {Backend: BackendIdentity}, {Backend: BackendConsole},
+		{Backend: BackendControlPlane}, {Backend: BackendControlPlaneWebhook},
+		{Backend: BackendIdentity}, {Backend: BackendConsole},
 	} {
 		fmt.Fprintf(&b, "    set %s http://%s.%s.svc.cluster.local:%d;\n",
 			upstreamVar(r), r.ServiceName(crName), namespace, r.ServicePort())

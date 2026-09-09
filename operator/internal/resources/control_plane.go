@@ -26,6 +26,12 @@ const (
 	// table point at ports by name so a number change never touches a door.
 	controlPlaneGrpcPortName    = "grpc"
 	controlPlaneGrpcWebPortName = "grpc-web"
+	// The webhook servlet port: OIDC discovery + JWKS and every inbound
+	// webhook. Matches the control plane's own default (WEBHOOK_PORT); set
+	// explicitly in the env so the contract states it rather than relying on
+	// the image's default, exactly as the runner's is.
+	controlPlaneWebhookPort     = 8086
+	controlPlaneWebhookPortName = "webhook"
 
 	controlPlaneDefaultLogLevel          = "info"
 	controlPlaneDefaultTemporalNamespace = "default"
@@ -89,6 +95,18 @@ type ControlPlaneConfig struct {
 	// like Identity, it is never nil on a rendered Deployment, and no R2
 	// placeholders exist anywhere in this install.
 	Storage *StorageBinding
+
+	// WebIdentity is the keyless identity issuer this install is: the front
+	// door's URL and whether the clouds can trust it. Always set by the
+	// component once the front-door URL is known (the issuer exists even when
+	// keyless is closed -- the discovery document must still be honest about
+	// the address it is served at).
+	WebIdentity *WebIdentityBinding
+
+	// GithubWebhooks is where GitHub delivers to this install and whether it
+	// can. Always set alongside WebIdentity: the receiver is the door plus the
+	// webhook namespace on every install; reachability is the door's.
+	GithubWebhooks *GithubWebhooksBinding
 
 	// Vault wires the control plane to the deployed OpenBAO component. Nil
 	// when the vault component is disabled -- then the pod carries
@@ -173,6 +191,43 @@ type StorageBinding struct {
 	// RelayInternalBaseURL is the control plane's in-cluster address on the
 	// browser-API port, where the relay endpoint is mounted.
 	RelayInternalBaseURL string
+}
+
+// WebIdentityBinding carries the keyless identity issuer's posture, derived
+// ONCE by the component from the front door (its URL, its scheme, its
+// declared reachability, the vault). The control plane mints tokens naming
+// IssuerURL and serves discovery there; the connection-method catalog reads
+// Offered and, when closed, ClosedReason -- the sentence the wizard shows on
+// the keyless card, naming the one fact that closed the door.
+type WebIdentityBinding struct {
+	// IssuerURL is the front door's origin: the iss claim, the discovery
+	// document's issuer, and the address the clouds fetch keys from.
+	IssuerURL string
+
+	// Offered is whether keyless connections are advertised and accepted on
+	// this install: the door is public, HTTPS, and the vault runs.
+	Offered bool
+
+	// ClosedReason is the plain-language reason when Offered is false; empty
+	// when offered. Rendered as the mode's reason so the catalog shows this
+	// install's sentence instead of its generic fallback.
+	ClosedReason string
+}
+
+// GithubWebhooksBinding carries GitHub webhook delivery posture: whether GitHub
+// can reach this install and the URL it would deliver to. Both derive from the
+// front door -- the receiver is the door plus the webhook namespace, and it is
+// reachable exactly when the door is.
+type GithubWebhooksBinding struct {
+	// Reachable is whether GitHub can deliver to the receiver: the door is
+	// reachable from the public internet. False turns every GitHub method's
+	// card to "Planton checks GitHub for pushes instead".
+	Reachable bool
+
+	// ReceiverURL is the door plus the webhook namespace plus the GitHub
+	// path -- true on every install, reachable only on a public one; never a
+	// placeholder.
+	ReceiverURL string
 }
 
 // RunnerBinding carries what the control plane needs to seed the in-cluster
@@ -464,6 +519,7 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 						Ports: []corev1.ContainerPort{
 							{Name: controlPlaneGrpcPortName, ContainerPort: controlPlaneContainerPort, Protocol: corev1.ProtocolTCP},
 							{Name: controlPlaneGrpcWebPortName, ContainerPort: controlPlaneGrpcWebPort, Protocol: corev1.ProtocolTCP},
+							{Name: controlPlaneWebhookPortName, ContainerPort: controlPlaneWebhookPort, Protocol: corev1.ProtocolTCP},
 							{Name: "debug", ContainerPort: controlPlaneDebugPort, Protocol: corev1.ProtocolTCP},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
@@ -553,6 +609,17 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 					Name:        controlPlaneGrpcWebPortName,
 					Port:        controlPlaneGrpcWebPort,
 					TargetPort:  intstr.FromInt32(controlPlaneGrpcWebPort),
+					Protocol:    corev1.ProtocolTCP,
+					AppProtocol: strPtr("http"),
+				},
+				// The webhook servlet: the control plane's public unauthenticated
+				// HTTP surface (OIDC discovery + JWKS, signature-verified
+				// webhooks). Plain HTTP/1.1; the front door routes the issuer's
+				// two discovery paths and the webhook namespace here.
+				{
+					Name:        controlPlaneWebhookPortName,
+					Port:        controlPlaneWebhookPort,
+					TargetPort:  intstr.FromInt32(controlPlaneWebhookPort),
 					Protocol:    corev1.ProtocolTCP,
 					AppProtocol: strPtr("http"),
 				},
@@ -682,15 +749,21 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		// ── estate: built-in Postgres by default, or the opt-in Neo4j component ──
 		{Name: "PLANTON_ESTATE_PROVIDER", Value: estateProvider},
 
-		// ── oidc issuer ──
+		// ── oidc issuer: the token lifetime; the issuer itself is a binding ──
 		{Name: "OIDC_TOKEN_TTL_SECONDS", Value: "900"},
+		{Name: "WEBHOOK_PORT", Value: fmt.Sprintf("%d", controlPlaneWebhookPort)},
 
-		// ── GitHub app (connect) placeholder ──
+		// ── GitHub app (connect): no self-hosted install carries Planton's App ──
+		// The credentials are placeholders that keep the beans booting and are
+		// never read for meaning; the posture is declared beside them, with the
+		// sentence a server's person can act on (the catalog's generic copy
+		// offers "the sign-in on this machine", which a server does not have).
 		{Name: "GITHUB_APP_CLIENT_ID", Value: "local"},
 		{Name: "GITHUB_APP_PRIVATE_KEY_BASE64", Value: "ZHVtbXk="},
+		{Name: "PLANTON_CONNECT_METHODAVAILABILITY_PLATFORMAPP_AVAILABILITY", Value: "unavailable"},
+		{Name: "PLANTON_CONNECT_METHODAVAILABILITY_PLATFORMAPP_REASON", Value: PlatformAppUnavailableReason},
 		{Name: "GITHUB_BUILD_STAGE_CHECK_NAME", Value: "build"},
 		{Name: "GITHUB_CHECKS_DETAILS_URL_FORMAT", Value: ""},
-		{Name: "GITHUB_WEBHOOKS_RECEIVER_URL", Value: "http://localhost"},
 		{Name: "GITHUB_WEBHOOKS_SECRET_TOKEN", Value: "local"},
 
 		// ── email providers placeholder ──
@@ -698,7 +771,12 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		{Name: "SENDGRID_EMAIL_TEMPLATE_ID_USER_INVITATION", Value: "local"},
 		{Name: "RESEND_API_KEY", Value: "local"},
 
-		// ── cloud oauth (connect) placeholder ──
+		// ── cloud oauth (connect): no self-hosted install carries Planton's apps ──
+		// Each cloud's sign-in and one-click keyless setup follow that cloud's
+		// OAuth app's own enabled flag; the credentials below are placeholders
+		// that keep the beans booting and are never read for meaning.
+		{Name: "GCP_OAUTH_ENABLED", Value: "false"},
+		{Name: "AZURE_OAUTH_ENABLED", Value: "false"},
 		{Name: "AZURE_OAUTH_CLIENT_ID", Value: "local"},
 		{Name: "AZURE_OAUTH_CLIENT_SECRET", Value: "local"},
 		{Name: "AZURE_OAUTH_HMAC_SECRET_KEY", Value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
@@ -710,17 +788,14 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		{Name: "GCP_OAUTH_SCOPES", Value: "openid email profile https://www.googleapis.com/auth/cloud-platform"},
 		{Name: "GCP_OAUTH_SESSION_TTL_MINUTES", Value: "10"},
 
-		// ── aws browser setup + keyless connections (connect) ──
+		// ── aws browser setup (connect) ──
 		// The browser-based CloudFormation quick-create flow depends on platform-side
-		// integrations (a publicly reachable callback webhook, hosted templates) this
-		// deployment does not run: declared off, and the integration env is omitted
-		// entirely (the config's own defaults absorb the absent bindings). The keyless
-		// oidc method additionally needs this deployment's identity issuer to be
-		// publicly reachable by AWS, which is not served yet, so the connection-method
-		// catalog advertises it unavailable with its canonical explanation and the
-		// runner method is recommended instead.
+		// integrations (a hosted callback webhook, hosted templates) this deployment
+		// does not run: declared off, and the integration env is omitted entirely
+		// (the config's own defaults absorb the absent bindings). Keyless itself is
+		// NOT declared here: it is a fact about the front door, rendered from the
+		// WebIdentity binding below.
 		{Name: "AWS_CLOUDFORMATION_ENABLED", Value: "false"},
-		{Name: "PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY", Value: "unavailable"},
 		{Name: "CLOUD_ACCOUNT_GCP_CUSTOMER_SERVICE_ACCOUNTS_PROJECT_ID", Value: "local"},
 		{Name: "CLOUD_ACCOUNT_GCP_CUSTOMER_SERVICE_ACCOUNTS_PROJECT_NUMBER", Value: "0"},
 
@@ -785,6 +860,8 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 
 	envs = append(envs, fgaEnvVars(cfg.OpenFGA)...)
 	envs = append(envs, storageEnvVars(cfg.Storage)...)
+	envs = append(envs, webIdentityEnvVars(cfg.WebIdentity)...)
+	envs = append(envs, githubWebhooksEnvVars(cfg.GithubWebhooks)...)
 	envs = append(envs, vaultEnvVars(cfg.Vault)...)
 	envs = append(envs, secretBackendEnvVars(cfg.SecretBackend)...)
 	envs = append(envs, licenseEnvVars(cfg.License)...)
@@ -927,6 +1004,50 @@ func storageEnvVars(binding *StorageBinding) []corev1.EnvVar {
 		{Name: "PLANTON_STORAGE_PROVIDER", Value: "postgres"},
 		{Name: "PLANTON_STORAGE_RELAY_PUBLIC_BASE_URL", Value: binding.RelayPublicBaseURL},
 		{Name: "PLANTON_STORAGE_RELAY_INTERNAL_BASE_URL", Value: binding.RelayInternalBaseURL},
+	}
+}
+
+// PlatformAppUnavailableReason is the sentence on the platform GitHub App's
+// card on every self-hosted install. The catalog's canonical copy names the
+// desktop's way out (the sign-in on this machine); a server's one door is the
+// customer's own App, so the operator says that instead.
+const PlatformAppUnavailableReason = "This install has no GitHub App of its own. Connect your own GitHub App instead."
+
+// webIdentityEnvVars renders the keyless identity issuer: the issuer URL every
+// install has (discovery must be honest about its own address even when
+// keyless is closed) and the connection-method verdict for the oidc mode.
+// The reason is rendered only when closed -- the control plane treats a blank
+// reason as "use the canonical copy", and an offered mode has no reason.
+func webIdentityEnvVars(binding *WebIdentityBinding) []corev1.EnvVar {
+	if binding == nil {
+		// Unreachable on a rendered Deployment (set alongside Identity); the
+		// control plane's default issuer is the hosted one, which a self-hosted
+		// install must never mint.
+		return nil
+	}
+	envs := []corev1.EnvVar{
+		// ── keyless identity issuer: the front door ──
+		{Name: "OIDC_ISSUER_URL", Value: binding.IssuerURL},
+	}
+	if binding.Offered {
+		return append(envs, corev1.EnvVar{Name: "PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY", Value: "available"})
+	}
+	return append(envs,
+		corev1.EnvVar{Name: "PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY", Value: "unavailable"},
+		corev1.EnvVar{Name: "PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON", Value: binding.ClosedReason},
+	)
+}
+
+// githubWebhooksEnvVars renders GitHub webhook delivery posture: the receiver
+// URL (true on every install) and whether GitHub can reach it.
+func githubWebhooksEnvVars(binding *GithubWebhooksBinding) []corev1.EnvVar {
+	if binding == nil {
+		return nil
+	}
+	return []corev1.EnvVar{
+		// ── GitHub webhook delivery: the front door's webhook namespace ──
+		{Name: "GITHUB_WEBHOOKS_RECEIVER_URL", Value: binding.ReceiverURL},
+		{Name: "GITHUB_WEBHOOKS_REACHABLE", Value: fmt.Sprintf("%t", binding.Reachable)},
 	}
 }
 

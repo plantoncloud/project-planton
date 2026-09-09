@@ -80,6 +80,7 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		if planton.Status.Components.Gateway != nil {
 			planton.Status.Components.Gateway = nil
 			planton.Status.ConsoleURL = ""
+			planton.Status.Reachability = ""
 			changed = true
 		}
 	} else {
@@ -90,6 +91,7 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		if planton.Status.Components.Ingress != nil {
 			planton.Status.Components.Ingress = nil
 			planton.Status.ConsoleURL = ""
+			planton.Status.Reachability = ""
 			changed = true
 		}
 	}
