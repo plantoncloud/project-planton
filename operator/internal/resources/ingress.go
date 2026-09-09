@@ -127,9 +127,9 @@ func PublicURL(hostname string, tls bool) string {
 	if hostname == "" {
 		return ""
 	}
-	scheme := "http"
+	scheme := schemeHTTP
 	if tls {
-		scheme = "https"
+		scheme = schemeHTTPS
 	}
 	return fmt.Sprintf("%s://%s", scheme, hostname)
 }
@@ -151,6 +151,15 @@ func Ingress(cfg IngressConfig) *networkingv1.Ingress {
 	routes := FrontDoorRoutes()
 	paths := make([]networkingv1.HTTPIngressPath, 0, len(routes))
 	for _, route := range routes {
+		if route.HeaderMatched() {
+			// Ingress has no portable header match (only controller-specific
+			// annotations), so the native-gRPC row is not offered on this
+			// door; native clients port-forward to the control plane's raw
+			// gRPC port instead. Rendering the row path-only would be wrong,
+			// not merely incomplete: it would send every console page to the
+			// gRPC port.
+			continue
+		}
 		paths = append(paths, networkingv1.HTTPIngressPath{
 			Path:     route.PathPrefix,
 			PathType: &pathTypePrefix,

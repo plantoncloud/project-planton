@@ -61,16 +61,15 @@ func HTTPRouteName(crName string) string {
 }
 
 // HTTPRoute builds the platform's route: one rule per entry of the front-door
-// route table, each a Kubernetes-core PathPrefix match (no implementation-
-// specific matching anywhere), attached to the named Gateway for the one
-// hostname.
+// route table, each a Kubernetes-core match (PathPrefix, plus an Exact header
+// match where the table asks for one; no implementation-specific matching
+// anywhere), attached to the named Gateway for the one hostname.
 func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
-	rules := make([]any, 0, 4)
-	for _, route := range FrontDoorRoutes() {
+	table := FrontDoorRoutes()
+	rules := make([]any, 0, len(table))
+	for _, route := range table {
 		rule := map[string]any{
-			"matches": []any{map[string]any{
-				"path": map[string]any{"type": "PathPrefix", "value": route.PathPrefix},
-			}},
+			"matches": httpRouteMatches(route),
 			// BackendRef ports are numeric in the Gateway API (Ingress
 			// references them by name); the table knows both.
 			"backendRefs": []any{map[string]any{
@@ -78,14 +77,14 @@ func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
 				"port": int64(route.ServicePort()),
 			}},
 		}
-		if route.Backend == BackendControlPlane {
-			// gRPC-Web server streams (deploy progress, log tails) are
-			// long-lived responses; several Gateway implementations default
-			// a request timeout (Envoy Gateway: 15s) that would sever them.
-			// Zero disables the timeout per the API's definition. Timeouts
-			// are an Extended feature: a Gateway that does not implement
-			// them says so on the route's Accepted condition, which the
-			// component relays.
+		if route.Backend.ServesStreams() {
+			// Server streams (deploy progress, log tails) are long-lived
+			// responses on both control-plane doors; several Gateway
+			// implementations default a request timeout (Envoy Gateway: 15s)
+			// that would sever them. Zero disables the timeout per the API's
+			// definition. Timeouts are an Extended feature: a Gateway that
+			// does not implement them says so on the route's Accepted
+			// condition, which the component relays.
 			rule["timeouts"] = map[string]any{"request": "0s"}
 		}
 		rules = append(rules, rule)
@@ -131,6 +130,31 @@ func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
 		},
 	}}
 	return route
+}
+
+// httpRouteMatches renders a table row's matches. A path-only row is one
+// PathPrefix match. A header-matched row is one match per accepted header
+// value, each pairing the path prefix with an Exact header match: matches
+// within a rule are ORed by the API, and Exact is the core (always
+// implemented) header match type, so the row stays portable across Gateway
+// implementations.
+func httpRouteMatches(route FrontDoorRoute) []any {
+	path := map[string]any{"type": "PathPrefix", "value": route.PathPrefix}
+	if !route.HeaderMatched() {
+		return []any{map[string]any{"path": path}}
+	}
+	matches := make([]any, 0, len(route.Header.Values))
+	for _, value := range route.Header.Values {
+		matches = append(matches, map[string]any{
+			"path": path,
+			"headers": []any{map[string]any{
+				"type":  "Exact",
+				"name":  route.Header.Name,
+				"value": value,
+			}},
+		})
+	}
+	return matches
 }
 
 // ReferenceGrantName returns the name of the grant that lets the Gateway's

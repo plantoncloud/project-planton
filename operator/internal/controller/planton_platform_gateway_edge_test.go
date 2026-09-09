@@ -176,7 +176,7 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 			Expect(parent["name"]).To(Equal("main"))
 			Expect(parent["namespace"]).To(Equal(gatewayNamespace))
 			rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
-			Expect(rules).To(HaveLen(4), "one rule per entry of the front-door route table")
+			Expect(rules).To(HaveLen(5), "one rule per entry of the front-door route table")
 			var paths []string
 			for _, r := range rules {
 				rule := r.(map[string]any)
@@ -185,11 +185,22 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 				Expect(path["type"]).To(Equal("PathPrefix"), "every rule is Kubernetes-core path matching")
 				paths = append(paths, path["value"].(string))
 			}
-			Expect(paths).To(Equal([]string{resources.APIPathPrefix, resources.StoragePathPrefix, resources.IdentityPathPrefix, "/"}))
+			// The root prefix appears twice: first narrowed to native gRPC by
+			// an Exact content-type header match, then the console catch-all.
+			Expect(paths).To(Equal([]string{resources.APIPathPrefix, resources.StoragePathPrefix, resources.IdentityPathPrefix, "/", "/"}))
+			grpcMatches, _, _ := unstructured.NestedSlice(rules[3].(map[string]any), "matches")
+			grpcHeaders, _, _ := unstructured.NestedSlice(grpcMatches[0].(map[string]any), "headers")
+			Expect(grpcHeaders).To(HaveLen(1), "the native-gRPC rule is the root prefix plus one header match")
+			Expect(grpcHeaders[0].(map[string]any)["name"]).To(Equal(resources.GRPCContentTypeHeader))
+			consoleMatches, _, _ := unstructured.NestedSlice(rules[4].(map[string]any), "matches")
+			_, consoleHasHeaders, _ := unstructured.NestedSlice(consoleMatches[0].(map[string]any), "headers")
+			Expect(consoleHasHeaders).To(BeFalse(), "the console catch-all is a bare prefix")
 			timeouts, found, _ := unstructured.NestedMap(rules[0].(map[string]any), "timeouts")
 			Expect(found).To(BeTrue(), "the API rule disables the request timeout for server streams")
 			Expect(timeouts["request"]).To(Equal("0s"))
 			_, found, _ = unstructured.NestedMap(rules[3].(map[string]any), "timeouts")
+			Expect(found).To(BeTrue(), "the native-gRPC rule disables the request timeout for server streams")
+			_, found, _ = unstructured.NestedMap(rules[4].(map[string]any), "timeouts")
 			Expect(found).To(BeFalse(), "console pages keep the Gateway's default timeout")
 
 			status, url := ingressStatus(nn)

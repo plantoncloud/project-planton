@@ -22,8 +22,15 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 	ing := Ingress(baseIngressConfig())
 
 	paths := ing.Spec.Rules[0].HTTP.Paths
+	// Four of the table's five rows: the header-matched native-gRPC row has
+	// no portable Ingress form and is skipped, never flattened to a path.
 	if len(paths) != 4 {
 		t.Fatalf("expected 4 paths, got %d", len(paths))
+	}
+	for _, p := range paths {
+		if p.Backend.Service.Port.Name == controlPlaneGrpcPortName {
+			t.Errorf("path %s routes to the raw gRPC port; the Ingress door cannot express the content-type rule", p.Path)
+		}
 	}
 
 	api := paths[0]

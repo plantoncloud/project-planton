@@ -3,6 +3,8 @@ package resources
 import (
 	"strings"
 	"testing"
+
+	appsv1 "k8s.io/api/apps/v1"
 )
 
 func TestConsoleDeployment_Image(t *testing.T) {
@@ -191,6 +193,37 @@ func TestConsoleDeployment_PublicURL(t *testing.T) {
 	if env["NEXTAUTH_URL"] != publicURL {
 		t.Errorf("NEXTAUTH_URL = %s, want the public URL", env["NEXTAUTH_URL"])
 	}
+}
+
+// The console publishes what the deployment declares about itself: the
+// deployment shape always (the same fact the control plane boots with), the
+// native gRPC address only when the component says the front door routes it.
+func TestConsoleDeployment_DeviceDiscoveryFacts(t *testing.T) {
+	base := ConsoleConfig{CRName: "planton", Namespace: "default", Version: "v1.0.0", Replicas: 1,
+		PublicURL: "https://planton.example.com"}
+
+	env := consoleEnv(ConsoleDeployment(base))
+	if env["PLANTON_DEPLOYMENT_KIND"] != DeploymentKindSelfHosted {
+		t.Errorf("PLANTON_DEPLOYMENT_KIND = %q, want %s on every install", env["PLANTON_DEPLOYMENT_KIND"], DeploymentKindSelfHosted)
+	}
+	if _, present := env["GRPC_ENDPOINT"]; present {
+		t.Error("GRPC_ENDPOINT must not be published when the front door does not route native gRPC")
+	}
+
+	withGRPC := base
+	withGRPC.GRPCEndpoint = GRPCEndpoint(base.PublicURL)
+	env = consoleEnv(ConsoleDeployment(withGRPC))
+	if env["GRPC_ENDPOINT"] != "planton.example.com:443" {
+		t.Errorf("GRPC_ENDPOINT = %q, want planton.example.com:443", env["GRPC_ENDPOINT"])
+	}
+}
+
+func consoleEnv(deploy *appsv1.Deployment) map[string]string {
+	env := map[string]string{}
+	for _, e := range deploy.Spec.Template.Spec.Containers[0].Env {
+		env[e.Name] = e.Value
+	}
+	return env
 }
 
 func TestConsoleDeployment_NoNextAuthURLWithoutIngress(t *testing.T) {

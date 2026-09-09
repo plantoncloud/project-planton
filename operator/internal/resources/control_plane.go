@@ -22,6 +22,10 @@ const (
 	controlPlaneGrpcWebPort = 8081
 	controlPlaneDebugPort   = 5005
 	controlPlaneAppProtocol = "grpc"
+	// The named ports the front doors reference: Ingress backends and the route
+	// table point at ports by name so a number change never touches a door.
+	controlPlaneGrpcPortName    = "grpc"
+	controlPlaneGrpcWebPortName = "grpc-web"
 
 	controlPlaneDefaultLogLevel          = "info"
 	controlPlaneDefaultTemporalNamespace = "default"
@@ -458,8 +462,8 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 						Name:  "control-plane",
 						Image: fmt.Sprintf("%s:%s", imageRepo, imageTag),
 						Ports: []corev1.ContainerPort{
-							{Name: "grpc", ContainerPort: controlPlaneContainerPort, Protocol: corev1.ProtocolTCP},
-							{Name: "grpc-web", ContainerPort: controlPlaneGrpcWebPort, Protocol: corev1.ProtocolTCP},
+							{Name: controlPlaneGrpcPortName, ContainerPort: controlPlaneContainerPort, Protocol: corev1.ProtocolTCP},
+							{Name: controlPlaneGrpcWebPortName, ContainerPort: controlPlaneGrpcWebPort, Protocol: corev1.ProtocolTCP},
 							{Name: "debug", ContainerPort: controlPlaneDebugPort, Protocol: corev1.ProtocolTCP},
 						},
 						VolumeMounts: []corev1.VolumeMount{{
@@ -537,7 +541,7 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 			Selector: labels,
 			Ports: []corev1.ServicePort{
 				{
-					Name:        "grpc",
+					Name:        controlPlaneGrpcPortName,
 					Port:        controlPlaneServicePort,
 					TargetPort:  intstr.FromInt32(controlPlaneContainerPort),
 					Protocol:    corev1.ProtocolTCP,
@@ -546,7 +550,7 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 				// gRPC-Web rides plain HTTP/1.1 (or h2) -- appProtocol http, so
 				// ingress controllers route it like ordinary web traffic.
 				{
-					Name:        "grpc-web",
+					Name:        controlPlaneGrpcWebPortName,
 					Port:        controlPlaneGrpcWebPort,
 					TargetPort:  intstr.FromInt32(controlPlaneGrpcWebPort),
 					Protocol:    corev1.ProtocolTCP,
@@ -603,7 +607,7 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		// without it, and the operator's installs are customer clusters by
 		// definition. Selects the self-hosted entitlement semantics (license
 		// enforcement) under every write.
-		{Name: "PLANTON_DEPLOYMENT_KIND", Value: "self_hosted"},
+		{Name: "PLANTON_DEPLOYMENT_KIND", Value: DeploymentKindSelfHosted},
 
 		// ── gRPC server ──
 		{Name: "PORT", Value: fmt.Sprintf("%d", controlPlaneContainerPort)},

@@ -112,7 +112,7 @@ func describeContractDiff(want, got string) string {
 func contractLines(s string) map[string]bool {
 	set := map[string]bool{}
 	section := ""
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		switch {
 		case line == "":
 		case strings.HasPrefix(line, "["):
@@ -161,6 +161,7 @@ func fullConsoleConfig() ConsoleConfig {
 		Replicas:                 1,
 		ExternalConfigSecretName: "planton-console-extra-config",
 		PublicURL:                "http://planton.example.com",
+		GRPCEndpoint:             "planton.example.com:80",
 		Identity: &ConsoleIdentityConfig{
 			IssuerURL:         "http://planton.example.com/idp/realms/planton",
 			InternalIssuerURL: "http://planton-identity.default.svc.cluster.local/idp/realms/planton",

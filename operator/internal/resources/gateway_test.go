@@ -31,6 +31,14 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 	if !strings.Contains(config, "http://planton-console.planton-ns.svc.cluster.local:80") {
 		t.Error("the catch-all must route to the console Service")
 	}
+	// The header-matched native-gRPC row is skipped on this door: exactly one
+	// root location (the console), and no upstream on the raw gRPC port.
+	if n := strings.Count(config, "location / {"); n != 1 {
+		t.Errorf("root locations = %d, want exactly one (the console catch-all)", n)
+	}
+	if strings.Contains(config, "planton-control-plane.planton-ns.svc.cluster.local:80;") {
+		t.Error("the port-forward door must not proxy to the raw gRPC port; native clients port-forward it directly")
+	}
 
 	// Request-time upstream resolution (variables + resolver): the gateway
 	// deploys BEFORE its backends exist, so literal proxy_pass hosts would

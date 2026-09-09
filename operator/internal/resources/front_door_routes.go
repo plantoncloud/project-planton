@@ -1,5 +1,10 @@
 package resources
 
+import (
+	"net"
+	"net/url"
+)
+
 // The front-door route table: the ONE statement of how a request that reaches
 // a Planton platform at its public origin is routed to a component. Every
 // front door renders from it -- the Ingress object, the Gateway API HTTPRoute,
@@ -16,6 +21,24 @@ package resources
 // regex sends every API call to the console. The control plane serves its
 // gRPC-Web door under the same prefix, and the console is handed a base URL
 // that ends with it, so no client composes the shape.
+//
+// Native gRPC clients (the CLI, the runner, any grpc-go or grpc-java program)
+// cannot use a path namespace: their request path IS the single segment, fixed
+// by the protocol. What they do carry, always, is the header the protocol
+// requires -- "content-type: application/grpc" -- and an exact header match is
+// a core, portable Gateway API rule. So one rule matches the root prefix
+// together with that header and delivers to the control plane's raw gRPC port.
+// The Gateway API's precedence order (longer path prefix first, then the rule
+// with more header matches) keeps the browser API's and identity's prefixes
+// ahead of it and puts it ahead of the console's catch-all. The framed-gRPC
+// path through the gRPC-Web door is deliberately not offered: that door exists
+// to translate for browsers, and a native client behind it loses its trailers
+// on the way back.
+//
+// The Ingress object and the nginx gateway have no portable header match, so
+// they render the path-only rules and skip this one; on those doors a native
+// client reaches the control plane through a port-forward to its raw gRPC
+// port, and the README says so.
 //
 // Order is most-specific first. Renderers that match by longest prefix (the
 // Ingress, the Gateway API) do not depend on it; nginx does not either
@@ -40,7 +63,30 @@ const (
 	// ConsolePathPrefix is the catch-all: everything no other rule claims is
 	// a web console page.
 	ConsolePathPrefix = "/"
+
+	// GRPCContentTypeHeader is the request header every gRPC client sets; its
+	// value is what tells a native gRPC call apart from a console page at the
+	// same path depth.
+	GRPCContentTypeHeader = "content-type"
+
+	// DeploymentKindSelfHosted is the deployment shape every install of this
+	// operator declares to the platform's components (the control plane's
+	// entitlement semantics, the console's device discovery document): the
+	// platform's own vocabulary, "a fact, never inferred".
+	DeploymentKindSelfHosted = "self_hosted"
+
+	// The URL schemes a front door serves; the default ports GRPCEndpoint
+	// falls back to follow them.
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
 )
+
+// GRPCContentTypes are the exact content-type values native gRPC clients send
+// for protobuf messages. grpc-go and grpc-java send the bare form; the
+// protocol also permits the explicit subtype. gRPC-Web forms
+// ("application/grpc-web+proto") are absent on purpose: they belong to the
+// browser API's own path namespace.
+var GRPCContentTypes = []string{"application/grpc", "application/grpc+proto"}
 
 // FrontDoorBackend names the component a route delivers to.
 type FrontDoorBackend int
@@ -49,18 +95,43 @@ const (
 	// BackendControlPlane is the control plane's browser-API port (gRPC-Web
 	// plus the storage relay).
 	BackendControlPlane FrontDoorBackend = iota
+	// BackendControlPlaneGRPC is the control plane's raw gRPC port, the door
+	// for native gRPC clients (CLI, runner).
+	BackendControlPlaneGRPC
 	// BackendIdentity is the identity server (sign-in pages, OIDC endpoints).
 	BackendIdentity
 	// BackendConsole is the web console.
 	BackendConsole
 )
 
+// ServesStreams reports whether responses through this backend may be
+// long-lived server streams (deploy progress, log tails), which a front
+// door's default request timeout would sever. Both control-plane doors do.
+func (b FrontDoorBackend) ServesStreams() bool {
+	return b == BackendControlPlane || b == BackendControlPlaneGRPC
+}
+
+// FrontDoorHeaderMatch narrows a rule to requests whose named header carries
+// one of the given values exactly (the rule is the OR of the values).
+type FrontDoorHeaderMatch struct {
+	Name   string
+	Values []string
+}
+
 // FrontDoorRoute is one rule of the table.
 type FrontDoorRoute struct {
 	// PathPrefix is matched segment-wise against the request path.
 	PathPrefix string
-	Backend    FrontDoorBackend
+	// Header, when set, additionally requires an exact header value. Only
+	// the Gateway API door renders header-matched rules; the Ingress and
+	// nginx doors skip them (see the package comment).
+	Header  *FrontDoorHeaderMatch
+	Backend FrontDoorBackend
 }
+
+// HeaderMatched reports whether the rule needs a header match to be
+// expressed, which only some front doors can do.
+func (r FrontDoorRoute) HeaderMatched() bool { return r.Header != nil }
 
 // FrontDoorRoutes returns the table, most-specific rule first.
 func FrontDoorRoutes() []FrontDoorRoute {
@@ -68,6 +139,11 @@ func FrontDoorRoutes() []FrontDoorRoute {
 		{PathPrefix: APIPathPrefix, Backend: BackendControlPlane},
 		{PathPrefix: StoragePathPrefix, Backend: BackendControlPlane},
 		{PathPrefix: IdentityPathPrefix, Backend: BackendIdentity},
+		{
+			PathPrefix: ConsolePathPrefix,
+			Header:     &FrontDoorHeaderMatch{Name: GRPCContentTypeHeader, Values: GRPCContentTypes},
+			Backend:    BackendControlPlaneGRPC,
+		},
 		{PathPrefix: ConsolePathPrefix, Backend: BackendConsole},
 	}
 }
@@ -88,20 +164,26 @@ func (r FrontDoorRoute) ServiceName(crName string) string {
 // HTTPRoute backends reference ports by name so a port number change never
 // touches the doors.
 func (r FrontDoorRoute) ServicePortName() string {
-	if r.Backend == BackendControlPlane {
-		return "grpc-web"
+	switch r.Backend {
+	case BackendControlPlane:
+		return controlPlaneGrpcWebPortName
+	case BackendControlPlaneGRPC:
+		return controlPlaneGrpcPortName
+	default:
+		return "http"
 	}
-	return "http"
 }
 
-// ServicePort is the numeric Service port, for the one door (nginx) that
-// dials upstreams by address.
+// ServicePort is the numeric Service port, for the doors that reference
+// ports by number (the Gateway API) or dial upstreams by address (nginx).
 func (r FrontDoorRoute) ServicePort() int {
 	switch r.Backend {
 	case BackendIdentity:
 		return identityServicePort
 	case BackendConsole:
 		return consoleServicePort
+	case BackendControlPlaneGRPC:
+		return controlPlaneServicePort
 	default:
 		return controlPlaneGrpcWebPort
 	}
@@ -112,4 +194,25 @@ func (r FrontDoorRoute) ServicePort() int {
 // "/<service>/<method>" to it.
 func APIURL(frontDoorURL string) string {
 	return frontDoorURL + APIPathPrefix
+}
+
+// GRPCEndpoint renders the host:port a native gRPC client dials for a platform
+// whose front door is the given public URL: the same host, on the URL's port
+// or the scheme's default, because the door routes gRPC by content type on the
+// same listener that serves the console. It is what the console publishes to
+// device clients in its discovery document. Empty when the URL does not parse
+// -- a client is better off deriving nothing than dialing a wrong address.
+func GRPCEndpoint(publicURL string) string {
+	u, err := url.Parse(publicURL)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		port = "80"
+		if u.Scheme == schemeHTTPS {
+			port = "443"
+		}
+	}
+	return net.JoinHostPort(u.Hostname(), port)
 }

@@ -42,6 +42,15 @@ func frontDoorURL(planton *v1.PlantonPlatform) (url string, resolved bool) {
 	return "", false
 }
 
+// frontDoorRoutesNativeGRPC reports whether the platform's front door renders
+// the route table's header-matched native-gRPC row. Only the Gateway API edge
+// can (an HTTPRoute header match is core and portable); the Ingress edge and
+// the port-forward gateway skip that row, so nothing may advertise a native
+// gRPC address for them.
+func frontDoorRoutesNativeGRPC(planton *v1.PlantonPlatform) bool {
+	return isIngressEnabled(planton) && planton.Spec.Ingress.GatewayRef != nil
+}
+
 // gatewayLocalPort returns the workstation port sign-in URLs are pinned to in
 // gateway mode (spec.gateway.localPort, or the default).
 func gatewayLocalPort(planton *v1.PlantonPlatform) int32 {

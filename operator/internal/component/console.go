@@ -52,6 +52,9 @@ func (co *Console) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sc
 		return Result{Ready: false, Message: "Waiting for the public URL (ingress address not yet resolved)"}, nil
 	}
 	cfg.PublicURL = publicURL
+	if frontDoorRoutesNativeGRPC(planton) {
+		cfg.GRPCEndpoint = resources.GRPCEndpoint(publicURL)
+	}
 
 	// The console always signs in through the bundled identity server --
 	// through the gateway's port-forward front door or the ingress hostname.

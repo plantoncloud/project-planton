@@ -53,9 +53,29 @@ func TestHTTPRouteRendersTheRouteTable(t *testing.T) {
 	for idx, raw := range rules {
 		rule := raw.(map[string]any)
 		matches, _, _ := unstructured.NestedSlice(rule, "matches")
-		path, _, _ := unstructured.NestedMap(matches[0].(map[string]any), "path")
-		if path["type"] != "PathPrefix" || path["value"] != table[idx].PathPrefix {
-			t.Errorf("rule %d path = %v, want PathPrefix %s", idx, path, table[idx].PathPrefix)
+		wantMatches := 1
+		if table[idx].HeaderMatched() {
+			wantMatches = len(table[idx].Header.Values)
+		}
+		if len(matches) != wantMatches {
+			t.Errorf("rule %d has %d matches, want %d", idx, len(matches), wantMatches)
+		}
+		for _, m := range matches {
+			match := m.(map[string]any)
+			path, _, _ := unstructured.NestedMap(match, "path")
+			if path["type"] != "PathPrefix" || path["value"] != table[idx].PathPrefix {
+				t.Errorf("rule %d path = %v, want PathPrefix %s", idx, path, table[idx].PathPrefix)
+			}
+			headers, hasHeaders, _ := unstructured.NestedSlice(match, "headers")
+			if hasHeaders != table[idx].HeaderMatched() {
+				t.Errorf("rule %d header match present = %v, want %v", idx, hasHeaders, table[idx].HeaderMatched())
+			}
+			if hasHeaders {
+				header := headers[0].(map[string]any)
+				if header["type"] != "Exact" || header["name"] != table[idx].Header.Name {
+					t.Errorf("rule %d header = %v, want an Exact match on %s", idx, header, table[idx].Header.Name)
+				}
+			}
 		}
 		backends, _, _ := unstructured.NestedSlice(rule, "backendRefs")
 		backend := backends[0].(map[string]any)
@@ -63,8 +83,72 @@ func TestHTTPRouteRendersTheRouteTable(t *testing.T) {
 			t.Errorf("rule %d backend = %v", idx, backend)
 		}
 		_, hasTimeout, _ := unstructured.NestedMap(rule, "timeouts")
-		if hasTimeout != (table[idx].Backend == BackendControlPlane) {
-			t.Errorf("rule %d timeouts present = %v; only control-plane routes carry the streaming timeout", idx, hasTimeout)
+		if hasTimeout != table[idx].Backend.ServesStreams() {
+			t.Errorf("rule %d timeouts present = %v; only control-plane doors carry the streaming timeout", idx, hasTimeout)
+		}
+	}
+}
+
+// The native-gRPC row: one match per gRPC content type, each an Exact header
+// match paired with the root prefix, delivered to the raw gRPC Service port.
+// Precedence is the API's: the row sits after the longer prefixes (browser
+// API, storage, identity) and, having a header match, ahead of the console's
+// bare catch-all at the same prefix.
+func TestHTTPRouteRoutesNativeGRPCByContentType(t *testing.T) {
+	table := FrontDoorRoutes()
+	grpcIdx := -1
+	for idx, route := range table {
+		if route.Backend == BackendControlPlaneGRPC {
+			grpcIdx = idx
+		}
+	}
+	if grpcIdx < 0 {
+		t.Fatal("the route table has no native-gRPC row")
+	}
+	grpcRow := table[grpcIdx]
+	if grpcRow.PathPrefix != ConsolePathPrefix || !grpcRow.HeaderMatched() || grpcRow.Header.Name != GRPCContentTypeHeader {
+		t.Errorf("native-gRPC row = %+v; want the root prefix narrowed by %s", grpcRow, GRPCContentTypeHeader)
+	}
+	if grpcRow.ServicePortName() != controlPlaneGrpcPortName || grpcRow.ServicePort() != controlPlaneServicePort {
+		t.Errorf("native-gRPC row targets %s:%d, want %s:%d", grpcRow.ServicePortName(), grpcRow.ServicePort(), controlPlaneGrpcPortName, controlPlaneServicePort)
+	}
+	console := table[len(table)-1]
+	if console.Backend != BackendConsole || console.HeaderMatched() {
+		t.Errorf("the table must end with the console's bare catch-all, got %+v", console)
+	}
+	if grpcIdx != len(table)-2 {
+		t.Errorf("the native-gRPC row is at %d; it must sit just before the console catch-all so the table reads in precedence order", grpcIdx)
+	}
+
+	route := HTTPRoute(HTTPRouteConfig{CRName: "planton", Namespace: "planton", Hostname: "planton.example.com", GatewayName: "main"})
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	matches, _, _ := unstructured.NestedSlice(rules[grpcIdx].(map[string]any), "matches")
+	seen := map[string]bool{}
+	for _, m := range matches {
+		headers, _, _ := unstructured.NestedSlice(m.(map[string]any), "headers")
+		seen[headers[0].(map[string]any)["value"].(string)] = true
+	}
+	for _, ct := range GRPCContentTypes {
+		if !seen[ct] {
+			t.Errorf("content type %q is not matched by the native-gRPC rule", ct)
+		}
+	}
+}
+
+// The address device clients are told to dial follows the front door's URL:
+// same host, the URL's port or the scheme's default.
+func TestGRPCEndpoint(t *testing.T) {
+	cases := map[string]string{
+		"https://planton.example.com":      "planton.example.com:443",
+		"http://planton.example.com":       "planton.example.com:80",
+		"https://planton.example.com:8443": "planton.example.com:8443",
+		"http://localhost:8080":            "localhost:8080",
+		"":                                 "",
+		"not a url":                        "",
+	}
+	for in, want := range cases {
+		if got := GRPCEndpoint(in); got != want {
+			t.Errorf("GRPCEndpoint(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

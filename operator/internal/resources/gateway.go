@@ -132,6 +132,13 @@ func GatewayNginxConfig(crName, namespace string) string {
 	}
 
 	for _, r := range routes {
+		if r.HeaderMatched() {
+			// The port-forward door serves a workstation; a native gRPC client
+			// on that workstation port-forwards the control plane's raw gRPC
+			// port directly, so the header-matched row has no job here (and
+			// nginx would need a map on $http_content_type to express it).
+			continue
+		}
 		fmt.Fprintf(&b, "\n    location %s {\n        proxy_pass %s;\n        proxy_http_version 1.1;\n",
 			r.PathPrefix, upstreamVar(r))
 		switch r.Backend {

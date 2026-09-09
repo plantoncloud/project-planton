@@ -38,6 +38,12 @@ A component backed by a Deployment is Ready only when its rollout has finished -
 
 `PlantonIdentityProvider` has no controller of its own: a change to one re-enqueues the platforms in its namespace, and the identity component resolves the binding inside the same loop.
 
+## The Front Door
+
+A platform is reached through one public origin, rendered from one route table (`internal/resources/front_door_routes.go`) onto whichever door the declaration chooses: an Ingress object, a Gateway API HTTPRoute attached to a Gateway the cluster already runs, or the built-in nginx gateway served over `kubectl port-forward`. The browser API (gRPC-Web) lives under `/rpc`, the storage relay under `/storage`, the identity server under `/idp`, and the console answers everything else.
+
+Native gRPC clients -- the `planton` CLI, the in-cluster runner, any grpc-go or grpc-java program -- reach the control plane's raw gRPC port at the same origin on the Gateway API door: a request whose `content-type` is `application/grpc` is routed there by an exact header match, a core Gateway API rule. The Ingress object and the nginx gateway have no portable header match, so they do not offer that row; on those doors a native client port-forwards the control plane Service's `grpc` port. The console publishes the address a native client should dial (`GRPC_ENDPOINT`, set only when the door routes it) and the deployment shape (`PLANTON_DEPLOYMENT_KIND`) in its device discovery document, so a client learns what an instance is from the instance itself.
+
 ## Quick Start (development)
 
 ```bash
