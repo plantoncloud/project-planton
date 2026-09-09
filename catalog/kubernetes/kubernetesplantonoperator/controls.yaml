@@ -74,5 +74,5 @@ spec:
       status: enforced_by_default
       evidence:
         type: module_default
-        reference: The modules pin the chart to the catalog-validated default (0.12.0; the chart and the operator image share one version line) and the chart carries its own definitions, so the schema always matches the operator installed. chart_version exists for deliberate change control, floored at 0.8.0 — older charts do not own their definitions and are refused at plan time by both engines with the version to pin.
+        reference: The modules pin the chart to the catalog-validated default (0.13.0; the chart and the operator image share one version line) and the chart carries its own definitions, so the schema always matches the operator installed. chart_version exists for deliberate change control, floored at 0.8.0 — older charts do not own their definitions and are refused at plan time by both engines with the version to pin.
       notes: image.repository/tag exist for air-gapped mirrors of the SAME release, not for version selection.
