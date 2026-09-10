@@ -29,6 +29,13 @@ func federationTestSecret(name string, data map[string]string) *corev1.Secret {
 	return secret
 }
 
+// buildFederation runs the build the way Reconcile does: the realm-state
+// record is read once from the seeded Secret and handed in.
+func buildFederation(c client.Client, platform *v1.PlantonPlatform, idp *v1.PlantonIdentityProvider) *federationBuild {
+	id := &Identity{}
+	return id.buildFederationState(context.Background(), c, platform, idp, id.readRealmState(context.Background(), c, platform))
+}
+
 func ldapIdentityProvider() *v1.PlantonIdentityProvider {
 	idp := &v1.PlantonIdentityProvider{}
 	idp.Name = bindingTestIdpName
@@ -55,7 +62,7 @@ func TestBuildFederationState_LDAP(t *testing.T) {
 		WithObjects(platform, idp, federationTestSecret("corp-bind", map[string]string{"password": "bind-pw"})).
 		Build()
 
-	build := (&Identity{}).buildFederationState(context.Background(), c, platform, idp)
+	build := buildFederation(c, platform, idp)
 
 	if build.buildErr != "" {
 		t.Fatalf("buildErr = %q, want none", build.buildErr)
@@ -92,14 +99,14 @@ func TestBuildFederationState_SteadyStateNoRotation(t *testing.T) {
 		Checks: []v1.IdentityProviderVerificationCheck{{Name: "connection", Verdict: "Passed"}},
 	}
 
-	state := federationTestSecret(resources.IdentityFederationStateSecretName("prime"), map[string]string{
-		resources.IdentityFederationStateCredentialKey: sha256Hex("bind-pw"),
+	state := federationTestSecret(resources.IdentityRealmStateSecretName("prime"), map[string]string{
+		resources.IdentityRealmStateFederationCredentialKey: sha256Hex("bind-pw"),
 	})
 	c := fake.NewClientBuilder().WithScheme(bindingScheme(t)).
 		WithObjects(platform, idp, state, federationTestSecret("corp-bind", map[string]string{"password": "bind-pw"})).
 		Build()
 
-	build := (&Identity{}).buildFederationState(context.Background(), c, platform, idp)
+	build := buildFederation(c, platform, idp)
 
 	if build.fed.LDAP.RotateCredential {
 		t.Error("an unchanged credential must not rotate")
@@ -122,14 +129,14 @@ func TestBuildFederationState_CredentialRotation(t *testing.T) {
 		Checks: []v1.IdentityProviderVerificationCheck{{Name: "connection", Verdict: "Passed"}},
 	}
 
-	state := federationTestSecret(resources.IdentityFederationStateSecretName("prime"), map[string]string{
-		resources.IdentityFederationStateCredentialKey: sha256Hex("OLD-pw"),
+	state := federationTestSecret(resources.IdentityRealmStateSecretName("prime"), map[string]string{
+		resources.IdentityRealmStateFederationCredentialKey: sha256Hex("OLD-pw"),
 	})
 	c := fake.NewClientBuilder().WithScheme(bindingScheme(t)).
 		WithObjects(platform, idp, state, federationTestSecret("corp-bind", map[string]string{"password": "NEW-pw"})).
 		Build()
 
-	build := (&Identity{}).buildFederationState(context.Background(), c, platform, idp)
+	build := buildFederation(c, platform, idp)
 
 	if !build.fed.LDAP.RotateCredential {
 		t.Error("a rotated credential must be re-written")
@@ -147,7 +154,7 @@ func TestBuildFederationState_MissingSecretIsHandsOff(t *testing.T) {
 	idp := ldapIdentityProvider()
 	c := fake.NewClientBuilder().WithScheme(bindingScheme(t)).WithObjects(platform, idp).Build()
 
-	build := (&Identity{}).buildFederationState(context.Background(), c, platform, idp)
+	build := buildFederation(c, platform, idp)
 
 	if build.buildErr == "" || build.fed != nil {
 		t.Fatalf("missing Secret must yield buildErr and nil desired state, got fed=%+v err=%q", build.fed, build.buildErr)
@@ -201,7 +208,7 @@ func TestBuildFederationState_BrokerDiscoveryAndReplay(t *testing.T) {
 		WithObjects(platform, idp, federationTestSecret("corp-oidc", map[string]string{"client-secret": "s3cret"})).
 		Build()
 
-	build := (&Identity{}).buildFederationState(context.Background(), c, platform, idp)
+	build := buildFederation(c, platform, idp)
 	if build.buildErr != "" {
 		t.Fatalf("buildErr = %q, want none", build.buildErr)
 	}
@@ -230,16 +237,16 @@ func TestBuildFederationState_BrokerDiscoveryAndReplay(t *testing.T) {
 	idp.Status.Verification = &v1.IdentityProviderVerification{
 		Checks: []v1.IdentityProviderVerificationCheck{{Name: "issuer", Verdict: "Passed"}},
 	}
-	state := federationTestSecret(resources.IdentityFederationStateSecretName("prime"), map[string]string{
-		resources.IdentityFederationStateCredentialKey: sha256Hex("s3cret"),
-		resources.IdentityFederationStateEndpointsKey:  build.endpointsJSON,
+	state := federationTestSecret(resources.IdentityRealmStateSecretName("prime"), map[string]string{
+		resources.IdentityRealmStateFederationCredentialKey: sha256Hex("s3cret"),
+		resources.IdentityRealmStateOIDCEndpointsKey:        build.endpointsJSON,
 	})
 	c = fake.NewClientBuilder().WithScheme(bindingScheme(t)).
 		WithObjects(platform, idp, state, federationTestSecret("corp-oidc", map[string]string{"client-secret": "s3cret"})).
 		Build()
 
 	discoveryCalls = 0
-	steady := (&Identity{}).buildFederationState(context.Background(), c, platform, idp)
+	steady := buildFederation(c, platform, idp)
 	if steady.buildErr != "" {
 		t.Fatalf("steady buildErr = %q, want none", steady.buildErr)
 	}

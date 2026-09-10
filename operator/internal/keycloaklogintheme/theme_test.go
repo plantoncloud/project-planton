@@ -14,7 +14,7 @@ const configMapSizeBudget = 512 * 1024
 func TestFilesCarriesEveryArtifact(t *testing.T) {
 	files := Files()
 
-	want := []string{PathThemeProperties, PathStylesCSS, PathLogoSVG, PathInterFontWOFF2}
+	want := []string{PathThemeProperties, PathStylesCSS, PathLogoSVG, PathInterFontWOFF2, PathEmailThemeProperties}
 	if len(files) != len(want) {
 		t.Fatalf("Files() has %d entries, want %d -- a new artifact constant must be added to Files() (and vice versa)", len(files), len(want))
 	}

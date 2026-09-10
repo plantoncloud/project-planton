@@ -7,12 +7,17 @@ import (
 	"github.com/plantonhq/planton/operator/internal/resources"
 )
 
+// testInput is the owned set's input for an install that declares no email --
+// the shape the realm import renders for (the import bakes the email
+// off-state and never a declaration, see IdentityRealmImport), so the
+// agreement pin below checks both new owned keys against it.
 func testInput() OwnedRealmInput {
 	return OwnedRealmInput{
 		Realm:               "planton",
 		PublicURL:           "https://planton.example.com",
 		ConsoleClientSecret: "console-secret",
 		UsersClientSecret:   "users-secret",
+		Email:               &OwnedRealmEmail{},
 	}
 }
 
@@ -40,10 +45,20 @@ func TestIdentityRealmImportAgreesWithOwnedSet(t *testing.T) {
 	}
 
 	// Owned realm settings: the import must bake exactly the values the
-	// reconciler converges.
-	for key, want := range OwnedRealmSettings() {
+	// reconciler converges -- including the email off-state (resetPasswordAllowed
+	// false, an empty smtpServer), which is the only email posture the import
+	// ever carries: a fresh realm's import is create-only and rides a Secret
+	// whose content hash rolls the pod, so a relay password there would roll
+	// the identity server on every rotation for nothing. The reconciler owns
+	// the declaration itself, seconds after first boot.
+	for key, want := range OwnedRealmSettings(in) {
 		if !jsonEqual(want, imported[key]) {
 			t.Errorf("realm setting %s: import bakes %v, owned set converges %v", key, imported[key], want)
+		}
+	}
+	for _, key := range []string{realmResetPasswordAllowedKey, realmSMTPServerKey} {
+		if _, ok := imported[key]; !ok {
+			t.Errorf("the import must bake the email off-state key %s", key)
 		}
 	}
 

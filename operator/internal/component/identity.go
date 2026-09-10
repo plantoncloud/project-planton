@@ -52,13 +52,20 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 		return Result{}, fmt.Errorf("resolving identity provider bindings: %w", err)
 	}
 
+	// The realm-state record: what the operator last handed the realm
+	// (credential fingerprints, discovered endpoints). Read once here; the
+	// steps below advance their own fields in memory; written once at the
+	// end of the pass when it changed.
+	recorded := id.readRealmState(ctx, c, planton)
+	record := recorded
+
 	// Translate the bound manifest (and its referenced Secrets) into the
 	// realm reconciler's desired federation state. A build failure is the
 	// MANIFEST's status to carry -- the identity server keeps serving the
 	// users it already has, and the live federation is left untouched.
 	var fedBuild *federationBuild
 	if boundIdp != nil {
-		fedBuild = id.buildFederationState(ctx, c, planton, boundIdp)
+		fedBuild = id.buildFederationState(ctx, c, planton, boundIdp, recorded)
 		if fedBuild.buildErr != "" {
 			id.setFederationStatus(ctx, c, boundIdp, metav1.Condition{
 				Type: v1.ConditionProvisioned, Status: metav1.ConditionFalse,
@@ -182,6 +189,12 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 		cfg.CABundleSecretKey = fedBuild.caBundleSecretKey
 		cfg.CABundleHash = fedBuild.caBundleHash
 	}
+
+	// The platform's email declaration, as the identity server's own mail
+	// settings (see identity_email.go): the relay's private CA joins the
+	// truststore here, the relay itself is converged onto the realm below.
+	emailBuild := id.buildEmailRealmState(ctx, c, planton, recorded)
+	emailBuild.applyTruststore(&cfg)
 	if planton.Spec.Identity != nil && planton.Spec.Identity.Image != nil {
 		cfg.ImageRepository = planton.Spec.Identity.Image.Repository
 		cfg.ImageTag = planton.Spec.Identity.Image.Tag
@@ -208,10 +221,11 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 	// the LIVE realm -- the three Planton clients (redirect URIs re-derived
 	// from the CURRENT front door, so a deliberate hostname change heals
 	// instead of stranding sign-in), the security-posture realm settings,
-	// and the federation state the bound identity manifest declares -- and
-	// never touches admin-created state. A failed pass reports not-ready
-	// and retries on the next reconcile, the same posture as the OpenFGA
-	// bootstrap.
+	// the identity server's mail settings from the platform's email
+	// declaration, and the federation state the bound identity manifest
+	// declares -- and never touches admin-created state. A failed pass
+	// reports not-ready and retries on the next reconcile, the same posture
+	// as the OpenFGA bootstrap.
 	serverRoot := resources.IdentityInternalServerRootURL(planton.Name, planton.Namespace)
 	adminPassword := bootstrapAdmin[resources.IdentityBootstrapAdminPasswordKey]
 	report, err := keycloak.Converge(ctx, keycloak.ConvergeInput{
@@ -220,6 +234,7 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 			PublicURL:           publicURL,
 			ConsoleClientSecret: oidcClient[resources.IdentityOIDCClientSecretKey],
 			UsersClientSecret:   usersClient[resources.IdentityOIDCClientSecretKey],
+			Email:               emailBuild.email,
 		},
 		Federation:    federationForConverge(boundIdp, fedBuild),
 		ServerRoot:    serverRoot,
@@ -242,23 +257,30 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 	}
 	logRealmRepairs(log, report)
 
+	// The relay credential is on the realm now (written on rotation, or
+	// carried by a settings write); record its fingerprint so the next pass
+	// reads steady state.
+	emailBuild.advanceRecord(&record)
+
 	// Verification + the manifest's Provisioned verdicts, on the manifest's
 	// cadence (never the reconcile's -- the checks probe the company's
 	// directory). When verification ran, re-project the facts so the fresh
 	// verdicts reach the control plane's mounted file the same pass.
 	if boundIdp != nil && fedBuild.buildErr == "" {
-		verified := id.finishFederation(ctx, c, planton, boundIdp, fedBuild, report, keycloak.VerifyInput{
+		verified := id.finishFederation(ctx, c, boundIdp, fedBuild, report, keycloak.VerifyInput{
 			Realm:            identityRealm(planton),
 			ServerRoot:       serverRoot,
 			AdminUsername:    resources.IdentityBootstrapAdminUsername,
 			AdminPassword:    adminPassword,
 			HTTPClient:       &http.Client{Timeout: httpClientTimeout},
 			SeededAdminEmail: adminEmail,
-		})
+		}, &record)
 		if verified {
 			id.projectFederationFacts(ctx, c, planton, boundIdp, true)
 		}
 	}
+
+	id.persistRealmState(ctx, c, planton, recorded, record)
 
 	log.Info("Identity server ready")
 

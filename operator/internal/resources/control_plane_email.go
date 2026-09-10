@@ -41,9 +41,13 @@ const (
 	EmailSMTPCABundleFileName           = "smtp-ca.crt"
 	EmailResendAPIKeyFileName           = "resend-api-key"
 
-	// The keys a kubernetes.io/basic-auth Secret carries by convention.
-	basicAuthUsernameKey = "username"
-	basicAuthPasswordKey = "password"
+	// BasicAuthUsernameKey / BasicAuthPasswordKey are the keys a
+	// kubernetes.io/basic-auth Secret carries by convention -- the one
+	// definition every reader of spec.email.smtp.credentialsSecretName uses:
+	// this projection, the component's Secret preflight, and the identity
+	// component that hands the same credential to the identity server.
+	BasicAuthUsernameKey = "username"
+	BasicAuthPasswordKey = "password"
 )
 
 // EmailBinding is the resolved spec.email: which arm sends, the sender
@@ -204,8 +208,8 @@ func emailCredentialSources(binding *EmailBinding) []corev1.VolumeProjection {
 	if smtp := binding.SMTP; smtp != nil {
 		if smtp.CredentialsSecretName != "" {
 			sources = append(sources, secretProjection(smtp.CredentialsSecretName,
-				corev1.KeyToPath{Key: basicAuthUsernameKey, Path: EmailSMTPUsernameFileName},
-				corev1.KeyToPath{Key: basicAuthPasswordKey, Path: EmailSMTPPasswordFileName},
+				corev1.KeyToPath{Key: BasicAuthUsernameKey, Path: EmailSMTPUsernameFileName},
+				corev1.KeyToPath{Key: BasicAuthPasswordKey, Path: EmailSMTPPasswordFileName},
 			))
 		}
 		if o := smtp.OAuth2; o != nil {

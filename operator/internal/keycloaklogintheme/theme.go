@@ -30,22 +30,27 @@ const ThemeName = "planton"
 
 // File paths inside the theme, relative to the theme's root directory
 // (themes/planton/). The nesting follows Keycloak's required layout:
-// <type>/theme.properties + <type>/resources/**.
+// <type>/theme.properties + <type>/resources/**. Two types ship: login (the
+// styled pages) and email (the manifest that keeps the server-wide default
+// theme resolvable for the emails the identity server sends; see
+// email_theme_properties.go).
 const (
-	PathThemeProperties = "login/theme.properties"
-	PathStylesCSS       = "login/resources/css/planton.css"
-	PathLogoSVG         = "login/resources/img/planton-logo.svg"
-	PathInterFontWOFF2  = "login/resources/fonts/inter-latin.woff2"
+	PathThemeProperties      = "login/theme.properties"
+	PathStylesCSS            = "login/resources/css/planton.css"
+	PathLogoSVG              = "login/resources/img/planton-logo.svg"
+	PathInterFontWOFF2       = "login/resources/fonts/inter-latin.woff2"
+	PathEmailThemeProperties = "email/theme.properties"
 )
 
 // Files returns every file the theme ships, keyed by its path under the
 // theme root. The map is rebuilt per call; callers own their copy.
 func Files() map[string][]byte {
 	return map[string][]byte{
-		PathThemeProperties: []byte(themeProperties),
-		PathStylesCSS:       []byte(stylesCSS),
-		PathLogoSVG:         []byte(logoSVG),
-		PathInterFontWOFF2:  interLatinWOFF2,
+		PathThemeProperties:      []byte(themeProperties),
+		PathStylesCSS:            []byte(stylesCSS),
+		PathLogoSVG:              []byte(logoSVG),
+		PathInterFontWOFF2:       interLatinWOFF2,
+		PathEmailThemeProperties: []byte(emailThemeProperties),
 	}
 }
 

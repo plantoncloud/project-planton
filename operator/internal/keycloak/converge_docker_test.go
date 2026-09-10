@@ -227,7 +227,7 @@ func TestConvergence_FreshRealmAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range OwnedRealmSettings() {
+	for key, want := range OwnedRealmSettings(in.OwnedRealmInput) {
 		if !jsonEqual(want, realm[key]) {
 			t.Errorf("realm setting %s = %v, want %v", key, realm[key], want)
 		}

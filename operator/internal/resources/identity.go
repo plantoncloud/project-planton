@@ -3,6 +3,7 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -245,6 +246,21 @@ const (
 	// IdentityCABundleHashAnnotation rolls the Keycloak pod when the mounted
 	// LDAP CA bundle changes -- truststores are read at server start.
 	IdentityCABundleHashAnnotation = "planton.ai/ldap-ca-hash"
+
+	// IdentityEmailCATruststorePath is where the mail relay's CA bundle (when
+	// spec.email.smtp.caBundleSecretRef declares one) is mounted; it joins
+	// KC_TRUSTSTORE_PATHS beside the directory CA, because Keycloak's SMTP
+	// sender verifies the relay's certificate against the server truststore.
+	IdentityEmailCATruststorePath = "/opt/keycloak/conf/email-ca"
+
+	// IdentityEmailCABundleFileName is the relay CA bundle's file name under
+	// its mount.
+	IdentityEmailCABundleFileName = "email-ca.crt"
+
+	// IdentityEmailCAHashAnnotation rolls the Keycloak pod when the mounted
+	// relay CA bundle changes -- the one restart email delivery ever costs
+	// the identity server; a rotated relay password never rolls it.
+	IdentityEmailCAHashAnnotation = "planton.ai/email-ca-hash"
 )
 
 // IdentityUsersServiceAccountRoles are the realm-management roles the users
@@ -319,7 +335,33 @@ type IdentityConfig struct {
 	// (truststores are read at server start, never re-read live).
 	CABundleHash string
 
+	// EmailCABundleSecretName/EmailCABundleSecretKey mount the mail relay's
+	// private CA bundle (spec.email.smtp.caBundleSecretRef) into Keycloak's
+	// truststore so password-reset emails can be sent through a relay behind
+	// a corporate CA. Empty means the relay's certificate chains to a public
+	// root (or no email is declared). EmailCABundleHash rolls the pod when
+	// the bundle changes, the same way CABundleHash does.
+	EmailCABundleSecretName string
+	EmailCABundleSecretKey  string
+	EmailCABundleHash       string
+
 	PostgreSQL PostgreSQLConnectionInfo
+}
+
+// identityCAMount is one private CA the identity server must trust: which
+// Secret key holds the PEM bundle, where it is mounted and under what file
+// name, and the pod annotation that rolls the server when the bundle
+// changes. Both CA arms (directory, mail relay) render through this one
+// shape so a third would be a fourth line, not a fourth block.
+type identityCAMount struct {
+	secretName string
+	secretKey  string
+	hash       string
+
+	volumeName     string
+	mountPath      string
+	fileName       string
+	hashAnnotation string
 }
 
 // IdentityDeploymentName returns the Deployment name: "{crName}-identity".
@@ -356,23 +398,27 @@ func IdentityUsersClientSecretName(crName string) string {
 	return fmt.Sprintf("%s-identity-users-client", crName)
 }
 
-// IdentityFederationStateSecretName holds the operator's own federation
-// bookkeeping: the fingerprint of the last credential it wrote to the
-// identity server (Keycloak masks secret config on read, so rotation is
-// detectable only against a record) and the last-discovered OIDC endpoints
-// (so a hand-deleted broker can be recreated without re-fetching discovery
-// on the reconcile cadence). A Secret rather than a ConfigMap because the
-// fingerprint, while not a credential, is derived from one:
-// "{crName}-identity-federation-state".
-func IdentityFederationStateSecretName(crName string) string {
-	return fmt.Sprintf("%s-identity-federation-state", crName)
+// IdentityRealmStateSecretName holds the operator's own bookkeeping about
+// what it last wrote to the identity server's realm: the fingerprint of each
+// credential it handed over (Keycloak masks secret config on read, so a
+// rotation is detectable only against a record) and the last-discovered OIDC
+// endpoints (so a hand-deleted broker can be recreated without re-fetching
+// discovery on the reconcile cadence). One record for the whole realm, read
+// once and written once per reconcile pass -- two writers of one Secret under
+// server-side apply would each drop the other's keys. A Secret rather than a
+// ConfigMap because a fingerprint, while not a credential, is derived from
+// one: "{crName}-identity-realm-state".
+func IdentityRealmStateSecretName(crName string) string {
+	return fmt.Sprintf("%s-identity-realm-state", crName)
 }
 
-// IdentityFederationStateCredentialKey / IdentityFederationStateEndpointsKey
-// are the state Secret's data keys.
+// The realm-state Secret's data keys: the directory federation credential's
+// fingerprint, the broker's discovered endpoints, and the mail relay
+// credential's fingerprint.
 const (
-	IdentityFederationStateCredentialKey = "credential-sha256"
-	IdentityFederationStateEndpointsKey  = "oidc-endpoints"
+	IdentityRealmStateFederationCredentialKey = "federation-credential-sha256"
+	IdentityRealmStateOIDCEndpointsKey        = "oidc-endpoints"
+	IdentityRealmStateEmailCredentialKey      = "email-credential-sha256"
 )
 
 // IdentityFederationFactsConfigMapName holds the federation facts the
@@ -541,15 +587,23 @@ func IdentityInternalServerRootURL(crName, namespace string) string {
 // operator provisions. Only fields the platform depends on are set; realm
 // defaults cover the rest (default client scopes, auth flows, and so on).
 type identityRealmImport struct {
-	Realm                string                `json:"realm"`
-	Enabled              bool                  `json:"enabled"`
-	DisplayName          string                `json:"displayName"`
-	DisplayNameHTML      string                `json:"displayNameHtml"`
-	LoginTheme           string                `json:"loginTheme"`
-	SSLRequired          string                `json:"sslRequired"`
-	RegistrationAllowed  bool                  `json:"registrationAllowed"`
-	SSOSessionIdleTimout int                   `json:"ssoSessionIdleTimeout"`
-	AccessTokenLifespan  int                   `json:"accessTokenLifespan"`
+	Realm                string `json:"realm"`
+	Enabled              bool   `json:"enabled"`
+	DisplayName          string `json:"displayName"`
+	DisplayNameHTML      string `json:"displayNameHtml"`
+	LoginTheme           string `json:"loginTheme"`
+	SSLRequired          string `json:"sslRequired"`
+	RegistrationAllowed  bool   `json:"registrationAllowed"`
+	SSOSessionIdleTimout int    `json:"ssoSessionIdleTimeout"`
+	AccessTokenLifespan  int    `json:"accessTokenLifespan"`
+	// The email off-state, the only email posture the import ever bakes:
+	// "Forgot password?" off and no relay. The platform's email declaration
+	// itself is converged onto the live realm by the reconciler seconds after
+	// first boot, never imported -- the import is create-only and rides a
+	// Secret whose content hash rolls the pod, so a relay password in it
+	// would roll the identity server on every rotation for nothing.
+	ResetPasswordAllowed bool                  `json:"resetPasswordAllowed"`
+	SMTPServer           map[string]string     `json:"smtpServer"`
 	Clients              []identityRealmClient `json:"clients"`
 	Users                []identityRealmUser   `json:"users"`
 }
@@ -672,6 +726,11 @@ func IdentityRealmImport(cfg IdentityRealmImportConfig) ([]byte, error) {
 		RegistrationAllowed:  false,
 		SSOSessionIdleTimout: IdentitySSOSessionIdleSeconds,
 		AccessTokenLifespan:  IdentityAccessTokenLifespanSeconds,
+		// Email off until the reconciler converges the platform's declaration
+		// (see the struct's comment); an empty map, never null, so the import
+		// and the owned set compare equal.
+		ResetPasswordAllowed: false,
+		SMTPServer:           map[string]string{},
 		Clients: []identityRealmClient{{
 			ClientID:                  IdentityConsoleClientID,
 			Name:                      "Planton Console",
@@ -884,13 +943,28 @@ func IdentityDeployment(cfg IdentityConfig) *appsv1.Deployment {
 		{Name: "KC_CACHE", Value: "local"},
 	}
 
-	if cfg.CABundleSecretName != "" {
-		// KC_TRUSTSTORE_PATHS APPENDS to the JVM's default CAs (verified
-		// Keycloak 26 semantics), so mounting a private directory CA never
-		// un-trusts public roots.
+	// Private CAs the server must trust: the directory's (a bound identity
+	// manifest) and the mail relay's (spec.email). Each rides its own
+	// read-only Secret mount with its own restart hash; KC_TRUSTSTORE_PATHS
+	// lists whichever are declared. KC_TRUSTSTORE_PATHS APPENDS to the JVM's
+	// default CAs (verified Keycloak 26 semantics), so a private CA never
+	// un-trusts public roots.
+	caMounts := []identityCAMount{
+		{cfg.CABundleSecretName, cfg.CABundleSecretKey, cfg.CABundleHash,
+			"ldap-ca", IdentityCATruststorePath, IdentityCABundleFileName, IdentityCABundleHashAnnotation},
+		{cfg.EmailCABundleSecretName, cfg.EmailCABundleSecretKey, cfg.EmailCABundleHash,
+			"email-ca", IdentityEmailCATruststorePath, IdentityEmailCABundleFileName, IdentityEmailCAHashAnnotation},
+	}
+	var truststorePaths []string
+	for _, ca := range caMounts {
+		if ca.secretName != "" {
+			truststorePaths = append(truststorePaths, ca.mountPath+"/"+ca.fileName)
+		}
+	}
+	if len(truststorePaths) > 0 {
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  "KC_TRUSTSTORE_PATHS",
-			Value: IdentityCATruststorePath + "/" + IdentityCABundleFileName,
+			Value: strings.Join(truststorePaths, ","),
 		})
 	}
 
@@ -915,21 +989,24 @@ func IdentityDeployment(cfg IdentityConfig) *appsv1.Deployment {
 		},
 	}, themeVolume}
 
-	if cfg.CABundleSecretName != "" {
-		podAnnotations[IdentityCABundleHashAnnotation] = cfg.CABundleHash
+	for _, ca := range caMounts {
+		if ca.secretName == "" {
+			continue
+		}
+		podAnnotations[ca.hashAnnotation] = ca.hash
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "ldap-ca",
-			MountPath: IdentityCATruststorePath,
+			Name:      ca.volumeName,
+			MountPath: ca.mountPath,
 			ReadOnly:  true,
 		})
 		volumes = append(volumes, corev1.Volume{
-			Name: "ldap-ca",
+			Name: ca.volumeName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: cfg.CABundleSecretName,
+					SecretName: ca.secretName,
 					Items: []corev1.KeyToPath{{
-						Key:  cfg.CABundleSecretKey,
-						Path: IdentityCABundleFileName,
+						Key:  ca.secretKey,
+						Path: ca.fileName,
 					}},
 				},
 			},

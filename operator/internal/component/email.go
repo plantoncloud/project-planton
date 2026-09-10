@@ -87,7 +87,7 @@ func preflightEmailSecrets(ctx context.Context, c client.Client, planton *v1.Pla
 
 	if smtp := e.SMTP; smtp != nil {
 		if name := smtp.CredentialsSecretName; name != "" {
-			msg, err := preflightSecretKeys(ctx, c, ns, name, "spec.email.smtp.credentialsSecretName", "type kubernetes.io/basic-auth", "username", "password")
+			msg, err := preflightSecretKeys(ctx, c, ns, name, "spec.email.smtp.credentialsSecretName", "type kubernetes.io/basic-auth", resources.BasicAuthUsernameKey, resources.BasicAuthPasswordKey)
 			if msg != "" || err != nil {
 				return msg, err
 			}

@@ -70,10 +70,9 @@ type federationBuild struct {
 // because a build failure is the MANIFEST's status to carry, never a reason
 // to wedge the whole identity component (Keycloak keeps serving the users it
 // already has).
-func (id *Identity) buildFederationState(ctx context.Context, c client.Client, planton *v1.PlantonPlatform, idp *v1.PlantonIdentityProvider) *federationBuild {
+func (id *Identity) buildFederationState(ctx context.Context, c client.Client, planton *v1.PlantonPlatform, idp *v1.PlantonIdentityProvider, recorded realmStateRecord) *federationBuild {
 	build := &federationBuild{}
 
-	recorded := id.readFederationState(ctx, c, planton)
 	provisioned := meta.FindStatusCondition(idp.Status.Conditions, v1.ConditionProvisioned)
 	build.verificationDue = provisioned == nil ||
 		provisioned.ObservedGeneration != idp.Generation ||
@@ -88,7 +87,7 @@ func (id *Identity) buildFederationState(ctx context.Context, c client.Client, p
 	return build
 }
 
-func (id *Identity) buildLDAPState(ctx context.Context, c client.Client, namespace string, ad *v1.ActiveDirectorySpec, recorded map[string]string, build *federationBuild) {
+func (id *Identity) buildLDAPState(ctx context.Context, c client.Client, namespace string, ad *v1.ActiveDirectorySpec, recorded realmStateRecord, build *federationBuild) {
 	bindCredential, err := readSecretKey(ctx, c, namespace, ad.BindCredentialSecretRef)
 	if err != nil {
 		build.buildErr = fmt.Sprintf("the bind credential could not be read from Secret %s (key %s): %v -- federation is left untouched until it can be",
@@ -96,7 +95,7 @@ func (id *Identity) buildLDAPState(ctx context.Context, c client.Client, namespa
 		return
 	}
 	build.credentialSHA = sha256Hex(bindCredential)
-	rotate := recorded[resources.IdentityFederationStateCredentialKey] != build.credentialSHA
+	rotate := recorded.FederationCredentialSHA != build.credentialSHA
 	if rotate {
 		build.verificationDue = true
 	}
@@ -142,7 +141,7 @@ func (id *Identity) buildLDAPState(ctx context.Context, c client.Client, namespa
 	}}
 }
 
-func (id *Identity) buildBrokerState(ctx context.Context, c client.Client, namespace string, spec v1.PlantonIdentityProviderSpec, recorded map[string]string, build *federationBuild) {
+func (id *Identity) buildBrokerState(ctx context.Context, c client.Client, namespace string, spec v1.PlantonIdentityProviderSpec, recorded realmStateRecord, build *federationBuild) {
 	oidc := spec.OIDC
 	clientSecret, err := readSecretKey(ctx, c, namespace, oidc.ClientSecretRef)
 	if err != nil {
@@ -151,7 +150,7 @@ func (id *Identity) buildBrokerState(ctx context.Context, c client.Client, names
 		return
 	}
 	build.credentialSHA = sha256Hex(clientSecret)
-	rotate := recorded[resources.IdentityFederationStateCredentialKey] != build.credentialSHA
+	rotate := recorded.FederationCredentialSHA != build.credentialSHA
 	if rotate {
 		build.verificationDue = true
 	}
@@ -171,9 +170,9 @@ func (id *Identity) buildBrokerState(ctx context.Context, c client.Client, names
 			}
 		}
 	}
-	if endpoints == nil && recorded[resources.IdentityFederationStateEndpointsKey] != "" {
+	if endpoints == nil && recorded.OIDCEndpointsJSON != "" {
 		var replayed keycloak.OIDCEndpoints
-		if err := json.Unmarshal([]byte(recorded[resources.IdentityFederationStateEndpointsKey]), &replayed); err == nil {
+		if err := json.Unmarshal([]byte(recorded.OIDCEndpointsJSON), &replayed); err == nil {
 			endpoints = &replayed
 		}
 	}
@@ -213,11 +212,10 @@ func federationForConverge(boundIdp *v1.PlantonIdentityProvider, build *federati
 
 // finishFederation runs after a successful convergence: the verification
 // pass when due, the Provisioned condition + verdicts onto the manifest,
-// and the state record for the next pass. Returns true when fresh verdicts
+// and the realm-state record's federation fields for the next pass (the
+// caller writes the record once). Returns true when fresh verdicts
 // were recorded (the facts projection re-stamps its observed-at only then).
-func (id *Identity) finishFederation(ctx context.Context, c client.Client, planton *v1.PlantonPlatform, idp *v1.PlantonIdentityProvider, build *federationBuild, report *keycloak.Report, verifyIn keycloak.VerifyInput) bool {
-	log := logf.FromContext(ctx).WithValues("component", id.Name())
-
+func (id *Identity) finishFederation(ctx context.Context, c client.Client, idp *v1.PlantonIdentityProvider, build *federationBuild, report *keycloak.Report, verifyIn keycloak.VerifyInput, record *realmStateRecord) bool {
 	// A repair pass re-verifies too: repaired federation state deserves
 	// fresh verdicts (a non-federation repair triggering one extra
 	// verification is a rare, harmless over-probe).
@@ -261,10 +259,13 @@ func (id *Identity) finishFederation(ctx context.Context, c client.Client, plant
 	}
 	id.setFederationStatus(ctx, c, idp, condition, verification)
 
-	if err := id.writeFederationState(ctx, c, planton, build); err != nil {
-		// Worst case of a lost record: one redundant credential write and
-		// one extra discovery fetch next pass -- log, never fail.
-		log.Error(err, "Failed to record federation state; the next pass repeats one rotation write")
+	// The record advances only here -- after the credential is on the realm
+	// AND verified -- so a failed pass repeats the write. Endpoints advance
+	// only when freshly discovered; a replayed pass keeps the recorded ones
+	// (dropping them would strand a later recreate behind a discovery fetch).
+	record.FederationCredentialSHA = build.credentialSHA
+	if build.endpointsJSON != "" {
+		record.OIDCEndpointsJSON = build.endpointsJSON
 	}
 	return true
 }
@@ -323,47 +324,6 @@ func verificationEqual(a, b *v1.IdentityProviderVerification) bool {
 		}
 	}
 	return true
-}
-
-// readFederationState returns the recorded fingerprints/endpoints (empty map
-// when the record does not exist yet).
-func (id *Identity) readFederationState(ctx context.Context, c client.Client, planton *v1.PlantonPlatform) map[string]string {
-	var secret corev1.Secret
-	err := c.Get(ctx, types.NamespacedName{
-		Name: resources.IdentityFederationStateSecretName(planton.Name), Namespace: planton.Namespace,
-	}, &secret)
-	if err != nil {
-		return map[string]string{}
-	}
-	state := make(map[string]string, len(secret.Data))
-	for key, value := range secret.Data {
-		state[key] = string(value)
-	}
-	return state
-}
-
-// writeFederationState records what this pass wrote, so the next pass can
-// tell rotation from steady state without ever reading a masked value back.
-func (id *Identity) writeFederationState(ctx context.Context, c client.Client, planton *v1.PlantonPlatform, build *federationBuild) error {
-	data := map[string]string{
-		resources.IdentityFederationStateCredentialKey: build.credentialSHA,
-	}
-	if build.endpointsJSON != "" {
-		data[resources.IdentityFederationStateEndpointsKey] = build.endpointsJSON
-	}
-	secret := &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      resources.IdentityFederationStateSecretName(planton.Name),
-			Namespace: planton.Namespace,
-		},
-		Type:       corev1.SecretTypeOpaque,
-		StringData: data,
-	}
-	if ownerRef := id.OwnerReferenceFor(planton); ownerRef != nil {
-		secret.OwnerReferences = []metav1.OwnerReference{*ownerRef}
-	}
-	return id.ApplyTypedObject(ctx, c, secret)
 }
 
 // projectFederationFacts publishes the federation facts ConfigMap: the

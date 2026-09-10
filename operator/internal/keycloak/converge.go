@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 
 	"github.com/plantonhq/planton/operator/internal/resources"
@@ -73,7 +74,7 @@ func Converge(ctx context.Context, in ConvergeInput) (*Report, error) {
 		return report, err
 	}
 
-	if err := convergeRealmSettings(ctx, admin, in.Realm, liveRealm, report); err != nil {
+	if err := convergeRealmSettings(ctx, admin, in.Realm, liveRealm, in.OwnedRealmInput, report); err != nil {
 		return report, err
 	}
 
@@ -97,14 +98,21 @@ func Converge(ctx context.Context, in ConvergeInput) (*Report, error) {
 // convergeRealmSettings read-modify-writes the owned realm-level fields on
 // the already-fetched live representation: owned keys are corrected in
 // place, and everything else rides back untouched. Zero writes when nothing
-// disagrees.
-func convergeRealmSettings(ctx context.Context, admin *AdminClient, realm string, live Representation, report *Report) error {
+// disagrees. The flat keys compare whole; smtpServer converges by key under
+// its own masked-secret rule.
+func convergeRealmSettings(ctx context.Context, admin *AdminClient, realm string, live Representation, in OwnedRealmInput, report *Report) error {
 	var drifted []string
-	for key, want := range OwnedRealmSettings() {
+	for key, want := range OwnedRealmSettings(in) {
+		if key == realmSMTPServerKey {
+			continue
+		}
 		if !jsonEqual(want, live[key]) {
 			live[key] = want
 			drifted = append(drifted, key)
 		}
+	}
+	if in.Email != nil {
+		drifted = append(drifted, convergeSMTPServer(live, in.Email)...)
 	}
 	if len(drifted) == 0 {
 		return nil
@@ -115,6 +123,75 @@ func convergeRealmSettings(ctx context.Context, admin *AdminClient, realm string
 	}
 	report.repaired("realm settings corrected: %v", drifted)
 	return nil
+}
+
+// convergeSMTPServer corrects the realm's smtpServer map in place and returns
+// the drift paths (keys only -- a value never enters a report). Two facts
+// about Keycloak shape the rule:
+//
+//   - the password and the OAuth2 client secret are masked on read, so they
+//     are never compared; they are written when the caller says the
+//     referenced Secret rotated (the fingerprint record is the only signal);
+//   - on a realm update, Keycloak keeps a masked secret ONLY when the relay's
+//     destination (host, port, ssl, starttls, from, user, the token facts) is
+//     unchanged; a masked secret arriving with a moved destination is
+//     dropped. So every write that touches this map carries the real secret
+//     values, never the mask -- "any drift writes the secret with it", not
+//     "rotation only".
+//
+// Declared: every key in the owned vocabulary (smtpServerOwnedKeys) is
+// corrected by key -- set when the declaration renders it, removed when it
+// does not (a password left behind after a switch to token sign-in is a
+// lingering credential, not admin territory) -- and unowned extras ride
+// through. Not declared: the map is cleared whole, the owned off-state.
+func convergeSMTPServer(live Representation, email *OwnedRealmEmail) []string {
+	liveSMTP, _ := live[realmSMTPServerKey].(map[string]any)
+	if liveSMTP == nil {
+		liveSMTP = map[string]any{}
+	}
+
+	if email.Relay == nil {
+		if len(liveSMTP) == 0 {
+			return nil
+		}
+		live[realmSMTPServerKey] = map[string]string{}
+		return []string{realmSMTPServerKey + " (no email is declared; the relay is removed)"}
+	}
+
+	want := email.smtpServer()
+	var drifted []string
+	for _, key := range smtpServerOwnedKeys {
+		value, wanted := want[key]
+		got, present := liveSMTP[key]
+		path := realmSMTPServerKey + "." + key
+		switch {
+		case wanted && !present:
+			drifted = append(drifted, path)
+		case wanted && !isSMTPServerSecretKey(key):
+			if gotString, _ := got.(string); gotString != value {
+				drifted = append(drifted, path)
+			}
+		case wanted && email.RotateCredential:
+			// A secret key: masked on read, written on rotation.
+			drifted = append(drifted, path+" (rotated)")
+		case !wanted && present:
+			drifted = append(drifted, path+" (removed)")
+		}
+	}
+	if len(drifted) == 0 {
+		return nil
+	}
+
+	merged := make(map[string]any, len(liveSMTP)+len(want))
+	maps.Copy(merged, liveSMTP)
+	for _, key := range smtpServerOwnedKeys {
+		delete(merged, key)
+	}
+	for key, value := range want {
+		merged[key] = value
+	}
+	live[realmSMTPServerKey] = merged
+	return drifted
 }
 
 // convergeClient ensures one owned client exists and its owned fields match:
