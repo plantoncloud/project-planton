@@ -5,14 +5,15 @@ type: application
 # version is stamped at release time from the chart's tag (helm/planton/vX.Y.Z);
 # the value below marks a checkout as a development build.
 version: 0.0.0-dev
-# appVersion is the Planton platform version the PlantonPlatform resource
-# deploys (spec.version defaults to it). It is a pin, not this chart's own
-# version: the platform images are built and versioned elsewhere, so it moves
-# deliberately when a new platform line is published. The operator that
-# reconciles the resource is installed separately by the planton-operator chart
-# and versions on its own line; this chart carries no operator and no
+# There is deliberately no appVersion. This chart is a shape, not a pin: the
+# platform release it declares is platform.spec.version in the values, named
+# by the person installing (the same rule the catalog's platform kind holds).
+# An appVersion here would age with every platform release and silently move
+# a running platform's version the day the chart moved. The chart therefore
+# releases only when the resource's shape changes. The operator that
+# reconciles the resource is installed separately by the planton-operator
+# chart and versions on its own line; this chart carries no operator and no
 # CustomResourceDefinition.
-appVersion: "v0.0.45"
 home: https://github.com/plantonhq/planton
 sources:
   - https://github.com/plantonhq/planton

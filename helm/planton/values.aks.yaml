@@ -2,6 +2,7 @@
 #
 #   helm install planton oci://ghcr.io/plantonhq/charts/planton \
 #     --namespace planton --create-namespace \
+#     --set platform.spec.version=<release> \
 #     --values https://raw.githubusercontent.com/plantonhq/planton/main/helm/planton/values.aks.yaml
 #
 # Stock AKS ships no always-on ingress controller (the "application routing
@@ -12,6 +13,7 @@
 
 platform:
   spec: {}
+    # version: <release>   # REQUIRED -- the platform release to install (set it on the command line above)
     # -- Storage: AKS ships working default classes (the disk CSI driver is
     # enabled by default). To pin a specific class or override volume sizes:
     # storage:

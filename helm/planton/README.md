@@ -17,33 +17,45 @@ helm install planton-operator oci://ghcr.io/plantonhq/charts/planton-operator \
   --create-namespace
 
 helm install planton oci://ghcr.io/plantonhq/charts/planton \
-  --namespace planton
+  --namespace planton \
+  --set platform.spec.version=<release>
 ```
 
-No values are required. The first person to open the console becomes the
-administrator (the setup page asks for their email plus a setup code read
-from the cluster). Installing this chart before the operator fails with
-Helm's `ensure CRDs are installed first`; install the operator chart and
-run it again.
+One value is required: `platform.spec.version`, the platform release to
+install. The chart pins no release of its own -- a pin would age with every
+platform release and silently move a running platform the day the chart
+moved -- so you name it, the way the catalog's platform kind requires. The
+published releases are the control-plane image's tags:
+<https://github.com/orgs/plantonhq/packages/container/package/planton%2Fcontrol-plane>.
+An operator runs releases from a floor upward; an older one is refused in the
+resource's status with the floor named and nothing created.
+
+The first person to open the console becomes the administrator (the setup
+page asks for their email plus a setup code read from the cluster).
+Installing this chart before the operator fails with Helm's `ensure CRDs are
+installed first`; install the operator chart and run it again.
 
 Prefer to manage the `PlantonPlatform` resource yourself (GitOps, custom
 manifests)? Apply it with `kubectl` -- the operator chart's NOTES print the
-minimal one -- and skip this chart. Prefer one command that does both? The
-Planton CLI's self-hosted install runs both charts in order.
+minimal one -- and skip this chart. Prefer a guided install? The Planton
+desktop installs the operator chart, waits for the definition, and declares
+the platform resource directly, then hands you the same manifest and
+commands to keep.
 
 ## Values
 
 ```yaml
 platform:
   name: planton          # name of the PlantonPlatform resource
-  spec: {}               # the PlantonPlatform spec, passed through VERBATIM
+  spec:                  # the PlantonPlatform spec, passed through VERBATIM
+    version: <release>   # REQUIRED: the platform release to install
 ```
 
 `platform.spec` is not curated by this chart: every field the
 `PlantonPlatform` CRD supports works here, today and in future operator
-versions. `spec.version` defaults to this chart's `appVersion`. See the
-[operator chart's README](../planton-operator/README.md) for the full
-resource reference (exposure ladder, identity, runner, components).
+versions. See the [operator chart's README](../planton-operator/README.md)
+for the full resource reference (exposure ladder, identity, runner,
+components).
 
 ## Per-cloud values files
 
@@ -66,6 +78,7 @@ Use them straight from GitHub:
 ```bash
 helm install planton oci://ghcr.io/plantonhq/charts/planton \
   --namespace planton \
+  --set platform.spec.version=<release> \
   --values https://raw.githubusercontent.com/plantonhq/planton/main/helm/planton/values.rke2.yaml
 ```
 
@@ -178,11 +191,13 @@ The platform and the operator upgrade independently:
 ### Coming from a release that bundled the operator
 
 Releases of this chart before 0.4.0 installed the operator as part of the
-same release and left the `PlantonPlatform` definition outside any release
-(Helm's install-once `crds/` behavior). Moving such an install to the
-two-release shape is three commands, in this order, and never runs two
-operators at once. `<release>` is the name you will give the operator release
-(`planton-operator` below) and `<namespace>` its namespace:
+same release, left the `PlantonPlatform` definition outside any release
+(Helm's install-once `crds/` behavior), and defaulted `spec.version` to a
+release pinned in the chart. Moving such an install to the two-release shape
+is three commands, in this order, and never runs two operators at once. Step
+2 names the platform version explicitly -- read it first with `kubectl get
+plantonplatform planton -n planton -o jsonpath='{.spec.version}'` and pass
+the same value, so the move changes the release shape and nothing else:
 
 ```bash
 # 1. Hand the definition to the future operator release. The operator chart
@@ -193,9 +208,10 @@ kubectl annotate crd plantonplatforms.planton.ai \
   meta.helm.sh/release-name=planton-operator meta.helm.sh/release-namespace=planton
 
 # 2. Upgrade this release: Helm removes the bundled operator and keeps the
-#    PlantonPlatform resource. The platform keeps running, unmanaged, for the
-#    minute until step 3.
-helm upgrade planton oci://ghcr.io/plantonhq/charts/planton --namespace planton
+#    PlantonPlatform resource at the version it already runs. The platform
+#    keeps running, unmanaged, for the minute until step 3.
+helm upgrade planton oci://ghcr.io/plantonhq/charts/planton --namespace planton \
+  --set platform.spec.version=<the version it runs today>
 
 # 3. Install the operator on its own release. It adopts the definition,
 #    upgrades its schema, and resumes reconciling the platform.

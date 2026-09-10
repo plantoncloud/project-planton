@@ -51,10 +51,11 @@ jobs:
             name="$(basename "${chart}")"
             echo "=== ${name}"
             helm dependency build "${chart}"
-            # enrollment.existingSecret placeholder satisfies the runner chart's
-            # required-token guard during lint; the other charts ignore it.
-            helm lint "${chart}" --set enrollment.existingSecret=lint-placeholder
-            helm template lint-render "${chart}" --set enrollment.existingSecret=lint-placeholder > /dev/null
+            # enrollment.existingSecret satisfies the runner chart's required-token
+            # guard and platform.spec.version the planton chart's required-release
+            # guard during lint; every other chart ignores both.
+            helm lint "${chart}" --set enrollment.existingSecret=lint-placeholder --set platform.spec.version=v0.0.0-lint
+            helm template lint-render "${chart}" --set enrollment.existingSecret=lint-placeholder --set platform.spec.version=v0.0.0-lint > /dev/null
             helm package "${chart}" --destination /tmp/helm-pkg > /dev/null
             version="$(helm show chart "${chart}" | awk '/^version:/{print $2; exit}')"
             if [ "${version}" != "0.0.0-dev" ]; then

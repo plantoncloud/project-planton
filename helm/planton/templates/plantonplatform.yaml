@@ -4,8 +4,12 @@ The chart's single template: the PlantonPlatform resource.
 The spec is a verbatim pass-through of .Values.platform.spec -- the chart
 deliberately curates NO fields, so every current and future CRD capability is
 reachable without a chart release, and the chart's values can never drift
-from the CRD schema. The only templating is the version default: an install
-with zero values deploys the platform version this chart was released for.
+from the CRD schema. The chart pins nothing either: spec.version is REQUIRED
+in the values, never defaulted here. A default would be a release pinned into
+a chart that outlives it -- stale the day after the next platform release,
+and a silent upgrade of a running platform the day the chart moved -- so the
+chart is a shape and the person names the release, exactly as the catalog's
+platform kind requires.
 
 The PlantonPlatform definition itself belongs to the planton-operator chart,
 which must be installed first: Helm validates every resource of a release
@@ -13,9 +17,7 @@ against the cluster's API before creating any of them, so a release cannot
 both define a kind and create an instance of it.
 */ -}}
 {{- $spec := .Values.platform.spec | default dict }}
-{{- if not (hasKey $spec "version") }}
-{{- $spec = merge (dict "version" .Chart.AppVersion) $spec }}
-{{- end }}
+{{- $_ := required "platform.spec.version is required: the platform release to install (--set platform.spec.version=<release>). Published releases are the control-plane image's tags: https://github.com/orgs/plantonhq/packages/container/package/planton%%2Fcontrol-plane" $spec.version }}
 apiVersion: planton.ai/v1
 kind: PlantonPlatform
 metadata:
