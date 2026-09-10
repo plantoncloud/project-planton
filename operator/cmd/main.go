@@ -189,6 +189,12 @@ func main() {
 			setupLog.Error(err, "Refusing to start")
 			os.Exit(1)
 		}
+		// Publish the floor where installers read before declaring a platform
+		// (the PlantonPlatform definition), so a too-old version is refused in
+		// words before anything exists. A courtesy, never a gate on serving.
+		if err := platformversion.Advertise(context.Background(), guardClient); err != nil {
+			setupLog.Error(err, "Could not advertise the platform version floor on the definition; installers fall back to the resource's VersionSupported condition")
+		}
 	}
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
