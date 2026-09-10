@@ -198,9 +198,12 @@ R2 bucket specification.
 | Output | Type | Description |
 |--------|------|-------------|
 | `bucket_name` | string | The name of the R2 bucket |
-| `bucket_url` | string | The path-style S3 API URL for the bucket |
+| `bucket_url` | string | The path-style S3 API URL of the bucket (its jurisdiction's endpoint plus the bucket name) |
 | `custom_domain_urls` | list(string) | URLs of the configured custom domains (one per enabled custom domain) |
 | `public_url` | string | The managed r2.dev public URL when `public_access` is enabled; empty otherwise |
+| `account_id` | string | The owning Cloudflare account (same as `spec.account_id`) |
+| `jurisdiction` | string | The bucket's jurisdiction, normalized: `default`, `eu`, `fedramp`, or `us` |
+| `s3_endpoint` | string | The S3 API endpoint serving this bucket's jurisdiction -- the only host that does; S3 clients use it with region `auto` |
 
 Access outputs:
 

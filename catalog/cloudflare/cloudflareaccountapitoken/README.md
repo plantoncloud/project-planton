@@ -59,6 +59,8 @@
 |-------|-------------|
 | `token_id` | The token's management id (not the credential) |
 | `value` | The secret token value -- returned once, at create; secret-marked |
+| `r2_access_key_id` | The token as an S3 access key id for R2's S3 API (the token's id); meaningful only with an R2 permission group |
+| `r2_secret_access_key` | The token as an S3 secret access key for R2's S3 API (SHA-256 of the value); secret-marked, same once-on-create lifecycle |
 
 ## Example Manifest
 

@@ -106,9 +106,12 @@ After provisioning, `status.outputs` contains values that downstream Cloud Resou
 | Output | Description | Common Downstream Use |
 |--------|-------------|----------------------|
 | `bucket_name` | The name of the R2 bucket | Referenced by a Worker's or Pages project's `r2Buckets` binding |
-| `bucket_url` | The S3-compatible API URL for the bucket | SDK endpoint configuration for S3-compatible clients |
+| `bucket_url` | The path-style S3 API URL of the bucket (its jurisdiction's endpoint plus the bucket name) | SDK endpoint configuration for S3-compatible clients |
 | `custom_domain_urls` | One URL per enabled custom domain (e.g., `https://media.example.com`) | Frontend asset references, public download URLs |
 | `public_url` | The managed `r2.dev` URL when `publicAccess` is enabled; empty otherwise | Development and testing access before a custom domain exists |
+| `account_id` | The owning Cloudflare account (same as `accountId`) | Composing the bucket into an S3-compatible client beside its name without repeating the account |
+| `jurisdiction` | The bucket's data-residency jurisdiction, normalized (`default`, `eu`, `fedramp`, `us`) | Selecting the S3 host; scoping an account API token to this bucket |
+| `s3_endpoint` | The S3 API endpoint that serves this bucket's jurisdiction -- the only host that does (`https://<account>.r2.cloudflarestorage.com`, or `https://<account>.<jurisdiction>.r2.cloudflarestorage.com`) | Backup tools and databases that archive to R2 over the S3 API (region `auto`) |
 
 ## Common Patterns
 

@@ -13,6 +13,7 @@ go_library(
     deps = [
         "//catalog/cloudflare",
         "//catalog/cloudflare/cloudflarer2bucket/v1alpha1",
+        "//pkg/cloudflare/r2",
         "//pkg/iac/pulumi/pulumimodule/provider/cloudflare/pulumicloudflareprovider",
         "@com_github_pkg_errors//:errors",
         "@com_github_pulumi_pulumi_cloudflare_sdk_v6//go/cloudflare",

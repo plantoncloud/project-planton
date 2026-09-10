@@ -9,7 +9,7 @@ provider.tf   — Cloudflare provider configuration (~> 5.23)
 variables.tf  — Input variables mirroring CloudflareAccountApiTokenSpec (generated)
 locals.tf     — Naming/labels
 main.tf       — cloudflare_account_token (policies serializer + condition mapping)
-outputs.tf    — token_id, value
+outputs.tf    — token_id, value, r2_access_key_id, r2_secret_access_key
 ```
 
 ## Behavior
@@ -28,6 +28,8 @@ Import as `{account_id}/{token_id}` -- configuration only; the value is never re
 |------|-------------|
 | `token_id` | The token's management id (not the credential) |
 | `value` | The secret token value, returned once at create (sensitive) |
+| `r2_access_key_id` | The token as an S3 access key id for R2's S3 API (the token's id) |
+| `r2_secret_access_key` | The token as an S3 secret access key for R2's S3 API (`sha256(value)`, sensitive) |
 
 ## Provider Version
 

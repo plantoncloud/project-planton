@@ -140,6 +140,12 @@ aws s3 ls --endpoint-url https://<account-id>.r2.cloudflarestorage.com
 After deployment, the following outputs are available:
 
 - **`bucket_name`**: The name of the created R2 bucket
+- **`bucket_url`**: The path-style S3 API URL of the bucket (its jurisdiction's endpoint plus the bucket name)
+- **`custom_domain_urls`**: One URL per enabled custom domain
+- **`public_url`**: The managed `r2.dev` URL when public access is enabled; empty otherwise
+- **`account_id`**: The owning Cloudflare account
+- **`jurisdiction`**: The bucket's jurisdiction, normalized (`default`, `eu`, `fedramp`, `us`)
+- **`s3_endpoint`**: The S3 API endpoint serving the bucket's jurisdiction -- the only host that does; S3 clients use it with region `auto`
 
 Access outputs:
 

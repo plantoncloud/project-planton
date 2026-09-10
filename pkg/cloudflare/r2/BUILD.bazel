@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "r2",
+    srcs = ["s3.go"],
+    importpath = "github.com/plantonhq/planton/pkg/cloudflare/r2",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "r2_test",
+    srcs = ["s3_test.go"],
+    embed = [":r2"],
+)

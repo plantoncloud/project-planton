@@ -9,7 +9,7 @@ main.go                        — stack-input loading + module entry
 module/main.go                 — provider setup + resource orchestration
 module/locals.go               — metadata/credential references
 module/account_api_token.go    — AccountToken (policies serializer + condition mapping)
-module/outputs.go              — token_id, value
+module/outputs.go              — token_id, value, r2_access_key_id, r2_secret_access_key
 ```
 
 ## Behavior
@@ -28,6 +28,8 @@ Import as `{account_id}/{token_id}` -- configuration only; the value is never re
 |------|-------------|
 | `token_id` | The token's management id (not the credential) |
 | `value` | The secret token value, returned once at create (secret) |
+| `r2_access_key_id` | The token as an S3 access key id for R2's S3 API (the token's id) |
+| `r2_secret_access_key` | The token as an S3 secret access key for R2's S3 API (SHA-256 of the value, secret) |
 
 ## SDK Version
 

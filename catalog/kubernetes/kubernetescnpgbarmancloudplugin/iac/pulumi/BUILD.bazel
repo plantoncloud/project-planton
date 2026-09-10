@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "pulumi_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/plantonhq/planton/catalog/kubernetes/kubernetescnpgbarmancloudplugin/iac/pulumi",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//catalog/kubernetes/kubernetescnpgbarmancloudplugin/iac/pulumi/module",
+        "//catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1",
+        "//pkg/iac/pulumi/pulumimodule/stackinput",
+        "@com_github_pkg_errors//:errors",
+        "@com_github_pulumi_pulumi_sdk_v3//go/pulumi",
+    ],
+)
+
+go_binary(
+    name = "pulumi",
+    embed = [":pulumi_lib"],
+    visibility = ["//visibility:public"],
+)
