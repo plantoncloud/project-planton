@@ -64,8 +64,12 @@ func TestHTTPRouteRendersTheRouteTable(t *testing.T) {
 		for _, m := range matches {
 			match := m.(map[string]any)
 			path, _, _ := unstructured.NestedMap(match, "path")
-			if path["type"] != "PathPrefix" || path["value"] != table[idx].PathPrefix {
-				t.Errorf("rule %d path = %v, want PathPrefix %s", idx, path, table[idx].PathPrefix)
+			wantType := "PathPrefix"
+			if table[idx].Exact {
+				wantType = "Exact"
+			}
+			if path["type"] != wantType || path["value"] != table[idx].PathPrefix {
+				t.Errorf("rule %d path = %v, want %s %s", idx, path, wantType, table[idx].PathPrefix)
 			}
 			headers, hasHeaders, _ := unstructured.NestedSlice(match, "headers")
 			if hasHeaders != table[idx].HeaderMatched() {

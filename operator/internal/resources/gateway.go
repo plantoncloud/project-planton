@@ -144,8 +144,12 @@ func GatewayNginxConfig(crName, namespace string) string {
 			// nginx would need a map on $http_content_type to express it).
 			continue
 		}
-		fmt.Fprintf(&b, "\n    location %s {\n        proxy_pass %s;\n        proxy_http_version 1.1;\n",
-			r.PathPrefix, upstreamVar(r))
+		modifier := ""
+		if r.Exact {
+			modifier = "= "
+		}
+		fmt.Fprintf(&b, "\n    location %s%s {\n        proxy_pass %s;\n        proxy_http_version 1.1;\n",
+			modifier, r.PathPrefix, upstreamVar(r))
 		switch r.Backend {
 		case BackendControlPlane:
 			b.WriteString("        proxy_buffering off;\n        proxy_request_buffering off;\n" +

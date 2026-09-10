@@ -139,6 +139,7 @@ does not admit the hostname or the namespace).
 | `replicaCount` | Number of operator replicas | `1` |
 | `leaderElection.enabled` | Enable leader election for HA | `true` |
 | `healthProbe.port` | Health check endpoint port | `8081` |
+| `janitor.sweepInterval` | How often the operator re-checks for cluster-scoped objects it installed that no platform needs any more (see Uninstallation) | `10m` |
 | `resources.requests.cpu` | CPU request | `10m` |
 | `resources.requests.memory` | Memory request | `256Mi` |
 | `resources.limits.cpu` | CPU limit | `500m` |
@@ -206,14 +207,38 @@ kubectl annotate crd plantonplatforms.planton.ai \
 
 ## Uninstallation
 
+The operator installs two things beyond the platforms it runs: for every platform,
+a cluster-wide grant its control plane needs (a ClusterRole and ClusterRoleBinding),
+and for the cluster, the shared database operator (CloudNativePG) and build engine
+(Tekton Pipelines) the first platform needs and every later platform reuses. Both are
+taken back by the operator itself, so a full uninstall leaves nothing behind:
+
+- Deleting a platform removes its own grant right away.
+- Deleting the LAST platform on the cluster removes CloudNativePG and Tekton -- their
+  definitions, admission webhooks, cluster RBAC, and namespaces -- unless something
+  else still uses them (a database of your own on that CloudNativePG, a pipeline run).
+  Then they stay, and `kubectl describe crd clusters.postgresql.cnpg.io` (or
+  `pipelineruns.tekton.dev`) carries an Event naming exactly what is using them and
+  the two ways out: delete those objects and the operator finishes on its next pass,
+  or keep the engine as your own. A CloudNativePG or Tekton this operator did not
+  install is never touched.
+
+Order matters only in one way: delete the platforms while the operator is still
+running, then remove the operator release. An operator uninstalled first cannot
+clean up after platforms deleted later.
+
 ```bash
-# Remove the operator. The definitions and every PlantonPlatform stay (crds.keep).
+# 1. Delete every platform (or `helm uninstall planton` for one installed by the
+#    planton chart), then wait for the operator's sweep:
+kubectl delete plantonplatform --all -A
+kubectl get crd -l app.kubernetes.io/managed-by=planton-operator   # empty when done
+
+# 2. Remove the operator. The definitions stay (crds.keep) so a later install of
+#    the same release adopts them; nothing else of the operator's remains.
 helm uninstall planton-operator -n planton
 
-# Reinstalling with the same release name and namespace adopts them again.
-
-# To remove the definitions too -- this destroys every PlantonPlatform on the
-# cluster and the platforms they describe -- delete them after the release:
+# 3. To remove the definitions too -- this destroys every PlantonPlatform still on
+#    the cluster and the platforms they describe -- delete them after the release:
 kubectl delete crd plantonplatforms.planton.ai plantonidentityproviders.planton.ai
 ```
 

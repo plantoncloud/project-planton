@@ -29,8 +29,33 @@ import (
 // runner's build worker and retires the webhook Service port, but Tekton
 // stays installed -- uninstalling a cluster-wide engine that may run
 // workloads this operator never created is a human's call, never a reconcile
-// side effect.
+// side effect. It leaves only when the last platform leaves the cluster AND
+// no Tekton object of any kind remains -- the janitor's rule, which turns
+// that human's call into a fact the cluster states.
 type Tekton struct{ Base }
+
+// TektonPipelinesSubOperator is the one definition of the Tekton install this
+// operator manages, read by the install gate and by the janitor alike (see
+// CloudNativePGSubOperator for why there is exactly one).
+func TektonPipelinesSubOperator() SubOperatorOptions {
+	return SubOperatorOptions{
+		LogName:   "tekton-pipelines",
+		CRDName:   resources.TektonPipelineRunCRDName,
+		Loader:    resources.LoadTektonPipelinesManifests,
+		Namespace: resources.TektonPipelinesNamespace,
+		Deployments: []string{
+			resources.TektonControllerDeploymentName,
+			resources.TektonWebhookDeploymentName,
+		},
+	}
+}
+
+// SharedSubOperators lists every vendored sub-operator the janitor may take
+// back off the cluster once no platform remains -- the same definitions the
+// install gate deploys, so nothing can be installed that cannot be removed.
+func SharedSubOperators() []SubOperatorOptions {
+	return []SubOperatorOptions{CloudNativePGSubOperator(), TektonPipelinesSubOperator()}
+}
 
 func (t *Tekton) Name() string { return "tekton" }
 
@@ -73,18 +98,10 @@ func (t *Tekton) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sche
 	// IS re-applied (resuming a partial install claws config-defaults back),
 	// the sink write below runs in the same pass and restores the key under
 	// its own field manager.
-	ready, err := t.EnsureSubOperator(ctx, c, SubOperatorOptions{
-		LogName: "tekton-pipelines",
-		SkipRequested: planton.Spec.Prerequisites != nil &&
-			planton.Spec.Prerequisites.TektonPipelines == PrerequisiteSkip,
-		CRDName:   resources.TektonPipelineRunCRDName,
-		Loader:    resources.LoadTektonPipelinesManifests,
-		Namespace: resources.TektonPipelinesNamespace,
-		Deployments: []string{
-			resources.TektonControllerDeploymentName,
-			resources.TektonWebhookDeploymentName,
-		},
-	})
+	subOperator := TektonPipelinesSubOperator()
+	subOperator.SkipRequested = planton.Spec.Prerequisites != nil &&
+		planton.Spec.Prerequisites.TektonPipelines == PrerequisiteSkip
+	ready, err := t.EnsureSubOperator(ctx, c, subOperator)
 	if err != nil {
 		return Result{}, err
 	}

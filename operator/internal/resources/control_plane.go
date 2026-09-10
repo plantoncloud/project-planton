@@ -413,18 +413,20 @@ func ControlPlaneTokenReviewerClusterRoleName(namespace, crName string) string {
 // badge-verifying control plane.
 //
 // Cluster-scoped objects cannot carry a namespaced owner reference, so this
-// pair is not garbage-collected with the CR. That orphan is INERT by
-// construction: the binding's only subject is the control plane's namespaced
-// ServiceAccount, which dies with the namespace -- a leftover grant grants
-// nothing to nobody. Deleting `{namespace}-{crName}-control-plane-token-reviewer`
-// (ClusterRole + ClusterRoleBinding) is the one manual step of a full
-// uninstall.
+// pair is not garbage-collected with the CR. Instead it carries the owning
+// platform's UID as a label (PlatformUIDLabel), and the operator's janitor
+// deletes any pair whose UID names no platform still on the cluster. The UID,
+// not the name: a platform deleted and recreated under the same name a moment
+// later must never lose the grant its new reconcile just applied. Until the
+// janitor runs, the orphan is INERT by construction: the binding's only
+// subject is the control plane's namespaced ServiceAccount, which dies with
+// the namespace -- a leftover grant grants nothing to nobody.
 func ControlPlaneTokenReviewerClusterRole(cfg ControlPlaneConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRole"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   ControlPlaneTokenReviewerClusterRoleName(cfg.Namespace, cfg.CRName),
-			Labels: controlPlaneComponentLabels(cfg.CRName),
+			Labels: platformSatelliteLabels(cfg),
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -449,7 +451,7 @@ func ControlPlaneTokenReviewerClusterRoleBinding(cfg ControlPlaneConfig) *rbacv1
 		TypeMeta: metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRoleBinding"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   ControlPlaneTokenReviewerClusterRoleName(cfg.Namespace, cfg.CRName),
-			Labels: controlPlaneComponentLabels(cfg.CRName),
+			Labels: platformSatelliteLabels(cfg),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -462,6 +464,23 @@ func ControlPlaneTokenReviewerClusterRoleBinding(cfg ControlPlaneConfig) *rbacv1
 			Namespace: cfg.Namespace,
 		}},
 	}
+}
+
+// PlatformUIDLabel names the PlantonPlatform a cluster-scoped satellite
+// belongs to. A namespaced owner cannot garbage-collect a cluster-scoped
+// dependent, so the platform's UID rides as a label instead and the janitor
+// reads it: a satellite whose UID names no live platform is removed.
+const PlatformUIDLabel = "planton.ai/platform-uid"
+
+// platformSatelliteLabels are the control plane's component labels plus the
+// owning platform's UID -- the label set every cluster-scoped object the
+// platform needs must carry.
+func platformSatelliteLabels(cfg ControlPlaneConfig) map[string]string {
+	labels := controlPlaneComponentLabels(cfg.CRName)
+	if cfg.OwnerRef != nil {
+		labels[PlatformUIDLabel] = string(cfg.OwnerRef.UID)
+	}
+	return labels
 }
 
 func controlPlaneComponentLabels(crName string) map[string]string {
@@ -812,10 +831,14 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		{Name: "GITHUB_CHECKS_DETAILS_URL_FORMAT", Value: ""},
 		{Name: "GITHUB_WEBHOOKS_SECRET_TOKEN", Value: "local"},
 
-		// ── email providers placeholder ──
-		{Name: "SENDGRID_API_KEY", Value: "local"},
-		{Name: "SENDGRID_EMAIL_TEMPLATE_ID_USER_INVITATION", Value: "local"},
-		{Name: "RESEND_API_KEY", Value: "local"},
+		// ── email: none, declared ──
+		// A self-hosted install has no email service unless the platform
+		// declares one, and the control plane is told so rather than handed a
+		// placeholder key it would dial and fail with. Every feature that emails
+		// as a courtesy (invitations above all) keeps working: an invitation is
+		// a link the admin hands over, and the create response says the email
+		// was not sent so the console can say "share the link".
+		{Name: "PLANTON_EMAIL_PROVIDER", Value: "none"},
 
 		// ── cloud oauth (connect): no self-hosted install carries Planton's apps ──
 		// Each cloud's sign-in and one-click keyless setup follow that cloud's
@@ -902,7 +925,6 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		{Name: "STACK_EXECUTION_LOGS_GCS_BUCKET", Value: "local"},
 		{Name: "STIGMER_API_KEY", Value: "local"},
 		{Name: "STIGMER_ORG_ID", Value: "local"},
-		{Name: "USER_INVITATION_URL_BASE_PATH", Value: "http://localhost/invite"},
 	}...)
 
 	envs = append(envs, fgaEnvVars(cfg.OpenFGA)...)

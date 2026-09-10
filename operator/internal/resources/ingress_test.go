@@ -37,9 +37,15 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 	if api.Path != APIPathPrefix {
 		t.Errorf("API path = %s, want %s", api.Path, APIPathPrefix)
 	}
-	// Every rule is a portable segment-prefix rule: the API has its own path
-	// namespace precisely so no controller-specific matching is needed.
+	// Every namespace rule is a portable segment-prefix rule: the API has its
+	// own path namespace precisely so no controller-specific matching is
+	// needed. Only the two single-document rows (a dotted path the strict
+	// Ingress grammar cannot spell) are ImplementationSpecific, and no
+	// annotation accompanies them.
 	for _, p := range paths {
+		if p.Path == OIDCDiscoveryPath || p.Path == OIDCJWKSPath {
+			continue
+		}
 		if *p.PathType != networkingv1.PathTypePrefix {
 			t.Errorf("path %s pathType = %s, want Prefix", p.Path, *p.PathType)
 		}
@@ -77,11 +83,21 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 	// The keyless issuer's two documents at the root the specification pins
 	// them to, and the webhook namespace: all three to the control plane's
 	// webhook port, by name. Exactly the two discovery paths -- never the
-	// whole /.well-known, which ACME challenges share.
-	for idx, want := range []string{OIDCDiscoveryPath, OIDCJWKSPath, WebhooksPathPrefix} {
+	// whole /.well-known, which ACME challenges share -- and as
+	// ImplementationSpecific rows: ingress-nginx's strict path validation
+	// refuses a dotted path under Prefix AND Exact, so either rendering would
+	// leave every nginx-edged install without a front door (found live).
+	for idx, want := range []struct {
+		path     string
+		pathType networkingv1.PathType
+	}{
+		{OIDCDiscoveryPath, networkingv1.PathTypeImplementationSpecific},
+		{OIDCJWKSPath, networkingv1.PathTypeImplementationSpecific},
+		{WebhooksPathPrefix, networkingv1.PathTypePrefix},
+	} {
 		p := paths[3+idx]
-		if p.Path != want || *p.PathType != networkingv1.PathTypePrefix {
-			t.Errorf("path[%d] = %s (%s), want %s (Prefix)", 3+idx, p.Path, *p.PathType, want)
+		if p.Path != want.path || *p.PathType != want.pathType {
+			t.Errorf("path[%d] = %s (%s), want %s (%s)", 3+idx, p.Path, *p.PathType, want.path, want.pathType)
 		}
 		if p.Backend.Service.Name != controlPlaneSvcName || p.Backend.Service.Port.Name != "webhook" {
 			t.Errorf("%s backend = %s:%s, want %s:webhook", want, p.Backend.Service.Name, p.Backend.Service.Port.Name, controlPlaneSvcName)

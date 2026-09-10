@@ -34,10 +34,13 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 	// The port-forward door is an honest issuer too: the discovery document a
 	// developer fetches at localhost names the door it is served at, and the
 	// webhook namespace reaches the same port.
-	for _, loc := range []string{OIDCDiscoveryPath, OIDCJWKSPath, WebhooksPathPrefix} {
-		if !strings.Contains(config, "location "+loc+" {") {
-			t.Errorf("the %s location must be routed:\n%s", loc, config)
+	for _, loc := range []string{OIDCDiscoveryPath, OIDCJWKSPath} {
+		if !strings.Contains(config, "location = "+loc+" {") {
+			t.Errorf("the %s document must be an exact location (one document, not a namespace):\n%s", loc, config)
 		}
+	}
+	if !strings.Contains(config, "location "+WebhooksPathPrefix+" {") {
+		t.Errorf("the %s namespace must be a prefix location:\n%s", WebhooksPathPrefix, config)
 	}
 	if !strings.Contains(config, "set $controlplane_webhook_upstream http://planton-control-plane.planton-ns.svc.cluster.local:8086;") ||
 		!strings.Contains(config, "proxy_pass $controlplane_webhook_upstream") {

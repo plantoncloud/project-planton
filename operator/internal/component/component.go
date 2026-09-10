@@ -539,7 +539,7 @@ func (b *Base) EnsureSubOperator(ctx context.Context, c client.Client, opts SubO
 		return false, nil
 	}
 
-	if crd.GetLabels()["app.kubernetes.io/managed-by"] != SSAFieldManager {
+	if crd.GetLabels()[ManagedByLabel] != SSAFieldManager {
 		log.V(1).Info("Sub-operator pre-installed by another owner, respecting it")
 		return true, nil
 	}
@@ -593,6 +593,12 @@ func (b *Base) deploymentState(ctx context.Context, c client.Client, name, names
 // them using SSA. Namespaced resources without an explicit namespace are placed
 // in defaultNamespace. The target namespace is created if it does not exist.
 func (b *Base) ApplyOperatorManifests(ctx context.Context, c client.Client, loader ManifestLoaderFunc, defaultNamespace string) error {
+	// Serialized with RemoveSubOperator: a platform arriving while the
+	// janitor removes the previous install's definitions must apply after
+	// the teardown has finished, never between its deletes.
+	subOperatorMu.Lock()
+	defer subOperatorMu.Unlock()
+
 	log := logf.FromContext(ctx)
 
 	objs, err := loader()
@@ -613,7 +619,7 @@ func (b *Base) ApplyOperatorManifests(ctx context.Context, c client.Client, load
 		if labels == nil {
 			labels = map[string]string{}
 		}
-		labels["app.kubernetes.io/managed-by"] = SSAFieldManager
+		labels[ManagedByLabel] = SSAFieldManager
 		obj.SetLabels(labels)
 
 		if err := b.EnsureNamespace(ctx, c, obj.GetNamespace()); err != nil {
@@ -658,7 +664,7 @@ func (b *Base) EnsureNamespace(ctx context.Context, c client.Client, namespace s
 	newNS.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: "Namespace"})
 	newNS.SetName(namespace)
 	newNS.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": SSAFieldManager,
+		ManagedByLabel: SSAFieldManager,
 	})
 
 	return c.Create(ctx, newNS)

@@ -31,6 +31,7 @@ import (
 
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
 	"github.com/plantonhq/planton/operator/internal/component"
+	"github.com/plantonhq/planton/operator/internal/janitor"
 	"github.com/plantonhq/planton/operator/internal/platformversion"
 	"github.com/plantonhq/planton/operator/internal/status"
 )
@@ -41,6 +42,11 @@ const requeueInterval = 30 * time.Second
 type PlantonPlatformReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// Janitor takes back what the operator installed cluster-wide once a
+	// platform is gone (its own satellites) or once no platform remains (the
+	// shared sub-operators). Optional: nil skips the sweep, which only tests
+	// that build a reconciler by hand rely on.
+	Janitor *janitor.Janitor
 }
 
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms,verbs=get;list;watch;create;update;patch;delete
@@ -58,8 +64,14 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	var planton plantonaiv1.PlantonPlatform
 	if err := r.Get(ctx, req.NamespacedName, &planton); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("PlantonPlatform resource deleted, nothing to reconcile")
-			return ctrl.Result{}, nil
+			// The platform's own objects are already on their way out through
+			// owner-reference garbage collection (the operator has no
+			// finalizers, so this branch is the whole deletion path). What GC
+			// cannot reach -- the platform's cluster-scoped satellites and,
+			// when this was the last platform, the shared sub-operators -- the
+			// janitor takes back now, and asks to run again while anything is
+			// still draining.
+			return r.sweepAfterDeletion(ctx, req)
 		}
 		return ctrl.Result{}, err
 	}
@@ -146,6 +158,32 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		"interval", requeueInterval,
 	)
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+// sweepAfterDeletion runs the janitor for a platform that no longer exists
+// and turns its outcome into the reconcile's answer: requeue while garbage
+// collection is still draining an instance the teardown must wait for,
+// otherwise done.
+func (r *PlantonPlatformReconciler) sweepAfterDeletion(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	if r.Janitor == nil {
+		log.Info("PlantonPlatform resource deleted, nothing to reconcile")
+		return ctrl.Result{}, nil
+	}
+	outcome, err := r.Janitor.Sweep(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	log.Info("PlantonPlatform resource deleted; swept what garbage collection cannot reach",
+		"platform", req.String(),
+		"platformsRemaining", outcome.PlatformsRemaining,
+		"satellitesRemoved", outcome.SatellitesRemoved,
+		"subOperators", outcome.SortedVerdictNames(),
+	)
+	if outcome.Draining {
+		return ctrl.Result{RequeueAfter: janitor.DrainRequeue}, nil
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

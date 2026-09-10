@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	resource_ "k8s.io/apimachinery/pkg/api/resource"
@@ -34,7 +35,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
+	"github.com/plantonhq/planton/operator/internal/component"
+	"github.com/plantonhq/planton/operator/internal/janitor"
 	"github.com/plantonhq/planton/operator/internal/platformversion"
+	"github.com/plantonhq/planton/operator/internal/resources"
 	"github.com/plantonhq/planton/operator/internal/status"
 )
 
@@ -195,6 +199,65 @@ var _ = Describe("PlantonPlatform Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
+		})
+
+		// The deletion path on a real API server: a platform's cluster-scoped
+		// satellite (the token-reviewer pair, labelled with the platform's
+		// UID) cannot be garbage-collected by a namespaced owner, so the
+		// reconcile of the vanished resource hands it to the janitor. A
+		// second platform's pair -- same name shape, different UID -- stays.
+		It("should sweep the deleted platform's cluster-scoped satellites and leave a live platform's alone", func() {
+			departed := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "departing", Namespace: namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, departed)).To(Succeed())
+			staying := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "staying", Namespace: namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, staying)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), staying) }()
+
+			pairFor := func(p *plantonaiv1.PlantonPlatform) (*rbacv1.ClusterRole, *rbacv1.ClusterRoleBinding) {
+				cfg := resources.ControlPlaneConfig{
+					CRName: p.Name, Namespace: p.Namespace,
+					OwnerRef: &metav1.OwnerReference{Kind: "PlantonPlatform", Name: p.Name, UID: p.UID},
+				}
+				return resources.ControlPlaneTokenReviewerClusterRole(cfg), resources.ControlPlaneTokenReviewerClusterRoleBinding(cfg)
+			}
+			for _, p := range []*plantonaiv1.PlantonPlatform{departed, staying} {
+				role, binding := pairFor(p)
+				Expect(k8sClient.Create(ctx, role)).To(Succeed())
+				Expect(k8sClient.Create(ctx, binding)).To(Succeed())
+			}
+			stayingRole, stayingBinding := pairFor(staying)
+			defer func() {
+				_ = k8sClient.Delete(context.Background(), stayingRole)
+				_ = k8sClient.Delete(context.Background(), stayingBinding)
+			}()
+
+			Expect(k8sClient.Delete(ctx, departed)).To(Succeed())
+
+			reconciler := &PlantonPlatformReconciler{
+				Client:  k8sClient,
+				Scheme:  k8sClient.Scheme(),
+				Janitor: &janitor.Janitor{Client: k8sClient, SubOperators: []component.SubOperatorOptions{}},
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: departed.Name, Namespace: namespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			departedRole, departedBinding := pairFor(departed)
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: departedRole.Name}, &rbacv1.ClusterRole{}))).To(BeTrue(),
+				"the departed platform's ClusterRole must be swept")
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: departedBinding.Name}, &rbacv1.ClusterRoleBinding{}))).To(BeTrue(),
+				"the departed platform's ClusterRoleBinding must be swept")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stayingRole.Name}, &rbacv1.ClusterRole{})).To(Succeed(),
+				"a live platform's ClusterRole must stay")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stayingBinding.Name}, &rbacv1.ClusterRoleBinding{})).To(Succeed(),
+				"a live platform's ClusterRoleBinding must stay")
 		})
 	})
 

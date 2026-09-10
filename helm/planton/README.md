@@ -219,10 +219,13 @@ volumes they unlock. The remaining data-service volumes (the Valkey cache,
 Temporal's chart-rendered claims) linger until the namespace is deleted,
 which is why deleting the namespace is part of teardown. To REINSTALL,
 always delete the namespace first: a new install against leftover volumes
-would mint new credentials that the old data refuses. The operator and the
-`PlantonPlatform` definition belong to the `planton-operator` release; see
-that chart's README for removing them after every platform on the cluster is
-gone.
+would mint new credentials that the old data refuses. When this was the last
+platform on the cluster, the operator also removes the shared CloudNativePG
+and Tekton it installed for it -- unless something else still uses them, in
+which case they stay and their definitions carry an Event saying what. The
+operator and the `PlantonPlatform` definition belong to the `planton-operator`
+release; see that chart's README for removing them after every platform on
+the cluster is gone.
 
 ---
 

@@ -40,18 +40,28 @@ func (p *PostgreSQL) Name() string                                { return "post
 func (p *PostgreSQL) Dependencies(_ *v1.PlantonPlatform) []string { return nil }
 func (p *PostgreSQL) IsEnabled(_ *v1.PlantonPlatform) bool        { return true }
 
-func (p *PostgreSQL) Reconcile(ctx context.Context, c client.Client, scheme *runtime.Scheme, planton *v1.PlantonPlatform) (Result, error) {
-	log := logf.FromContext(ctx).WithValues("component", p.Name())
-
-	operatorReady, err := p.EnsureSubOperator(ctx, c, SubOperatorOptions{
-		LogName: "cloudnative-pg",
-		SkipRequested: planton.Spec.Prerequisites != nil &&
-			planton.Spec.Prerequisites.PostgresOperator == PrerequisiteSkip,
+// CloudNativePGSubOperator is the one definition of the CloudNativePG install
+// this operator manages -- what detects it, what installs it, what proves it
+// serving -- read by the install gate on every reconcile and by the janitor
+// when the last platform leaves. One definition, so the two can never
+// disagree about what "the operator's CloudNativePG" is.
+func CloudNativePGSubOperator() SubOperatorOptions {
+	return SubOperatorOptions{
+		LogName:     "cloudnative-pg",
 		CRDName:     cnpgClusterCRDName,
 		Loader:      resources.LoadCloudNativePGManifests,
 		Namespace:   cnpgOperatorNamespace,
 		Deployments: []string{cnpgDeploymentName},
-	})
+	}
+}
+
+func (p *PostgreSQL) Reconcile(ctx context.Context, c client.Client, scheme *runtime.Scheme, planton *v1.PlantonPlatform) (Result, error) {
+	log := logf.FromContext(ctx).WithValues("component", p.Name())
+
+	subOperator := CloudNativePGSubOperator()
+	subOperator.SkipRequested = planton.Spec.Prerequisites != nil &&
+		planton.Spec.Prerequisites.PostgresOperator == PrerequisiteSkip
+	operatorReady, err := p.EnsureSubOperator(ctx, c, subOperator)
 	if err != nil {
 		return Result{}, err
 	}

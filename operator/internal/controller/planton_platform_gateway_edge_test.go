@@ -182,7 +182,9 @@ var _ = Describe("PlantonPlatform Gateway API edge", func() {
 				rule := r.(map[string]any)
 				matches, _, _ := unstructured.NestedSlice(rule, "matches")
 				path, _, _ := unstructured.NestedMap(matches[0].(map[string]any), "path")
-				Expect(path["type"]).To(Equal("PathPrefix"), "every rule is Kubernetes-core path matching")
+				// Every rule is Kubernetes-core path matching: a segment prefix
+				// for a namespace, Exact for the two single-document rows.
+				Expect(path["type"]).To(BeElementOf("PathPrefix", "Exact"), "every rule is Kubernetes-core path matching")
 				paths = append(paths, path["value"].(string))
 			}
 			// The keyless issuer's two documents and the webhook namespace reach

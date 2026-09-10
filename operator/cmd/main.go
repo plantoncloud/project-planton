@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -40,6 +41,7 @@ import (
 
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
 	"github.com/plantonhq/planton/operator/internal/controller"
+	"github.com/plantonhq/planton/operator/internal/janitor"
 	"github.com/plantonhq/planton/operator/internal/platformversion"
 	"github.com/plantonhq/planton/operator/internal/singleton"
 	// +kubebuilder:scaffold:imports
@@ -66,6 +68,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var sweepInterval time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -84,6 +87,10 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.DurationVar(&sweepInterval, "satellite-sweep-interval", janitor.DefaultSweepInterval,
+		"How often the janitor re-checks for cluster-scoped objects the operator installed that no platform "+
+			"needs any more (a deleted platform's cluster RBAC; the shared sub-operators once no platform remains). "+
+			"Platform deletions sweep immediately; the tick converges what a restart or a slow garbage collection left.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -218,11 +225,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The janitor reads and deletes through a direct client, never the
+	// manager's cached one: its reads span every kind a vendored release
+	// defines, and a cached read would start an informer per kind -- watches
+	// on definitions the same sweep is about to delete.
+	janitorClient, err := client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "Failed to create the janitor's client")
+		os.Exit(1)
+	}
+	sweeper := &janitor.Janitor{
+		Client:   janitorClient,
+		Recorder: mgr.GetEventRecorderFor("planton-operator"),
+	}
+
 	if err := (&controller.PlantonPlatformReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Janitor: sweeper,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "PlantonPlatform")
+		os.Exit(1)
+	}
+	if err := mgr.Add(janitor.LeaderOnly(janitor.Periodic(sweeper, sweepInterval))); err != nil {
+		setupLog.Error(err, "Failed to add the periodic sweep")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

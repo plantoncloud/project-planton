@@ -173,8 +173,18 @@ type FrontDoorHeaderMatch struct {
 
 // FrontDoorRoute is one rule of the table.
 type FrontDoorRoute struct {
-	// PathPrefix is matched segment-wise against the request path.
+	// PathPrefix is matched segment-wise against the request path -- or, when
+	// Exact is set, matched whole.
 	PathPrefix string
+	// Exact marks a rule for one document, not a namespace: the path is
+	// matched whole. The two OIDC documents are exact by nature, and one
+	// door insists on it: ingress-nginx's admission validation refuses a
+	// dotted path as a Prefix rule (a "." is not a segment boundary in its
+	// path grammar) and accepts it as Exact, so a Prefix rendering of
+	// "/.well-known/openid-configuration" is refused before it is ever
+	// served. Every door renders the same rule with its own exact-match
+	// form (pathType Exact; "location ="; match type Exact).
+	Exact bool
 	// Header, when set, additionally requires an exact header value. Only
 	// the Gateway API door renders header-matched rules; the Ingress and
 	// nginx doors skip them (see the package comment).
@@ -192,8 +202,8 @@ func FrontDoorRoutes() []FrontDoorRoute {
 		{PathPrefix: APIPathPrefix, Backend: BackendControlPlane},
 		{PathPrefix: StoragePathPrefix, Backend: BackendControlPlane},
 		{PathPrefix: IdentityPathPrefix, Backend: BackendIdentity},
-		{PathPrefix: OIDCDiscoveryPath, Backend: BackendControlPlaneWebhook},
-		{PathPrefix: OIDCJWKSPath, Backend: BackendControlPlaneWebhook},
+		{PathPrefix: OIDCDiscoveryPath, Exact: true, Backend: BackendControlPlaneWebhook},
+		{PathPrefix: OIDCJWKSPath, Exact: true, Backend: BackendControlPlaneWebhook},
 		{PathPrefix: WebhooksPathPrefix, Backend: BackendControlPlaneWebhook},
 		{
 			PathPrefix: ConsolePathPrefix,

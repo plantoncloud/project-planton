@@ -142,6 +142,12 @@ func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
 	return route
 }
 
+// The Gateway API's two core path match types, as the HTTPRoute spells them.
+const (
+	httpRouteMatchPathPrefix = "PathPrefix"
+	httpRouteMatchExact      = "Exact"
+)
+
 // httpRouteMatches renders a table row's matches. A path-only row is one
 // PathPrefix match. A header-matched row is one match per accepted header
 // value, each pairing the path prefix with an Exact header match: matches
@@ -149,7 +155,11 @@ func HTTPRoute(cfg HTTPRouteConfig) *unstructured.Unstructured {
 // implemented) header match type, so the row stays portable across Gateway
 // implementations.
 func httpRouteMatches(route FrontDoorRoute) []any {
-	path := map[string]any{"type": "PathPrefix", "value": route.PathPrefix}
+	matchType := httpRouteMatchPathPrefix
+	if route.Exact {
+		matchType = httpRouteMatchExact
+	}
+	path := map[string]any{"type": matchType, "value": route.PathPrefix}
 	if !route.HeaderMatched() {
 		return []any{map[string]any{"path": path}}
 	}

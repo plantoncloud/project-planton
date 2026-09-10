@@ -137,8 +137,9 @@ func PublicURL(hostname string, tls bool) string {
 // Ingress builds the single Ingress serving Planton on one hostname, one
 // rule per entry of the front-door route table (front_door_routes.go): API,
 // storage relay, identity server, console. Same-origin by construction, so
-// no CORS surface exists; every rule is pathType Prefix, so the object means
-// the same thing on every Ingress controller.
+// no CORS surface exists; every namespace rule is pathType Prefix, so the
+// object means the same thing on every Ingress controller; the two
+// single-document rows are ImplementationSpecific for the reason given below.
 func Ingress(cfg IngressConfig) *networkingv1.Ingress {
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "ingress",
@@ -148,6 +149,17 @@ func Ingress(cfg IngressConfig) *networkingv1.Ingress {
 	}
 
 	pathTypePrefix := networkingv1.PathTypePrefix
+	// An exact-document row cannot be pathType Exact here: ingress-nginx's
+	// strict path validation admits only [A-Za-z0-9/_-] under Prefix and
+	// Exact, so "/.well-known/openid-configuration" is refused by the
+	// controller's admission webhook and the whole Ingress with it.
+	// ImplementationSpecific is the one core pathType that admits the path;
+	// with no regex character in it (a "." is literal to a plain-match
+	// controller and matches itself under a regex one) every controller reads
+	// it as the literal path. No annotation is set: nothing here is
+	// controller-specific configuration, only the API's own escape hatch for
+	// a path the strict grammar cannot spell.
+	pathTypeDocument := networkingv1.PathTypeImplementationSpecific
 	routes := FrontDoorRoutes()
 	paths := make([]networkingv1.HTTPIngressPath, 0, len(routes))
 	for _, route := range routes {
@@ -160,9 +172,13 @@ func Ingress(cfg IngressConfig) *networkingv1.Ingress {
 			// gRPC port.
 			continue
 		}
+		pathType := &pathTypePrefix
+		if route.Exact {
+			pathType = &pathTypeDocument
+		}
 		paths = append(paths, networkingv1.HTTPIngressPath{
 			Path:     route.PathPrefix,
-			PathType: &pathTypePrefix,
+			PathType: pathType,
 			Backend: networkingv1.IngressBackend{
 				Service: &networkingv1.IngressServiceBackend{
 					Name: route.ServiceName(cfg.CRName),
