@@ -9,8 +9,9 @@ apply), which needs no cluster connection at plan time — the database
 can be planned before CloudNativePG's CRDs exist.
 
 Prerequisites at apply time: the CloudNativePG operator
-(`KubernetesCloudNativePgOperator`) on the cluster, installed with
-`barman_cloud_plugin.enabled` when backups are declared.
+(`KubernetesCloudNativePgOperator`) on the cluster, and the Barman Cloud
+plugin (`KubernetesCnpgBarmanCloudPlugin`, in the operator's namespace)
+when backups or an object-store recovery are declared.
 
 ## Module Behavior
 

@@ -43,21 +43,27 @@ const (
 // would fight over both. The Helm release name is therefore fixed to
 // "cnpg".
 //
-// BACKUPS ARE PLUGIN-BASED: CloudNativePG delegates object-store backups to
-// the Barman Cloud plugin (its built-in object-store support is deprecated
-// upstream and scheduled for removal). Enable `barman_cloud_plugin` here to
-// install the plugin alongside the operator; KubernetesPostgres backup
-// blocks then declare WHERE backups land. The plugin's internal TLS is
-// issued by cert-manager, so the plugin arm requires cert-manager on the
-// cluster (KubernetesCertManager).
+// BACKUPS ARE A SEPARATE BLOCK: CloudNativePG delegates object-store
+// backups to the Barman Cloud plugin (its built-in object-store support is
+// deprecated upstream and scheduled for removal). The plugin is its own
+// chart, pin, and dependency set, and the catalog installs it with its own
+// kind -- KubernetesCnpgBarmanCloudPlugin, declared in THIS operator's
+// namespace (reference this resource). KubernetesPostgres backup blocks
+// then declare WHERE backups land. Without the plugin on the cluster a
+// backup-declaring database never reconciles (the operator parks it in an
+// unknown-plugin phase), so install the plugin before the first backup
+// block, not after.
 //
-// A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG — installed by the Planton
-// operator, by Helm, by GitOps — cannot take a second copy (see above),
-// and a resident operator that came without the plugin cannot back
-// anything up. `install_operator: false` is the posture for that cluster:
-// this resource then manages ONLY the plugin, beside whichever CloudNativePG
-// is already there, and every KubernetesPostgres on the cluster gains
-// object-store backups.
+// A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG -- installed by a platform
+// operator, by Helm, by GitOps -- cannot take a second copy (see above);
+// declare only what that cluster is missing (typically the plugin kind).
+// Beware the reverse case too: a CloudNativePG that was UNINSTALLED by a
+// non-Helm owner can leave its cluster-scoped CRDs, webhooks, and RBAC
+// behind with that owner's labels, and an install here then fails at the
+// Helm ownership check ("managed-by must equal Helm") -- delete the
+// leftovers first; nothing here adopts them. Deciding which case applies:
+// `kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg` -- a hit
+// means an operator is resident.
 //
 // The typed fields below cover the chart's meaningful configuration
 // surface; `helm_values` remains as the escape hatch for chart values
@@ -113,35 +119,28 @@ type KubernetesCloudNativePgOperatorSpec struct {
 	// default: 10. Raise on control planes managing many databases.
 	MaxConcurrentReconciles *int32 `protobuf:"varint,9,opt,name=max_concurrent_reconciles,json=maxConcurrentReconciles,proto3,oneof" json:"max_concurrent_reconciles,omitempty"`
 	// *
-	// The Barman Cloud backup plugin — the object-store backup path for
-	// every KubernetesPostgres on the cluster. Deployed as its own set of
-	// resources beside the operator release (upstream forbids folding the
-	// plugin into the operator's Helm release — the two would fight over
-	// shared resource ownership).
-	BarmanCloudPlugin *KubernetesCloudNativePgOperatorBarmanPlugin `protobuf:"bytes,10,opt,name=barman_cloud_plugin,json=barmanCloudPlugin,proto3" json:"barman_cloud_plugin,omitempty"`
-	// *
 	// The operator's own Prometheus telemetry (reconcile-loop metrics) and
 	// the upstream Grafana dashboard.
-	Monitoring *KubernetesCloudNativePgOperatorMonitoring `protobuf:"bytes,11,opt,name=monitoring,proto3" json:"monitoring,omitempty"`
+	Monitoring *KubernetesCloudNativePgOperatorMonitoring `protobuf:"bytes,10,opt,name=monitoring,proto3" json:"monitoring,omitempty"`
 	// *
 	// PriorityClass for the operator pod. Databases stop failing over
 	// without their operator — keep it above workload priority.
-	PriorityClassName string `protobuf:"bytes,12,opt,name=priority_class_name,json=priorityClassName,proto3" json:"priority_class_name,omitempty"`
+	PriorityClassName string `protobuf:"bytes,11,opt,name=priority_class_name,json=priorityClassName,proto3" json:"priority_class_name,omitempty"`
 	// *
 	// Node selector for the operator pod.
-	NodeSelector map[string]string `protobuf:"bytes,13,rep,name=node_selector,json=nodeSelector,proto3" json:"node_selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	NodeSelector map[string]string `protobuf:"bytes,12,rep,name=node_selector,json=nodeSelector,proto3" json:"node_selector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// *
 	// Tolerations for the operator pod.
-	Tolerations []*kubernetes.WorkloadToleration `protobuf:"bytes,14,rep,name=tolerations,proto3" json:"tolerations,omitempty"`
+	Tolerations []*kubernetes.WorkloadToleration `protobuf:"bytes,13,rep,name=tolerations,proto3" json:"tolerations,omitempty"`
 	// *
 	// Names of image-pull secrets (in the installation namespace) for
 	// pulling the operator image from a private mirror.
-	ImagePullSecrets []string `protobuf:"bytes,15,rep,name=image_pull_secrets,json=imagePullSecrets,proto3" json:"image_pull_secrets,omitempty"`
+	ImagePullSecrets []string `protobuf:"bytes,14,rep,name=image_pull_secrets,json=imagePullSecrets,proto3" json:"image_pull_secrets,omitempty"`
 	// *
 	// Override the operator image (registry mirrors, air-gapped clusters).
 	// Empty = the chart default (ghcr.io/cloudnative-pg/cloudnative-pg at
 	// the chart's app version).
-	Image *KubernetesCloudNativePgOperatorImage `protobuf:"bytes,16,opt,name=image,proto3" json:"image,omitempty"`
+	Image *KubernetesCloudNativePgOperatorImage `protobuf:"bytes,15,opt,name=image,proto3" json:"image,omitempty"`
 	// *
 	// Escape hatch: additional chart values as a YAML document, merged LAST
 	// over everything the typed fields render (Helm `-f` semantics,
@@ -149,33 +148,9 @@ type KubernetesCloudNativePgOperatorSpec struct {
 	// fields (webhook tuning, update strategy, security contexts, topology
 	// spread, host network, ...) — never the substitute for them. Do not
 	// put secrets here.
-	HelmValues string `protobuf:"bytes,17,opt,name=helm_values,json=helmValues,proto3" json:"helm_values,omitempty"`
-	// *
-	// Install the operator release. Default true. Set false on a cluster
-	// that ALREADY runs CloudNativePG (the Planton operator installs one for
-	// the platform's own database; a Helm or GitOps install counts too):
-	// the operator's CRDs and webhooks are cluster singletons, so a second
-	// copy would fight the resident one — instead this resource manages only
-	// the Barman Cloud plugin (`barman_cloud_plugin.enabled` is then
-	// required), installing it into `namespace` beside the resident
-	// operator, and every KubernetesPostgres on the cluster gains
-	// object-store backups. The operator-shaping fields (`crds`, `replicas`,
-	// `resources`, `watch`, `operator_config`, `max_concurrent_reconciles`,
-	// `monitoring`, `priority_class_name`, `node_selector`, `tolerations`,
-	// `image_pull_secrets`, `image`, `helm_values`) describe a release this
-	// resource does not own in that posture and must stay unset. Destroying
-	// a plugin-only declaration removes the plugin and leaves the resident
-	// operator running (live-proven). Deciding which posture applies: `kubectl
-	// get deploy -A -l app.kubernetes.io/name=cloudnative-pg` — a hit means
-	// plugin-only. Beware the reverse case too: a CloudNativePG that was
-	// UNINSTALLED by a non-Helm owner (the Planton operator's, a raw
-	// manifest) can leave its cluster-scoped CRDs, webhooks, and RBAC behind
-	// with that owner's labels, and a full install here then fails at the
-	// Helm ownership check ("managed-by must equal Helm") — delete the
-	// leftovers first; nothing here adopts them.
-	InstallOperator *bool `protobuf:"varint,18,opt,name=install_operator,json=installOperator,proto3,oneof" json:"install_operator,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	HelmValues    string `protobuf:"bytes,16,opt,name=helm_values,json=helmValues,proto3" json:"helm_values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesCloudNativePgOperatorSpec) Reset() {
@@ -271,13 +246,6 @@ func (x *KubernetesCloudNativePgOperatorSpec) GetMaxConcurrentReconciles() int32
 	return 0
 }
 
-func (x *KubernetesCloudNativePgOperatorSpec) GetBarmanCloudPlugin() *KubernetesCloudNativePgOperatorBarmanPlugin {
-	if x != nil {
-		return x.BarmanCloudPlugin
-	}
-	return nil
-}
-
 func (x *KubernetesCloudNativePgOperatorSpec) GetMonitoring() *KubernetesCloudNativePgOperatorMonitoring {
 	if x != nil {
 		return x.Monitoring
@@ -325,13 +293,6 @@ func (x *KubernetesCloudNativePgOperatorSpec) GetHelmValues() string {
 		return x.HelmValues
 	}
 	return ""
-}
-
-func (x *KubernetesCloudNativePgOperatorSpec) GetInstallOperator() bool {
-	if x != nil && x.InstallOperator != nil {
-		return *x.InstallOperator
-	}
-	return false
 }
 
 // *
@@ -448,81 +409,6 @@ func (x *KubernetesCloudNativePgOperatorWatch) GetNamespaces() []string {
 }
 
 // *
-// The Barman Cloud CNPG-I plugin: object-store backups (WAL archiving,
-// base backups, restores) for the clusters this operator manages.
-type KubernetesCloudNativePgOperatorBarmanPlugin struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// *
-	// Deploy the plugin. REQUIRES cert-manager on the cluster
-	// (KubernetesCertManager): the plugin's operator↔sidecar TLS
-	// certificates are cert-manager Certificates, and the install fails
-	// without it. Without the plugin, KubernetesPostgres backup blocks
-	// cannot function.
-	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// *
-	// Plugin chart version to install (e.g. "0.7.0", which ships plugin
-	// v0.13.0). Pin deliberately.
-	ChartVersion *string `protobuf:"bytes,2,opt,name=chart_version,json=chartVersion,proto3,oneof" json:"chart_version,omitempty"`
-	// *
-	// Plugin container resources. Empty = no requests/limits (the chart
-	// ships none by default).
-	Resources     *kubernetes.ContainerResources `protobuf:"bytes,3,opt,name=resources,proto3" json:"resources,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KubernetesCloudNativePgOperatorBarmanPlugin) Reset() {
-	*x = KubernetesCloudNativePgOperatorBarmanPlugin{}
-	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KubernetesCloudNativePgOperatorBarmanPlugin) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KubernetesCloudNativePgOperatorBarmanPlugin) ProtoMessage() {}
-
-func (x *KubernetesCloudNativePgOperatorBarmanPlugin) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KubernetesCloudNativePgOperatorBarmanPlugin.ProtoReflect.Descriptor instead.
-func (*KubernetesCloudNativePgOperatorBarmanPlugin) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *KubernetesCloudNativePgOperatorBarmanPlugin) GetEnabled() bool {
-	if x != nil {
-		return x.Enabled
-	}
-	return false
-}
-
-func (x *KubernetesCloudNativePgOperatorBarmanPlugin) GetChartVersion() string {
-	if x != nil && x.ChartVersion != nil {
-		return *x.ChartVersion
-	}
-	return ""
-}
-
-func (x *KubernetesCloudNativePgOperatorBarmanPlugin) GetResources() *kubernetes.ContainerResources {
-	if x != nil {
-		return x.Resources
-	}
-	return nil
-}
-
-// *
 // Operator telemetry.
 type KubernetesCloudNativePgOperatorMonitoring struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -541,7 +427,7 @@ type KubernetesCloudNativePgOperatorMonitoring struct {
 
 func (x *KubernetesCloudNativePgOperatorMonitoring) Reset() {
 	*x = KubernetesCloudNativePgOperatorMonitoring{}
-	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[4]
+	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -553,7 +439,7 @@ func (x *KubernetesCloudNativePgOperatorMonitoring) String() string {
 func (*KubernetesCloudNativePgOperatorMonitoring) ProtoMessage() {}
 
 func (x *KubernetesCloudNativePgOperatorMonitoring) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[4]
+	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -566,7 +452,7 @@ func (x *KubernetesCloudNativePgOperatorMonitoring) ProtoReflect() protoreflect.
 
 // Deprecated: Use KubernetesCloudNativePgOperatorMonitoring.ProtoReflect.Descriptor instead.
 func (*KubernetesCloudNativePgOperatorMonitoring) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDescGZIP(), []int{4}
+	return file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *KubernetesCloudNativePgOperatorMonitoring) GetPodMonitorEnabled() bool {
@@ -599,7 +485,7 @@ type KubernetesCloudNativePgOperatorImage struct {
 
 func (x *KubernetesCloudNativePgOperatorImage) Reset() {
 	*x = KubernetesCloudNativePgOperatorImage{}
-	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[5]
+	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -611,7 +497,7 @@ func (x *KubernetesCloudNativePgOperatorImage) String() string {
 func (*KubernetesCloudNativePgOperatorImage) ProtoMessage() {}
 
 func (x *KubernetesCloudNativePgOperatorImage) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[5]
+	mi := &file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -624,7 +510,7 @@ func (x *KubernetesCloudNativePgOperatorImage) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use KubernetesCloudNativePgOperatorImage.ProtoReflect.Descriptor instead.
 func (*KubernetesCloudNativePgOperatorImage) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDescGZIP(), []int{5}
+	return file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *KubernetesCloudNativePgOperatorImage) GetRepository() string {
@@ -645,7 +531,7 @@ var File_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto 
 
 const file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"Fcatalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/spec.proto\x12?dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a#catalog/kubernetes/kubernetes.proto\x1a%catalog/kubernetes/workload_pod.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xca\x18\n" +
+	"Fcatalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/spec.proto\x12?dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a#catalog/kubernetes/kubernetes.proto\x1a%catalog/kubernetes/workload_pod.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xd8\r\n" +
 	"#KubernetesCloudNativePgOperatorSpec\x12j\n" +
 	"\tnamespace\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x18\xbaH\x03\xc8\x01\x01\x88\xd4a\xa0\x1f\x92\xd4a\tspec.nameR\tnamespace\x12)\n" +
 	"\x10create_namespace\x18\x02 \x01(\bR\x0fcreateNamespace\x124\n" +
@@ -656,32 +542,27 @@ const file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_prot
 	"\tresources\x18\x06 \x01(\v2*.dev.planton.kubernetes.ContainerResourcesR\tresources\x12{\n" +
 	"\x05watch\x18\a \x01(\v2e.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorWatchR\x05watch\x12\xa1\x01\n" +
 	"\x0foperator_config\x18\b \x03(\v2x.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.OperatorConfigEntryR\x0eoperatorConfig\x12N\n" +
-	"\x19max_concurrent_reconciles\x18\t \x01(\x05B\r\xbaH\x04\x1a\x02(\x01\x8a\xa6\x1d\x0210H\x02R\x17maxConcurrentReconciles\x88\x01\x01\x12\x9c\x01\n" +
-	"\x13barman_cloud_plugin\x18\n" +
-	" \x01(\v2l.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorBarmanPluginR\x11barmanCloudPlugin\x12\x8a\x01\n" +
+	"\x19max_concurrent_reconciles\x18\t \x01(\x05B\r\xbaH\x04\x1a\x02(\x01\x8a\xa6\x1d\x0210H\x02R\x17maxConcurrentReconciles\x88\x01\x01\x12\x8a\x01\n" +
 	"\n" +
-	"monitoring\x18\v \x01(\v2j.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorMonitoringR\n" +
+	"monitoring\x18\n" +
+	" \x01(\v2j.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorMonitoringR\n" +
 	"monitoring\x12.\n" +
-	"\x13priority_class_name\x18\f \x01(\tR\x11priorityClassName\x12\x9b\x01\n" +
-	"\rnode_selector\x18\r \x03(\v2v.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.NodeSelectorEntryR\fnodeSelector\x12L\n" +
-	"\vtolerations\x18\x0e \x03(\v2*.dev.planton.kubernetes.WorkloadTolerationR\vtolerations\x12x\n" +
-	"\x12image_pull_secrets\x18\x0f \x03(\tBJ\xaa\xa6\x1dFNames of existing Kubernetes Secrets (references), not secret materialR\x10imagePullSecrets\x12{\n" +
-	"\x05image\x18\x10 \x01(\v2e.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImageR\x05image\x12\x1f\n" +
-	"\vhelm_values\x18\x11 \x01(\tR\n" +
-	"helmValues\x128\n" +
-	"\x10install_operator\x18\x12 \x01(\bB\b\x8a\xa6\x1d\x04trueH\x03R\x0finstallOperator\x88\x01\x01\x1aA\n" +
+	"\x13priority_class_name\x18\v \x01(\tR\x11priorityClassName\x12\x9b\x01\n" +
+	"\rnode_selector\x18\f \x03(\v2v.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.NodeSelectorEntryR\fnodeSelector\x12L\n" +
+	"\vtolerations\x18\r \x03(\v2*.dev.planton.kubernetes.WorkloadTolerationR\vtolerations\x12x\n" +
+	"\x12image_pull_secrets\x18\x0e \x03(\tBJ\xaa\xa6\x1dFNames of existing Kubernetes Secrets (references), not secret materialR\x10imagePullSecrets\x12{\n" +
+	"\x05image\x18\x0f \x01(\v2e.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImageR\x05image\x12\x1f\n" +
+	"\vhelm_values\x18\x10 \x01(\tR\n" +
+	"helmValues\x1aA\n" +
 	"\x13OperatorConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\x81\t\xbaH\xfd\b\x1a\x8b\x03\n" +
-	" spec.plugin_only_requires_plugin\x12\xdd\x01install_operator false means this resource manages only the Barman Cloud plugin beside a CloudNativePG that is already on the cluster — enable barman_cloud_plugin, or drop install_operator to install the operator itself\x1a\x86\x01!(has(this.install_operator) && this.install_operator == false) || (has(this.barman_cloud_plugin) && this.barman_cloud_plugin.enabled)\x1a\xec\x05\n" +
-	"#spec.plugin_only_no_operator_config\x12\xcb\x02with install_operator false the operator release is not managed here, so operator-shaping fields are dead configuration — remove crds, resources, watch, operator_config, monitoring, priority_class_name, node_selector, tolerations, image_pull_secrets, image, and helm_values (the plugin's own knobs live under barman_cloud_plugin)\x1a\xf6\x02!(has(this.install_operator) && this.install_operator == false) || (!has(this.crds) && !has(this.resources) && !has(this.watch) && this.operator_config.size() == 0 && !has(this.monitoring) && this.priority_class_name == '' && this.node_selector.size() == 0 && this.tolerations.size() == 0 && this.image_pull_secrets.size() == 0 && !has(this.image) && this.helm_values == '')B\x10\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x10\n" +
 	"\x0e_chart_versionB\v\n" +
 	"\t_replicasB\x1c\n" +
-	"\x1a_max_concurrent_reconcilesB\x13\n" +
-	"\x11_install_operator\"Z\n" +
+	"\x1a_max_concurrent_reconciles\"Z\n" +
 	"#KubernetesCloudNativePgOperatorCrds\x12'\n" +
 	"\ainstall\x18\x01 \x01(\bB\b\x8a\xa6\x1d\x04trueH\x00R\ainstall\x88\x01\x01B\n" +
 	"\n" +
@@ -693,12 +574,7 @@ const file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_prot
 	"namespaces:\xe6\x03\xbaH\xe2\x03\x1a\x86\x02\n" +
 	"$spec.watch.namespaces_require_fenced\x12\x86\x01watch namespaces only apply when cluster_wide is explicitly false — a cluster-wide operator (the default) already watches everything\x1aU(has(this.cluster_wide) && this.cluster_wide == false) || this.namespaces.size() == 0\x1a\xd6\x01\n" +
 	"%spec.watch.fenced_requires_namespaces\x12Va namespace-fenced operator (cluster_wide false) needs at least one namespace to watch\x1aU!(has(this.cluster_wide) && this.cluster_wide == false) || this.namespaces.size() > 0B\x0f\n" +
-	"\r_cluster_wide\"\xd8\x01\n" +
-	"+KubernetesCloudNativePgOperatorBarmanPlugin\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\x123\n" +
-	"\rchart_version\x18\x02 \x01(\tB\t\x8a\xa6\x1d\x050.7.0H\x00R\fchartVersion\x88\x01\x01\x12H\n" +
-	"\tresources\x18\x03 \x01(\v2*.dev.planton.kubernetes.ContainerResourcesR\tresourcesB\x10\n" +
-	"\x0e_chart_version\"\x88\x01\n" +
+	"\r_cluster_wide\"\x88\x01\n" +
 	")KubernetesCloudNativePgOperatorMonitoring\x12.\n" +
 	"\x13pod_monitor_enabled\x18\x01 \x01(\bR\x11podMonitorEnabled\x12+\n" +
 	"\x11grafana_dashboard\x18\x02 \x01(\bR\x10grafanaDashboard\"X\n" +
@@ -721,37 +597,34 @@ func file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto
 	return file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDescData
 }
 
-var file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_goTypes = []any{
-	(*KubernetesCloudNativePgOperatorSpec)(nil),         // 0: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec
-	(*KubernetesCloudNativePgOperatorCrds)(nil),         // 1: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorCrds
-	(*KubernetesCloudNativePgOperatorWatch)(nil),        // 2: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorWatch
-	(*KubernetesCloudNativePgOperatorBarmanPlugin)(nil), // 3: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorBarmanPlugin
-	(*KubernetesCloudNativePgOperatorMonitoring)(nil),   // 4: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorMonitoring
-	(*KubernetesCloudNativePgOperatorImage)(nil),        // 5: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImage
-	nil,                                   // 6: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.OperatorConfigEntry
-	nil,                                   // 7: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.NodeSelectorEntry
-	(*v1.StringValueOrRef)(nil),           // 8: dev.planton.shared.foreignkey.v1.StringValueOrRef
-	(*kubernetes.ContainerResources)(nil), // 9: dev.planton.kubernetes.ContainerResources
-	(*kubernetes.WorkloadToleration)(nil), // 10: dev.planton.kubernetes.WorkloadToleration
+	(*KubernetesCloudNativePgOperatorSpec)(nil),       // 0: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec
+	(*KubernetesCloudNativePgOperatorCrds)(nil),       // 1: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorCrds
+	(*KubernetesCloudNativePgOperatorWatch)(nil),      // 2: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorWatch
+	(*KubernetesCloudNativePgOperatorMonitoring)(nil), // 3: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorMonitoring
+	(*KubernetesCloudNativePgOperatorImage)(nil),      // 4: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImage
+	nil,                                   // 5: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.OperatorConfigEntry
+	nil,                                   // 6: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.NodeSelectorEntry
+	(*v1.StringValueOrRef)(nil),           // 7: dev.planton.shared.foreignkey.v1.StringValueOrRef
+	(*kubernetes.ContainerResources)(nil), // 8: dev.planton.kubernetes.ContainerResources
+	(*kubernetes.WorkloadToleration)(nil), // 9: dev.planton.kubernetes.WorkloadToleration
 }
 var file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_depIdxs = []int32{
-	8,  // 0: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
-	1,  // 1: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.crds:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorCrds
-	9,  // 2: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.resources:type_name -> dev.planton.kubernetes.ContainerResources
-	2,  // 3: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.watch:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorWatch
-	6,  // 4: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.operator_config:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.OperatorConfigEntry
-	3,  // 5: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.barman_cloud_plugin:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorBarmanPlugin
-	4,  // 6: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.monitoring:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorMonitoring
-	7,  // 7: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.node_selector:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.NodeSelectorEntry
-	10, // 8: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.tolerations:type_name -> dev.planton.kubernetes.WorkloadToleration
-	5,  // 9: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.image:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImage
-	9,  // 10: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorBarmanPlugin.resources:type_name -> dev.planton.kubernetes.ContainerResources
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	7, // 0: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	1, // 1: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.crds:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorCrds
+	8, // 2: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.resources:type_name -> dev.planton.kubernetes.ContainerResources
+	2, // 3: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.watch:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorWatch
+	5, // 4: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.operator_config:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.OperatorConfigEntry
+	3, // 5: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.monitoring:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorMonitoring
+	6, // 6: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.node_selector:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.NodeSelectorEntry
+	9, // 7: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.tolerations:type_name -> dev.planton.kubernetes.WorkloadToleration
+	4, // 8: dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorSpec.image:type_name -> dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1.KubernetesCloudNativePgOperatorImage
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_init() }
@@ -762,14 +635,13 @@ func file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto
 	file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[0].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[1].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[2].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDesc), len(file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_spec_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

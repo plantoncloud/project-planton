@@ -20,30 +20,15 @@ type Locals struct {
 	// Helm owns those).
 	Labels map[string]string
 
-	// Namespace the operator (and the plugin, when enabled) installs into
-	// (resolved literal from the spec's value-or-ref; "cnpg-system" is
-	// the upstream convention).
+	// Namespace the operator installs into (resolved literal from the
+	// spec's value-or-ref; "cnpg-system" is the upstream convention). The
+	// Barman Cloud plugin kind installs into this same namespace.
 	Namespace string
 
 	// Operator chart version resolved to the pinned default when unset,
 	// so both engines install the same chart whether or not the
 	// platform's defaulting middleware ran.
 	ChartVersion string
-
-	// Barman Cloud plugin arm resolved once here so the release wiring in
-	// main.go and the outputs agree on whether the plugin release exists.
-	// The plugin chart versions INDEPENDENTLY of the operator chart —
-	// each release carries its own pin.
-	BarmanPluginEnabled      bool
-	BarmanPluginChartVersion string
-
-	// InstallOperator is false in the plugin-only posture: a CloudNativePG
-	// already runs on the cluster (the Planton operator's, a Helm or GitOps
-	// install), so this resource renders no operator release and manages
-	// only the plugin beside it. Resolved to the spec's default (true)
-	// when unset, so both engines agree whether or not the platform's
-	// defaulting middleware ran.
-	InstallOperator bool
 }
 
 // initializeLocals extracts and transforms spec fields into module-local
@@ -72,24 +57,10 @@ func initializeLocals(_ *pulumi.Context, stackInput *kubernetescloudnativepgoper
 		chartVersion = vars.DefaultChartVersion
 	}
 
-	pluginEnabled := spec.GetBarmanCloudPlugin().GetEnabled()
-	pluginChartVersion := spec.GetBarmanCloudPlugin().GetChartVersion()
-	if pluginChartVersion == "" {
-		pluginChartVersion = vars.DefaultPluginChartVersion
-	}
-
-	installOperator := true
-	if spec.InstallOperator != nil {
-		installOperator = *spec.InstallOperator
-	}
-
 	return &Locals{
-		Spec:                     spec,
-		Labels:                   labels,
-		Namespace:                spec.Namespace.GetValue(),
-		ChartVersion:             chartVersion,
-		BarmanPluginEnabled:      pluginEnabled,
-		BarmanPluginChartVersion: pluginChartVersion,
-		InstallOperator:          installOperator,
+		Spec:         spec,
+		Labels:       labels,
+		Namespace:    spec.Namespace.GetValue(),
+		ChartVersion: chartVersion,
 	}
 }

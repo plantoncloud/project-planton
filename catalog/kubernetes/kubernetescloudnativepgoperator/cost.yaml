@@ -14,11 +14,9 @@ spec:
     - field_path: resources
       sku_meter: cluster CPU and memory reservations
       impact: The CPU and memory requests are what the scheduler reserves per operator replica. The chart ships no default requests or limits -- empty means the operator schedules unbounded.
-    - field_path: barman_cloud_plugin
-      sku_meter: cluster CPU and memory reservations
-      impact: When enabled, the Barman Cloud plugin runs as its own Deployment beside the operator with its own resources block -- a second standing reservation. The object-store bytes its backups write are declared and accounted on each KubernetesPostgres resource, not here.
   estimate_exclusions:
     - the price of reserved CPU and memory is the target cluster's node economics, which this catalog cannot know
     - "the PostgreSQL clusters this operator reconciles reserve their own capacity -- each rides its KubernetesPostgres resource, never this footprint"
-    - the helm_values overlay (operator chart only) merges last and can override the modeled values, including resources
-  notes: "This component installs the ENGINE, not the databases: its footprint is the operator pod(s) plus the Barman Cloud plugin pod when enabled. Everything the operator manages -- Cluster resources, their instances, volumes, and backups -- is declared through KubernetesPostgres resources, which carry their own capacity footprints."
+    - the helm_values overlay merges last and can override the modeled values, including resources
+    - "the Barman Cloud backup plugin is its own resource (KubernetesCnpgBarmanCloudPlugin) with its own footprint"
+  notes: "This component installs the ENGINE, not the databases: its footprint is the operator pod(s). Everything the operator manages -- Cluster resources, their instances, volumes, and backups -- is declared through KubernetesPostgres resources, which carry their own capacity footprints."

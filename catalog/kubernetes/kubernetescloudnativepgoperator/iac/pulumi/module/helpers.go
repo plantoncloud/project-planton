@@ -5,8 +5,8 @@ import (
 )
 
 // resourcesMap renders the shared ContainerResources message into the
-// charts' resources shape (both charts use the standard Kubernetes
-// limits/requests layout). Returns nil when nothing is set.
+// chart's resources shape (the standard Kubernetes limits/requests
+// layout). Returns nil when nothing is set.
 func resourcesMap(r *kubernetesprovider.ContainerResources) map[string]interface{} {
 	if r == nil {
 		return nil

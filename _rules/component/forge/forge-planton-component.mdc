@@ -716,13 +716,17 @@ EKS batch carried its own load-balancer controller — and the singleton kinds
 forbid a second copy. Two scenario annotations declare the fit, both per
 scenario: `planton.dev/e2e-prerequisite-install-manifest: "Kind=path"`
 SUBSTITUTES the kind's install profile (the manifest takes the kind's slot in
-the chain — how the Postgres GKE lane installs the operator kind in its
-plugin-only posture beside the resident CloudNativePG, the very shape under
-test), and `planton.dev/e2e-resident-prerequisites: "Kind"` prunes a kind the
-cluster already has (refused on scenarios not pinned to a real-cluster
-profile — nothing is resident on a harness-owned cluster). A manifest-path
+the chain — for a prerequisite that must arrive in a shape its consumer-wide
+profile does not describe on THIS cluster), and
+`planton.dev/e2e-resident-prerequisites: "Kind"` prunes a kind the cluster
+already has (refused on scenarios not pinned to a real-cluster profile —
+nothing is resident on a harness-owned cluster; the Postgres GKE recovery
+lane declares CloudNativePG and cert-manager resident and adds only the
+backup-plugin kind beside them, the very shape under test). A manifest-path
 entry in `e2e-prerequisites` can never do either: it only ever ADDS an
-instance. Real clusters also add TIME: an instance whose anti-affinity makes
+instance. Prefer declaring the resident and adding the missing sibling kind
+over substituting a posture-flipped profile: a kind whose install profile
+needs a boolean to become "only the part the cluster lacks" is two kinds. Real clusters also add TIME: an instance whose anti-affinity makes
 the autoscaler add a node pays node provisioning plus a cold image pull
 (live-measured ~4 minutes per instance on GKE) — size verifier readiness
 windows for the topology on fresh nodes, not one pod on a warm kind node.

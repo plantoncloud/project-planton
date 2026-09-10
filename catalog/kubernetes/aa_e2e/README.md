@@ -41,6 +41,7 @@ metadata:
 | (absent) | the default shared cluster | everything else |
 | `cilium-cni` | `<base>-cilium`, single-node, `disableDefaultCNI: true` | Cilium-as-primary-CNI lanes; NetworkPolicy behavioral enforcement |
 | `aws-eks` | REAL cluster (no local constructor) — batch-provisioned EKS via `realcluster/aws-eks/` | Cloud-LB provisioning, IRSA identity hops, snapshot-capable CSI storage, real node autoscaling |
+| `gcp-gke` | REAL cluster (no local constructor) — an existing GKE cluster with Workload Identity; the GCP side (identities, bindings, bucket) created from the catalog via `realcluster/gcp-gke/` | Keyless GCS backups and restores through Workload Identity, multi-node HA under real anti-affinity, lanes beside resident operators |
 
 Mechanics, all verified against the framework's own contracts:
 
@@ -63,8 +64,16 @@ Mechanics, all verified against the framework's own contracts:
   what a scenario would DO to a cluster as much as what it needs from it,
   and running an unmatched profile on a shared real cluster can destroy it
   for every later lane (installing a primary CNI on a live EKS cluster, for
-  example). Real-cluster profiles (`aws-eks`) have no local constructor and
-  skip with the reason on local runs.
+  example). Real-cluster profiles (`aws-eks`, `gcp-gke`) have no local
+  constructor and skip with the reason on local runs.
+- Real clusters carry RESIDENTS (the GKE management cluster runs
+  cert-manager and CloudNativePG installed by another hand), and the
+  singleton kinds forbid a second copy. Two per-scenario annotations declare
+  the fit, documented in full in `e2e/README.md`:
+  `planton.dev/e2e-resident-prerequisites: "Kind, ..."` prunes kinds the
+  cluster already has (refused on scenarios not pinned to a real-cluster
+  profile), and `planton.dev/e2e-prerequisite-install-manifest: "Kind=path"`
+  substitutes a prerequisite's install profile for this lane only.
 - Component profiles whose EVERY lane needs a real cluster carry the
   `real_cluster` status in `e2e/profile.yaml` (the Karpenter family): the
   entrypoints skip them wherever no external cluster is supplied, and the

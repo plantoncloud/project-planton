@@ -17,12 +17,15 @@ is the general mechanism).
 
 Two couplings to get right:
 
-- **Backups couple to the operator's configuration.** Declaring
-  `spec.backup` here requires the operator component installed with
-  `barmanCloudPlugin.enabled` — the backup objects this spec renders are
-  reconciled by that plugin. A backup declared on the database with a
-  plugin-less operator is silently inert infrastructure (the operator's
-  guide carries the plugin side).
+- **Backups couple to the plugin beside the operator.** Declaring
+  `spec.backup` (or an object-store `bootstrap.recovery`) here renders the
+  Barman Cloud plugin into the Cluster, so
+  [KubernetesCnpgBarmanCloudPlugin](../kubernetescnpgbarmancloudplugin/GUIDE.md)
+  must be on the cluster, in the operator's namespace. Without it the
+  operator parks the Cluster in the phase "Cluster cannot proceed to
+  reconciliation due to an unknown plugin being required" and never
+  creates its instances — loud in `kubectl get cluster`, invisible to an
+  apply waiting on Ready (the plugin's guide carries the install side).
 - **One operator per cluster, many databases.** The operator is
   cluster-scoped; compose it once (typically in the shared-cluster chart),
   then any number of KubernetesPostgres resources in application
@@ -54,7 +57,7 @@ carrying rows written both before and after the base backup.
 | 1 | `GcpServiceAccount` (e.g. `pg-backup`) | The identity the instance pods assume — KEYLESS, no key created | — |
 | 2 | `GcpGcsBucket` | The archive: WAL + base backups | `iam_members`: **two** roles for the identity — `roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader` (Barman checks the bucket with `storage.buckets.get` before every archive; objectAdmin alone fails with "does not have storage.buckets.get access") — `member` by reference to #1's `status.outputs.member` |
 | 3 | `GcpGkeWorkloadIdentityBinding` | Lets the cluster's KSA act as #1 | `ksa_namespace` = the database's namespace, `ksa_name` = the database's `metadata.name` (CloudNativePG names the ServiceAccount after the Cluster); `service_account_email` by reference to #1 |
-| 4 | `KubernetesCloudNativePgOperator` | The engine + the Barman Cloud plugin | `barman_cloud_plugin.enabled: true`; on a cluster that ALREADY runs CloudNativePG (Planton self-hosted installs one), `install_operator: false` adds only the plugin beside it |
+| 4 | `KubernetesCnpgBarmanCloudPlugin` | The backup engine, beside the operator | `namespace` = the operator's (by reference to a `KubernetesCloudNativePgOperator` resource, or the literal namespace of a CloudNativePG that ALREADY runs on the cluster — a self-hosted platform installs one); cert-manager resident or declared |
 | 5 | `KubernetesPostgres` (the production database) | HA + backups | `instances: 3`, `scheduling.anti_affinity_type: required`, `workload_identity.gke.service_account_email` by reference to #1, `backup.object_store` at `gs://<bucket>/<path>` with `gcs.keyless: true`, a schedule with `immediate: true`, `retention_policy` |
 | 6 | `KubernetesPostgres` (the recovery target, on the bad day) | Restore | `bootstrap.recovery.object_store` = #5's store, `source_server_name` = #5's name, `database`/`owner` = #5's initdb values, `owner_secret_name` = #5's `<name>-app` Secret; its own `workload_identity` (and its own #3 binding — the KSA is named after IT); its own `backup` at a DIFFERENT path |
 
@@ -72,8 +75,9 @@ Two rules the set stands on:
 
 The validated manifests for this set are the `gcp-gke` lane's own:
 `e2e/fixture-gke-source.yaml` (#5), `e2e/scenarios/gke-gcs-recovery.yaml`
-(#6), the operator's plugin-only profile under `e2e/prerequisites/`, and the
-GCP side under `../aa_e2e/realcluster/gcp-gke/manifests/` (#1–#3). The
+(#6), the plugin kind's install profile (#4, declared on the scenario as a
+prerequisite beside the resident operator), and the GCP side under
+`../aa_e2e/realcluster/gcp-gke/manifests/` (#1–#3). The
 `04-gke-ha-gcs-backups` preset is #5 as a starting point.
 
 ## On the diagram

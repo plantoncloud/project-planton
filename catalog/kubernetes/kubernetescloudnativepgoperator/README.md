@@ -31,13 +31,15 @@ streaming replication, automated failover with a safe primary election,
 rolling updates, declarative roles and storage, and plugin-based
 backups.
 
-Backups are PLUGIN-BASED: CloudNativePG delegates object-store backups
-to the Barman Cloud plugin (its built-in object-store support is
-deprecated upstream and scheduled for removal). Enable
-`barman_cloud_plugin` here to install the plugin alongside the operator;
-KubernetesPostgres backup blocks then declare WHERE backups land. The
-plugin's internal TLS is issued by cert-manager, so the plugin arm
-requires cert-manager on the cluster (KubernetesCertManager).
+Backups are a SEPARATE BLOCK: CloudNativePG delegates object-store
+backups to the Barman Cloud plugin (its built-in object-store support is
+deprecated upstream and scheduled for removal), and the plugin is its own
+chart, pin, and dependency set. The catalog installs it with its own kind
+-- [KubernetesCnpgBarmanCloudPlugin](../kubernetescnpgbarmancloudplugin/)
+-- declared in THIS operator's namespace (reference this resource's
+`namespace` output). KubernetesPostgres backup blocks then declare WHERE
+backups land. A backup-declaring database on a cluster without the plugin
+never reconciles: the operator parks it in an unknown-plugin phase.
 
 The typed spec covers the chart's meaningful configuration surface, with
 a `helm_values` escape hatch (merged last, Helm `-f` semantics,
@@ -45,13 +47,13 @@ identical on both engines) for anything beyond it.
 
 **Key design points:**
 
-- **Up to TWO real Helm releases in one namespace** — the operator
-  release (`cnpg`) and, when the plugin arm is enabled, the plugin
-  release (`plugin-barman-cloud`, its own fixed name: the plugin's gRPC
-  service name is baked into its TLS certificate). Upstream forbids
-  folding the plugin into the operator's release — the two would fight
-  over shared resource ownership — so the module installs it as a
-  separate release, after the operator, from the same chart repository.
+- **One release, one kind** — the operator release (`cnpg`) is all this
+  component renders. The Barman Cloud plugin is a separate release in
+  the same namespace (upstream forbids folding it into the operator's
+  release — the two would fight over shared resource ownership) and a
+  separate kind in the catalog, so "install the operator" and "add
+  backups to the cluster" are declared, upgraded, and destroyed
+  independently.
 - **Databases survive uninstall by construction** — the chart stamps
   `helm.sh/resource-policy: keep` on every CRD unconditionally, so
   uninstalling the release never cascade-deletes the Cluster resources
@@ -63,10 +65,9 @@ identical on both engines) for anything beyond it.
   (`max_concurrent_reconciles` is the throughput knob).
 - **The install waits for real readiness** — both engines install
   atomically (600s timeout) with cleanup on fail: a PodMonitor rendered
-  without the Prometheus operator CRDs, or the plugin installed without
-  cert-manager, fails THIS deploy with a clear rollback instead of
-  surfacing later as Cluster resources that mysteriously never
-  reconcile.
+  without the Prometheus operator CRDs fails THIS deploy with a clear
+  rollback instead of surfacing later as Cluster resources that
+  mysteriously never reconcile.
 
 ## Essential Configuration Fields
 
@@ -99,11 +100,6 @@ identical on both engines) for anything beyond it.
 - **`spec.max_concurrent_reconciles`**: Cluster resources reconciled
   concurrently (chart default 10) — raise on control planes managing
   many databases
-- **`spec.barman_cloud_plugin`**: `enabled` (REQUIRES cert-manager on
-  the cluster — the plugin's operator↔sidecar TLS certificates are
-  cert-manager Certificates), `chart_version` (default `0.7.0`, which
-  ships plugin v0.13.0 — the plugin chart versions independently of the
-  operator chart), `resources`
 - **`spec.monitoring`**: `pod_monitor_enabled` (the operator's OWN
   reconcile-loop metrics; requires the Prometheus operator CRDs — the
   release fails to install without them) and `grafana_dashboard` (the
@@ -115,20 +111,16 @@ identical on both engines) for anything beyond it.
   for registry mirrors and air-gapped clusters (empty = the chart
   default, ghcr.io/cloudnative-pg/cloudnative-pg at the chart's app
   version)
-- **`spec.helm_values`**: escape hatch for operator-chart values beyond
-  the typed fields (webhook tuning, update strategy, security contexts,
-  topology spread, host network, ...) — never the primary interface. It
-  scopes to the OPERATOR chart only; the plugin release renders from its
-  own typed fields and chart defaults.
-- **`spec.install_operator`**: default true. `false` = the plugin-only
-  posture for a cluster that ALREADY runs CloudNativePG (a self-hosted
-  Planton installs one; check with `kubectl get deploy -A -l
-  app.kubernetes.io/name=cloudnative-pg`): only the Barman Cloud plugin
-  installs, beside the resident operator, `barman_cloud_plugin.enabled`
-  becomes required, the operator-shaping fields must stay unset, and
-  destroy leaves the resident operator running (live-proven on GKE). See
-  [GUIDE.md](GUIDE.md) for the leftover-CRD trap a non-Helm uninstall
-  leaves behind.
+- **`spec.helm_values`**: escape hatch for chart values beyond the typed
+  fields (webhook tuning, update strategy, security contexts, topology
+  spread, host network, ...) — never the primary interface.
+
+A cluster that ALREADY runs CloudNativePG (a self-hosted platform
+operator installs one; check with `kubectl get deploy -A -l
+app.kubernetes.io/name=cloudnative-pg`) cannot take a second copy —
+declare only what it is missing, usually the plugin kind. See
+[GUIDE.md](GUIDE.md) for the leftover-CRD trap a non-Helm uninstall
+leaves behind.
 
 ## Environment Injection
 
@@ -136,21 +128,20 @@ The operator itself carries NO cloud identity: backups authenticate as
 the DATABASE pods, so the keyless posture (EKS IRSA / GKE Workload
 Identity / AKS Workload Identity) is declared per KubernetesPostgres —
 its `workload_identity` field annotates each cluster's own
-ServiceAccount. What this component contributes per environment is the
-plugin arm's prerequisite:
+ServiceAccount. This component is identical on every environment
+Kubernetes runs in.
 
-| Environment | This component | Where backup identity lives |
+| Environment | This component | Where backups live |
 |---|---|---|
 | Any cluster, no backups | operator release only | — |
-| Any cluster, object-store backups | operator + `barman_cloud_plugin.enabled` (cert-manager required) | `KubernetesPostgres.spec.workload_identity` + the backup block's keyless arm, per database |
+| Any cluster, object-store backups | operator release + a KubernetesCnpgBarmanCloudPlugin in its namespace (cert-manager required by the plugin) | `KubernetesPostgres.spec.backup` + `workload_identity`, per database |
 
 ## Stack Outputs
 
 | Output | Purpose |
 |---|---|
-| `namespace` | Namespace the operator (and the plugin, when enabled) runs in |
-| `release_name` | Helm release name of the operator (always `cnpg`; empty in the plugin-only posture, where the operator is someone else's) |
-| `barman_plugin_release_name` | Helm release name of the Barman Cloud plugin when enabled; empty otherwise — KubernetesPostgres backup blocks depend on this plugin being present |
+| `namespace` | Namespace the operator runs in — the plugin kind's `namespace` references it |
+| `release_name` | Helm release name of the operator (always `cnpg`) |
 
 ## Composing in Infra Charts
 
@@ -159,10 +150,11 @@ plugin arm's prerequisite:
 - **KubernetesPostgres resources need no reference to this component** —
   they compose against the CRDs it installs; deploy the operator first,
   the databases after.
-- **The plugin arm chains cert-manager**: an infra chart deploying
-  KubernetesCertManager → this component (plugin enabled) →
-  KubernetesPostgres (with backups) lands the whole story in dependency
-  order.
+- **Backups are a chain of three**: an infra chart deploying
+  KubernetesCertManager → this component → KubernetesCnpgBarmanCloudPlugin
+  (its `namespace` referencing this resource) → KubernetesPostgres (with
+  a backup block) lands the whole story in dependency order; the
+  plugin's reference onto this resource IS the ordering edge.
 
 ## Examples
 
@@ -179,22 +171,7 @@ spec:
   create_namespace: true
 ```
 
-### Plugin only, beside a CloudNativePG that is already on the cluster
-
-```yaml
-apiVersion: kubernetes.planton.dev/v1alpha1
-kind: KubernetesCloudNativePgOperator
-metadata:
-  name: cnpg-plugin
-spec:
-  namespace:
-    value: cnpg-system # the resident operator's namespace
-  install_operator: false
-  barman_cloud_plugin:
-    enabled: true
-```
-
-### Backup-capable (Barman Cloud plugin; cert-manager on the cluster)
+### Backup-capable (the plugin kind beside it; cert-manager on the cluster)
 
 ```yaml
 apiVersion: kubernetes.planton.dev/v1alpha1
@@ -205,8 +182,15 @@ spec:
   namespace:
     value: cnpg-system
   create_namespace: true
-  barman_cloud_plugin:
-    enabled: true # requires cert-manager (KubernetesCertManager)
+---
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: cnpg-barman-plugin
+spec:
+  namespace:
+    valueFrom:
+      name: cnpg # the operator's namespace output -- the plugin MUST live there
 ```
 
 ### Production posture (standbys, resources, telemetry, scheduling)
@@ -229,8 +213,6 @@ spec:
       cpu: "1"
       memory: 512Mi
   max_concurrent_reconciles: 20
-  barman_cloud_plugin:
-    enabled: true
   monitoring:
     pod_monitor_enabled: true # requires the Prometheus operator CRDs
     grafana_dashboard: true

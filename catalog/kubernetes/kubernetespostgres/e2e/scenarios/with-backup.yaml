@@ -1,17 +1,19 @@
 # The backup proof: WAL archiving plus an immediate base backup into the
 # in-cluster MinIO fixture, through the Barman Cloud plugin — the full
 # plugin-era backup chain (ObjectStore + Cluster plugin wiring +
-# ScheduledBackup) proven live with no cloud account. The verifier
-# (switched on by this scenario's name) waits for the immediate schedule's
-# Backup to reach Completed. Declared credentials (owner password, a
-# managed role, the superuser, MinIO keys) exercise every
-# secret-materialization path.
+# ScheduledBackup) proven live with no cloud account. The plugin is
+# declared here as a kind prerequisite (its own chain brings cert-manager
+# and the operator; a backup block without the plugin parks the Cluster in
+# the operator's unknown-plugin phase). The verifier (switched on by this
+# scenario's name) waits for the immediate schedule's Backup to reach
+# Completed. Declared credentials (owner password, a managed role, the
+# superuser, MinIO keys) exercise every secret-materialization path.
 apiVersion: kubernetes.planton.dev/v1alpha1
 kind: KubernetesPostgres
 metadata:
   name: e2e-pg-backup
   annotations:
-    planton.dev/e2e-prerequisites: "catalog/kubernetes/kubernetespostgres/e2e/fixture-minio.yaml"
+    planton.dev/e2e-prerequisites: "KubernetesCnpgBarmanCloudPlugin, catalog/kubernetes/kubernetespostgres/e2e/fixture-minio.yaml"
 spec:
   namespace:
     value: e2e-pg-backup

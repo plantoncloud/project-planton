@@ -682,7 +682,7 @@ func writeK8sManifest(t *testing.T, repoRoot, relPath, kind, annotationsYaml str
 // profile chains KubernetesCertManager (its e2e-prerequisites annotation).
 const (
 	pgCnpgConsumerPrereqRel = "catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.yaml"
-	pgCnpgPluginOnlyRel     = "catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.gke-plugin-only.yaml"
+	pgCnpgLaneVariantRel    = "catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.lane-variant.yaml"
 	certManagerPrereqRel    = "catalog/kubernetes/kubernetescertmanager/e2e/prerequisite.yaml"
 )
 
@@ -703,9 +703,9 @@ func writePostgresChain(t *testing.T, repoRoot string) {
 func TestResolveDependencies_InstallManifestSubstituteTakesTheKindsSlot(t *testing.T) {
 	repoRoot := t.TempDir()
 	writePostgresChain(t, repoRoot)
-	substitute := writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCloudNativePgOperator", "")
+	substitute := writeK8sManifest(t, repoRoot, pgCnpgLaneVariantRel, "KubernetesCloudNativePgOperator", "")
 	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
-		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n")
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgLaneVariantRel+"\"\n")
 
 	deps, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
 	if err != nil {
@@ -754,16 +754,17 @@ func TestResolveDependencies_ResidentPrerequisitePruned(t *testing.T) {
 	}
 }
 
-// The two annotations compose: the operator installs from its plugin-only
-// substitute and cert-manager is resident -- the exact declaration of the
-// GKE recovery lane, where CloudNativePG and cert-manager both arrived with
-// the Planton operator.
+// The two annotations compose: the operator installs from a per-lane
+// substitute (a variant of its install profile) and cert-manager is resident
+// -- the shape a real-cluster lane declares when one prerequisite is already
+// there and another must be installed differently than its consumer-wide
+// profile says.
 func TestResolveDependencies_SubstituteAndResidentCompose(t *testing.T) {
 	repoRoot := t.TempDir()
 	writePostgresChain(t, repoRoot)
-	substitute := writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCloudNativePgOperator", "")
+	substitute := writeK8sManifest(t, repoRoot, pgCnpgLaneVariantRel, "KubernetesCloudNativePgOperator", "")
 	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
-		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n"+
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgLaneVariantRel+"\"\n"+
 			"    planton.dev/e2e-resident-prerequisites: \"KubernetesCertManager\"\n")
 
 	deps, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
@@ -780,9 +781,9 @@ func TestResolveDependencies_SubstituteAndResidentCompose(t *testing.T) {
 func TestResolveDependencies_SubstituteOfWrongKindRejected(t *testing.T) {
 	repoRoot := t.TempDir()
 	writePostgresChain(t, repoRoot)
-	writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCertManager", "")
+	writeK8sManifest(t, repoRoot, pgCnpgLaneVariantRel, "KubernetesCertManager", "")
 	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
-		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n")
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgLaneVariantRel+"\"\n")
 
 	_, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)
 	if err == nil || !strings.Contains(err.Error(), "must install the kind whose slot it takes") {
@@ -794,9 +795,9 @@ func TestResolveDependencies_SubstituteOfWrongKindRejected(t *testing.T) {
 func TestResolveDependencies_ResidentAndSubstituteConflictRejected(t *testing.T) {
 	repoRoot := t.TempDir()
 	writePostgresChain(t, repoRoot)
-	writeK8sManifest(t, repoRoot, pgCnpgPluginOnlyRel, "KubernetesCloudNativePgOperator", "")
+	writeK8sManifest(t, repoRoot, pgCnpgLaneVariantRel, "KubernetesCloudNativePgOperator", "")
 	scenario := writeK8sManifest(t, repoRoot, "scenario.yaml", "KubernetesPostgres",
-		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgPluginOnlyRel+"\"\n"+
+		"    planton.dev/e2e-prerequisite-install-manifest: \"KubernetesCloudNativePgOperator="+pgCnpgLaneVariantRel+"\"\n"+
 			"    planton.dev/e2e-resident-prerequisites: \"KubernetesCloudNativePgOperator\"\n")
 
 	_, err := ResolveDependencies(repoRoot, "kubernetes", "kubernetespostgres", scenario)

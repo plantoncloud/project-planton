@@ -1,0 +1,212 @@
+syntax = "proto3";
+
+package dev.planton.kubernetes.kubernetescnpgbarmancloudplugin.v1alpha1;
+
+import "buf/validate/validate.proto";
+import "catalog/kubernetes/kubernetes.proto";
+import "catalog/kubernetes/workload_pod.proto";
+import "shared/foreignkey/v1/foreign_key.proto";
+import "shared/options/options.proto";
+
+/**
+ * **KubernetesCnpgBarmanCloudPluginSpec** installs the Barman Cloud plugin
+ * for CloudNativePG from the official Helm chart (`plugin-barman-cloud` at
+ * https://cloudnative-pg.github.io/charts). The plugin is the object-store
+ * backup path for every PostgreSQL cluster the operator manages: WAL
+ * archiving, scheduled base backups, and restores to S3, S3-compatible
+ * stores, GCS, and Azure Blob. CloudNativePG's built-in object-store
+ * support is deprecated upstream, so a KubernetesPostgres `backup` block
+ * (or an object-store `bootstrap.recovery`) renders its Cluster against
+ * THIS plugin and does nothing without it -- the operator parks such a
+ * Cluster in the phase "Cluster cannot proceed to reconciliation due to an
+ * unknown plugin being required" and never creates its instances.
+ *
+ * ONE PLUGIN PER CLUSTER, IN THE OPERATOR'S NAMESPACE. CloudNativePG
+ * discovers plugins through Services labeled `cnpg.io/pluginName` in its
+ * OWN namespace only (a plugin anywhere else is invisible to it), and the
+ * chart fixes that Service's name to `barman-cloud` because it is baked
+ * into the plugin's TLS certificate. So the plugin is a per-namespace
+ * singleton by construction, and the Helm release name is fixed to
+ * "plugin-barman-cloud" -- a second declaration in the same namespace
+ * would fight the first over those fixed-name objects.
+ *
+ * WHO INSTALLS IT. Beside a CloudNativePG declared with the catalog's
+ * KubernetesCloudNativePgOperator: this resource, with `namespace`
+ * referencing that operator resource. Beside a CloudNativePG someone else
+ * installed (Helm, GitOps, a platform operator that manages its own copy):
+ * this resource with the operator's namespace as a literal -- unless that
+ * installer also owns a plugin toggle, in which case enable it THERE; two
+ * owners of the singleton collide.
+ *
+ * REQUIRES cert-manager on the cluster (KubernetesCertManager): the chart
+ * renders a self-signed Issuer and two Certificates for the operator <->
+ * plugin gRPC TLS unconditionally, and the release fails to install without
+ * it. Requires a CloudNativePG at 1.26 or later (1.27 or later strongly
+ * recommended upstream for its plugin error reporting); the catalog
+ * operator's default chart ships 1.30.0.
+ *
+ * The typed fields below cover the chart's meaningful configuration
+ * surface; `helm_values` remains as the escape hatch for chart values
+ * beyond them (merged last, Helm `-f` semantics, identical on both
+ * engines) -- a safety valve, never the primary interface.
+ */
+message KubernetesCnpgBarmanCloudPluginSpec {
+  /**
+   * Namespace to install the plugin into. This MUST be the namespace the
+   * CloudNativePG operator runs in: the operator only considers plugin
+   * Services in its own namespace, so a plugin elsewhere is never
+   * discovered and every backup-declaring database stays unreconciled.
+   * Reference the operator resource (a bare `valueFrom` with the resource
+   * name resolves to its namespace output), or pass the literal namespace
+   * of a CloudNativePG someone else installed ("cnpg-system" is the
+   * upstream convention).
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef namespace = 1 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = KubernetesCloudNativePgOperator,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.namespace"
+  ];
+
+  /**
+   * When true, the namespace is created (with the standard Planton
+   * governance labels) before installing and deleted with the resource.
+   * Almost always false here: the namespace is the OPERATOR's and already
+   * exists (created by the operator resource or by whoever installed the
+   * resident CloudNativePG). True is only correct when this resource is
+   * the first thing to claim the namespace -- and then deleting the plugin
+   * deletes the operator's namespace with it.
+   */
+  bool create_namespace = 2;
+
+  /**
+   * Helm chart version to install (e.g. "0.7.0", which ships plugin
+   * v0.13.0 -- chart and app versions move separately; the chart pin
+   * governs). Pin deliberately; upgrades re-run the release with the new
+   * chart. Pick versions from the chart repository's index
+   * (`helm search repo`): the served chart is the contract. Plugin
+   * v0.13.0 requires CloudNativePG 1.26 or later and upstream strongly
+   * recommends 1.27 or later (it reports plugin errors on the Cluster's
+   * status instead of only in logs); check the plugin's release notes
+   * when moving the pin against an older operator.
+   */
+  optional string chart_version = 3 [(dev.planton.shared.options.default) = "0.7.0"];
+
+  /**
+   * The plugin's custom resource definition (`ObjectStore`, the object
+   * store a KubernetesPostgres backup block points at) lifecycle.
+   */
+  KubernetesCnpgBarmanCloudPluginCrds crds = 4;
+
+  /**
+   * Plugin replica count. Chart default: 1. The chart deploys with the
+   * Recreate strategy (the plugin does not support rolling updates yet),
+   * and extra replicas are leader-elected standbys that shorten failover of
+   * the PLUGIN itself -- they add no backup throughput.
+   */
+  optional int32 replicas = 5 [
+    (dev.planton.shared.options.default) = "1",
+    (buf.validate.field).int32.gte = 1
+  ];
+
+  /**
+   * Plugin container resources. Empty = no requests/limits (the chart
+   * ships none by default). The plugin process itself is light; the
+   * backup work runs in a sidecar the plugin injects into each PostgreSQL
+   * instance pod, sized by the database's own resources.
+   */
+  dev.planton.kubernetes.ContainerResources resources = 6;
+
+  /**
+   * Override the plugin image (registry mirrors, air-gapped clusters).
+   * Empty = the chart default (ghcr.io/cloudnative-pg/plugin-barman-cloud
+   * at the chart's app version).
+   */
+  KubernetesCnpgBarmanCloudPluginImage image = 7;
+
+  /**
+   * Override the SIDECAR image -- the container the plugin injects into
+   * every PostgreSQL instance pod to run the actual archiving and backup
+   * commands. Empty = the chart default
+   * (ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar at the chart's
+   * app version). Mirror BOTH images for an air-gapped cluster: the
+   * database pods pull this one, not the plugin's.
+   */
+  KubernetesCnpgBarmanCloudPluginImage sidecar_image = 8;
+
+  /**
+   * Names of image-pull secrets (in the installation namespace) for
+   * pulling the plugin image from a private mirror. The sidecar image is
+   * pulled by the DATABASE pods in their own namespaces -- give those
+   * clusters their own pull secrets (KubernetesPostgres) when the sidecar
+   * is mirrored too.
+   */
+  repeated string image_pull_secrets = 9 [(dev.planton.shared.options.sensitive_exempt_reason) = "Names of existing Kubernetes Secrets (references), not secret material"];
+
+  /**
+   * PriorityClass for the plugin pod. Backups and WAL archiving stop
+   * silently-for-a-while when the plugin is evicted (the databases keep
+   * running, the archive falls behind) -- keep it at the operator's
+   * priority.
+   */
+  string priority_class_name = 10;
+
+  /**
+   * Node selector for the plugin pod.
+   */
+  map<string, string> node_selector = 11;
+
+  /**
+   * Tolerations for the plugin pod.
+   */
+  repeated dev.planton.kubernetes.WorkloadToleration tolerations = 12;
+
+  /**
+   * Escape hatch: additional chart values as a YAML document, merged LAST
+   * over everything the typed fields render (Helm `-f` semantics,
+   * identical on both engines). For the chart surface beyond the typed
+   * fields (additionalArgs, additionalEnv, update strategy, security
+   * contexts, topology spread, host network, certificate durations, ...)
+   * -- never the substitute for them. The chart's fixed identities
+   * (`service.name`, the name overrides) are re-pinned after this merge:
+   * the Service name is baked into the plugin's TLS certificate and the
+   * release name is what a re-install adopts the kept CRD through, so
+   * neither is configurable here. Do not put secrets here.
+   */
+  string helm_values = 13;
+}
+
+/**
+ * Plugin CRD lifecycle.
+ */
+message KubernetesCnpgBarmanCloudPluginCrds {
+  /**
+   * Install the `ObjectStore` CRD with the release. Chart default: true.
+   * Disable only when something else manages it. The chart stamps the CRD
+   * with `helm.sh/resource-policy: keep`, so uninstalling the release
+   * NEVER deletes the ObjectStore resources databases point at (and the
+   * backup configuration they carry) -- the upstream safety posture, kept
+   * as-is. A later install with the SAME release name and namespace adopts
+   * the kept CRD; that adoption is one more reason the release name is
+   * fixed.
+   */
+  optional bool install = 1 [(dev.planton.shared.options.default) = "true"];
+}
+
+/**
+ * Container image override (the chart takes the image as a registry plus
+ * a repository; the modules split a combined reference on the container
+ * runtime rule -- the first path segment is the registry when it carries
+ * a dot, a colon, or is "localhost").
+ */
+message KubernetesCnpgBarmanCloudPluginImage {
+  /**
+   * Image repository including its registry (e.g.
+   * "my-mirror.example.com/cloudnative-pg/plugin-barman-cloud").
+   */
+  string repository = 1;
+
+  /**
+   * Image tag. Empty = the chart's app version.
+   */
+  string tag = 2;
+}

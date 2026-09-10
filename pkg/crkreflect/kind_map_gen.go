@@ -617,6 +617,7 @@ import (
 	kubernetesclusterautoscalerv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesclusterautoscaler/v1alpha1"
 	kubernetesclusterissuerv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesclusterissuer/v1alpha1"
 	kubernetesclustersecretstorev1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesclustersecretstore/v1alpha1"
+	kubernetescnpgbarmancloudpluginv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1"
 	kubernetesconfigmapv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesconfigmap/v1alpha1"
 	kubernetescronjobv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetescronjob/v1alpha1"
 	kubernetesdaemonsetv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesdaemonset/v1alpha1"
@@ -1373,6 +1374,7 @@ var ProviderKubernetesMap = map[cloudresourcekind.CloudResourceKind]proto.Messag
 	cloudresourcekind.CloudResourceKind_KubernetesClusterAutoscaler:           &kubernetesclusterautoscalerv1alpha1.KubernetesClusterAutoscaler{},
 	cloudresourcekind.CloudResourceKind_KubernetesClusterIssuer:               &kubernetesclusterissuerv1alpha1.KubernetesClusterIssuer{},
 	cloudresourcekind.CloudResourceKind_KubernetesClusterSecretStore:          &kubernetesclustersecretstorev1alpha1.KubernetesClusterSecretStore{},
+	cloudresourcekind.CloudResourceKind_KubernetesCnpgBarmanCloudPlugin:       &kubernetescnpgbarmancloudpluginv1alpha1.KubernetesCnpgBarmanCloudPlugin{},
 	cloudresourcekind.CloudResourceKind_KubernetesConfigMap:                   &kubernetesconfigmapv1alpha1.KubernetesConfigMap{},
 	cloudresourcekind.CloudResourceKind_KubernetesCronJob:                     &kubernetescronjobv1alpha1.KubernetesCronJob{},
 	cloudresourcekind.CloudResourceKind_KubernetesDaemonSet:                   &kubernetesdaemonsetv1alpha1.KubernetesDaemonSet{},

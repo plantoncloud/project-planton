@@ -375,17 +375,29 @@ func TestStackOutputsConformance(t *testing.T) {
 			},
 		},
 		{
-			// KubernetesCloudNativePgOperator: install identity plus the
-			// plugin release handle.
+			// KubernetesCloudNativePgOperator: the install identity.
 			name: "KubernetesCloudNativePgOperator",
 			kind: cloudresourcekind.CloudResourceKind_KubernetesCloudNativePgOperator,
 			rawOutputs: map[string]interface{}{
-				"namespace":                  "cnpg-system",
-				"release_name":               "cnpg",
-				"barman_plugin_release_name": "plugin-barman-cloud",
+				"namespace":    "cnpg-system",
+				"release_name": "cnpg",
 			},
 			mustPopulate: []string{
-				"namespace", "release_name", "barman_plugin_release_name",
+				"namespace", "release_name",
+			},
+		},
+		{
+			// KubernetesCnpgBarmanCloudPlugin: the install identity plus the
+			// CNPG-I plugin name a Cluster's plugins list carries.
+			name: "KubernetesCnpgBarmanCloudPlugin",
+			kind: cloudresourcekind.CloudResourceKind_KubernetesCnpgBarmanCloudPlugin,
+			rawOutputs: map[string]interface{}{
+				"namespace":    "cnpg-system",
+				"release_name": "plugin-barman-cloud",
+				"plugin_name":  "barman-cloud.cloudnative-pg.io",
+			},
+			mustPopulate: []string{
+				"namespace", "release_name", "plugin_name",
 			},
 		},
 		{

@@ -1,0 +1,39 @@
+# GENERATED -- DO NOT EDIT. Regenerate with `make generate-cost-estimates`.
+# This file replays the component's presets through its capacity derivation
+# (../capacity/, the machine-executable value-to-capacity rules): each
+# preset states the CPU/memory requests and limits and the persistent
+# volume storage it reserves from its target cluster, with a basis sentence
+# tracing every total back to the manifest's values. Cluster-capacity
+# components carry no priced lines -- the dollar value of the reservation
+# is the target cluster's node and storage-class economics, which this
+# catalog cannot know. Schema: finops/componentcostestimate/v1.
+apiVersion: finops.planton.dev/v1
+kind: ComponentCostEstimate
+metadata:
+  name: kubernetescnpgbarmancloudplugin
+spec:
+  presets:
+    - preset: 01-standard
+      capacity_footprint:
+        cpu_requests: 50m
+        memory_requests: 64Mi
+        cpu_limits: 200m
+        memory_limits: 256Mi
+        basis: 1 plugin replica x (50m CPU / 64Mi memory requests, 200m CPU / 256Mi limits)
+      exclusions:
+        - the dollar value of this capacity is the target cluster's node economics
+        - the sidecar injected into every PostgreSQL instance pod, and the clusters themselves, reserve their capacity on their KubernetesPostgres resources
+        - object-store bytes and egress are declared and accounted on each KubernetesPostgres backup block
+      notes: extra plugin replicas are leader-elected warm standbys shortening plugin failover -- they add standby capacity, not backup throughput
+    - preset: 02-beside-resident-operator
+      capacity_footprint:
+        cpu_requests: 50m
+        memory_requests: 64Mi
+        cpu_limits: 200m
+        memory_limits: 256Mi
+        basis: 1 plugin replica x (50m CPU / 64Mi memory requests, 200m CPU / 256Mi limits)
+      exclusions:
+        - the dollar value of this capacity is the target cluster's node economics
+        - the sidecar injected into every PostgreSQL instance pod, and the clusters themselves, reserve their capacity on their KubernetesPostgres resources
+        - object-store bytes and egress are declared and accounted on each KubernetesPostgres backup block
+      notes: extra plugin replicas are leader-elected warm standbys shortening plugin failover -- they add standby capacity, not backup throughput

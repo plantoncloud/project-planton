@@ -25,21 +25,27 @@ and mutating/validating webhooks whose service name is fixed by the chart
 would fight over both. The Helm release name is therefore fixed to
 "cnpg".
 
-BACKUPS ARE PLUGIN-BASED: CloudNativePG delegates object-store backups to
-the Barman Cloud plugin (its built-in object-store support is deprecated
-upstream and scheduled for removal). Enable `barman_cloud_plugin` here to
-install the plugin alongside the operator; KubernetesPostgres backup
-blocks then declare WHERE backups land. The plugin's internal TLS is
-issued by cert-manager, so the plugin arm requires cert-manager on the
-cluster (KubernetesCertManager).
+BACKUPS ARE A SEPARATE BLOCK: CloudNativePG delegates object-store
+backups to the Barman Cloud plugin (its built-in object-store support is
+deprecated upstream and scheduled for removal). The plugin is its own
+chart, pin, and dependency set, and the catalog installs it with its own
+kind -- KubernetesCnpgBarmanCloudPlugin, declared in THIS operator's
+namespace (reference this resource). KubernetesPostgres backup blocks
+then declare WHERE backups land. Without the plugin on the cluster a
+backup-declaring database never reconciles (the operator parks it in an
+unknown-plugin phase), so install the plugin before the first backup
+block, not after.
 
-A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG — installed by the Planton
-operator, by Helm, by GitOps — cannot take a second copy (see above),
-and a resident operator that came without the plugin cannot back
-anything up. `install_operator: false` is the posture for that cluster:
-this resource then manages ONLY the plugin, beside whichever CloudNativePG
-is already there, and every KubernetesPostgres on the cluster gains
-object-store backups.
+A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG -- installed by a platform
+operator, by Helm, by GitOps -- cannot take a second copy (see above);
+declare only what that cluster is missing (typically the plugin kind).
+Beware the reverse case too: a CloudNativePG that was UNINSTALLED by a
+non-Helm owner can leave its cluster-scoped CRDs, webhooks, and RBAC
+behind with that owner's labels, and an install here then fails at the
+Helm ownership check ("managed-by must equal Helm") -- delete the
+leftovers first; nothing here adopts them. Deciding which case applies:
+`kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg` -- a hit
+means an operator is resident.
 
 The typed fields below cover the chart's meaningful configuration
 surface; `helm_values` remains as the escape hatch for chart values
@@ -83,15 +89,6 @@ spec:
     INHERITED_LABELS: environment,workload
     WATCH_NAMESPACE: stripped-by-typed-watch
   maxConcurrentReconciles: 20
-  barmanCloudPlugin:
-    enabled: true
-    chartVersion: "0.7.0"
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        memory: 256Mi
   monitoring:
     podMonitorEnabled: true
     grafanaDashboard: true
@@ -140,16 +137,6 @@ spec:
 | `spec.watch.namespaces` | `[]string` |  |  |  |
 | `spec.operatorConfig` | `map<string, string>` |  |  |  |
 | `spec.maxConcurrentReconciles` | `int32` |  | `10` |  |
-| `spec.barmanCloudPlugin` | `KubernetesCloudNativePgOperatorBarmanPlugin` |  |  |  |
-| `spec.barmanCloudPlugin.enabled` | `bool` |  |  |  |
-| `spec.barmanCloudPlugin.chartVersion` | `string` |  | `0.7.0` |  |
-| `spec.barmanCloudPlugin.resources` | `ContainerResources` |  |  |  |
-| `spec.barmanCloudPlugin.resources.limits` | `CpuMemory` |  |  |  |
-| `spec.barmanCloudPlugin.resources.limits.cpu` | `string` |  |  |  |
-| `spec.barmanCloudPlugin.resources.limits.memory` | `string` |  |  |  |
-| `spec.barmanCloudPlugin.resources.requests` | `CpuMemory` |  |  |  |
-| `spec.barmanCloudPlugin.resources.requests.cpu` | `string` |  |  |  |
-| `spec.barmanCloudPlugin.resources.requests.memory` | `string` |  |  |  |
 | `spec.monitoring` | `KubernetesCloudNativePgOperatorMonitoring` |  |  |  |
 | `spec.monitoring.podMonitorEnabled` | `bool` |  |  |  |
 | `spec.monitoring.grafanaDashboard` | `bool` |  |  |  |
@@ -166,7 +153,6 @@ spec:
 | `spec.image.repository` | `string` |  |  |  |
 | `spec.image.tag` | `string` |  |  |  |
 | `spec.helmValues` | `string` |  |  |  |
-| `spec.installOperator` | `bool` |  | `true` |  |
 
 ## Field Details
 
@@ -318,72 +304,6 @@ default: 10. Raise on control planes managing many databases.
 - default: `10`
 - rule: {"int32":{"gte":1}}
 
-### spec.barmanCloudPlugin
-
-`KubernetesCloudNativePgOperatorBarmanPlugin`
-
-The Barman Cloud backup plugin — the object-store backup path for
-every KubernetesPostgres on the cluster. Deployed as its own set of
-resources beside the operator release (upstream forbids folding the
-plugin into the operator's Helm release — the two would fight over
-shared resource ownership).
-
-### spec.barmanCloudPlugin.enabled
-
-`bool`
-
-Deploy the plugin. REQUIRES cert-manager on the cluster
-(KubernetesCertManager): the plugin's operator↔sidecar TLS
-certificates are cert-manager Certificates, and the install fails
-without it. Without the plugin, KubernetesPostgres backup blocks
-cannot function.
-
-### spec.barmanCloudPlugin.chartVersion
-
-`string` · optional (explicit presence)
-
-Plugin chart version to install (e.g. "0.7.0", which ships plugin
-v0.13.0). Pin deliberately.
-
-- default: `0.7.0`
-
-### spec.barmanCloudPlugin.resources
-
-`ContainerResources`
-
-Plugin container resources. Empty = no requests/limits (the chart
-ships none by default).
-
-### spec.barmanCloudPlugin.resources.limits
-
-`CpuMemory`
-
-The resource limits for the container.
-Specify the maximum amount of CPU and memory that the container can use.
-
-### spec.barmanCloudPlugin.resources.limits.cpu
-
-`string`
-
-### spec.barmanCloudPlugin.resources.limits.memory
-
-`string`
-
-### spec.barmanCloudPlugin.resources.requests
-
-`CpuMemory`
-
-The resource requests for the container.
-Specify the minimum amount of CPU and memory that the container is guaranteed.
-
-### spec.barmanCloudPlugin.resources.requests.cpu
-
-`string`
-
-### spec.barmanCloudPlugin.resources.requests.memory
-
-`string`
-
 ### spec.monitoring
 
 `KubernetesCloudNativePgOperatorMonitoring`
@@ -500,49 +420,14 @@ fields (webhook tuning, update strategy, security contexts, topology
 spread, host network, ...) — never the substitute for them. Do not
 put secrets here.
 
-### spec.installOperator
-
-`bool` · optional (explicit presence)
-
-Install the operator release. Default true. Set false on a cluster
-that ALREADY runs CloudNativePG (the Planton operator installs one for
-the platform's own database; a Helm or GitOps install counts too):
-the operator's CRDs and webhooks are cluster singletons, so a second
-copy would fight the resident one — instead this resource manages only
-the Barman Cloud plugin (`barman_cloud_plugin.enabled` is then
-required), installing it into `namespace` beside the resident
-operator, and every KubernetesPostgres on the cluster gains
-object-store backups. The operator-shaping fields (`crds`, `replicas`,
-`resources`, `watch`, `operator_config`, `max_concurrent_reconciles`,
-`monitoring`, `priority_class_name`, `node_selector`, `tolerations`,
-`image_pull_secrets`, `image`, `helm_values`) describe a release this
-resource does not own in that posture and must stay unset. Destroying
-a plugin-only declaration removes the plugin and leaves the resident
-operator running (live-proven). Deciding which posture applies: `kubectl
-get deploy -A -l app.kubernetes.io/name=cloudnative-pg` — a hit means
-plugin-only. Beware the reverse case too: a CloudNativePG that was
-UNINSTALLED by a non-Helm owner (the Planton operator's, a raw
-manifest) can leave its cluster-scoped CRDs, webhooks, and RBAC behind
-with that owner's labels, and a full install here then fails at the
-Helm ownership check ("managed-by must equal Helm") — delete the
-leftovers first; nothing here adopts them.
-
-- default: `true`
-
-## Validation Rules
-
-- `spec.plugin_only_requires_plugin`: install_operator false means this resource manages only the Barman Cloud plugin beside a CloudNativePG that is already on the cluster — enable barman_cloud_plugin, or drop install_operator to install the operator itself
-- `spec.plugin_only_no_operator_config`: with install_operator false the operator release is not managed here, so operator-shaping fields are dead configuration — remove crds, resources, watch, operator_config, monitoring, priority_class_name, node_selector, tolerations, image_pull_secrets, image, and helm_values (the plugin's own knobs live under barman_cloud_plugin)
-
 ## Outputs
 
 Reference an output from another manifest as `valueFrom: {kind: KubernetesCloudNativePgOperator, name: <resource-name>, fieldPath: status.outputs.<output>}`.
 
 | Output | Type | Description |
 |---|---|---|
-| `status.outputs.namespace` | `string` | Namespace the operator (and the plugin, when enabled) runs in. |
-| `status.outputs.release_name` | `string` | Helm release name of the operator (fixed: "cnpg" — one installation per cluster). Empty in the plugin-only posture (install_operator false): the operator on the cluster is someone else's, and this resource never claims a handle it does not own. |
-| `status.outputs.barman_plugin_release_name` | `string` | Helm release name of the Barman Cloud plugin when enabled; empty otherwise. KubernetesPostgres backup blocks depend on this plugin being present. |
+| `status.outputs.namespace` | `string` | Namespace the operator runs in. The Barman Cloud plugin (KubernetesCnpgBarmanCloudPlugin) must be installed into this same namespace -- reference this output from its `namespace` field. |
+| `status.outputs.release_name` | `string` | Helm release name of the operator (fixed: "cnpg" — one installation per cluster). |
 
 ## References
 
@@ -551,6 +436,14 @@ Fields that can point at another resource's outputs:
 | Field | Kind | Output |
 |---|---|---|
 | `spec.namespace` | KubernetesNamespace | `spec.name` |
+
+## Referenced By
+
+Fields on other kinds that can point at this resource:
+
+| Kind | Field | Reads |
+|---|---|---|
+| KubernetesCnpgBarmanCloudPlugin | `spec.namespace` | `status.outputs.namespace` |
 
 ## See Also
 

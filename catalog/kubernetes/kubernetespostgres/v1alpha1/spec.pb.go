@@ -56,9 +56,12 @@ const (
 // BACKUPS ARE PLUGIN-BASED: the backup block renders a Barman Cloud
 // `ObjectStore` resource plus the Cluster's plugin wiring (WAL archiving
 // starts immediately) and one `ScheduledBackup` per declared schedule.
-// The operator must be installed with `barman_cloud_plugin.enabled` —
-// CloudNativePG's built-in object-store support is deprecated upstream
-// and deliberately not modeled here.
+// The Barman Cloud plugin must be on the cluster, in the operator's
+// namespace (KubernetesCnpgBarmanCloudPlugin) — without it the operator
+// parks a backup-declaring Cluster in the phase "Cluster cannot proceed
+// to reconciliation due to an unknown plugin being required" and never
+// creates its instances. CloudNativePG's built-in object-store support is
+// deprecated upstream and deliberately not modeled here.
 type KubernetesPostgresSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *
@@ -134,8 +137,12 @@ type KubernetesPostgresSpec struct {
 	// *
 	// Continuous backup: WAL archiving plus scheduled base backups to an
 	// object store, via the Barman Cloud plugin. Omitted = no backups (a
-	// deliberate choice to make, not a default to forget). Requires the
-	// operator installed with barman_cloud_plugin.enabled.
+	// deliberate choice to make, not a default to forget). Requires
+	// KubernetesCnpgBarmanCloudPlugin installed in the operator's namespace
+	// BEFORE this block is declared: the Cluster is rendered against that
+	// plugin and the operator will not reconcile it until the plugin is
+	// discovered (phase "unknown plugin being required" in `kubectl get
+	// cluster`).
 	Backup *KubernetesPostgresBackup `protobuf:"bytes,13,opt,name=backup,proto3" json:"backup,omitempty"`
 	// *
 	// Keyless cloud identity for the instance pods' ServiceAccount —
@@ -978,7 +985,10 @@ func (x *KubernetesPostgresImport) GetSchemaOnly() bool {
 // it declares `backup`, its own destination path (see `destination_path`).
 // Recovery is a one-time bootstrap: once the cluster exists this block is
 // inert, and a wrong `source_server_name` or store surfaces as a cluster
-// that never leaves the bootstrap phase.
+// that never leaves the bootstrap phase. Like the backup block, recovery
+// runs through the Barman Cloud plugin: KubernetesCnpgBarmanCloudPlugin
+// must be on the cluster (in the operator's namespace) before this block
+// is declared.
 type KubernetesPostgresBootstrapRecovery struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *

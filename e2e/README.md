@@ -380,18 +380,18 @@ metadata:
     # For THIS scenario, install the named kind from this manifest instead
     # of its consumer-scoped or published profile -- it takes the kind's
     # slot in the chain (a substitute, not an extra instance).
-    planton.dev/e2e-prerequisite-install-manifest: "KubernetesCloudNativePgOperator=catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.gke-plugin-only.yaml"
+    planton.dev/e2e-prerequisite-install-manifest: "KubernetesCertManager=catalog/kubernetes/<consumer>/e2e/prerequisites/kubernetescertmanager.lane-variant.yaml"
     # These kinds are already on the lane cluster: neither deployed nor
     # torn down, pruned from the chain together with their own edges.
-    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager"
+    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager, KubernetesCloudNativePgOperator"
 ```
 
 `e2e-prerequisite-install-manifest` is `<Kind>=<repo-relative path>` entries.
 It exists because a manifest-path entry in `e2e-prerequisites` only ever ADDS
 an instance -- a scenario could never say "install this kind DIFFERENTLY
-here". A GKE cluster that already runs CloudNativePG must install the
-operator kind in its plugin-only posture (the backup plugin beside the
-resident operator); that is the very shape under test, and no consumer-wide
+here". A real cluster can need a prerequisite in a shape its consumer-wide
+profile does not describe (a kind whose profile creates and owns a namespace
+that, on this cluster, belongs to someone else), and no consumer-wide
 profile can express a per-lane fact. The substitute's own edges expand
 normally and its `e2e-prerequisites` annotation is read like any install
 manifest's. The manifest must declare the kind whose slot it takes -- one

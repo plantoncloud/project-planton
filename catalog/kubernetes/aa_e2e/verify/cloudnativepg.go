@@ -12,51 +12,38 @@ import (
 )
 
 // CnpgOperatorInstallVerifier checks a CloudNativePG operator installation:
-// the operator Deployment Available and the core CRDs Established — the
-// preconditions every KubernetesPostgres apply depends on. When the Barman
-// Cloud plugin is enabled, the plugin Deployment and its ObjectStore CRD
-// are part of the contract too (backup blocks are dead letters without
-// them).
+// the operator Deployment Available and the core CRDs Established -- the
+// preconditions every KubernetesPostgres apply depends on. Backups are a
+// sibling kind (KubernetesCnpgBarmanCloudPlugin, CnpgBarmanPluginVerifier);
+// this verifier owns exactly one product.
 type CnpgOperatorInstallVerifier struct {
 	Namespace string
-	// InstallOperator mirrors the manifest's install_operator (default
-	// true). False is the plugin-only posture: the operator on the cluster
-	// is someone else's (a resident install), so its Deployment is neither
-	// asserted present under the chart's name nor asserted gone on destroy
-	// — only the CRDs it must have registered (the plugin needs them) are.
-	InstallOperator bool
-	// PluginEnabled mirrors the manifest's barman_cloud_plugin.enabled —
-	// the plugin ships as a second release, so its health is asserted
-	// only when the spec asked for it.
-	PluginEnabled bool
 }
 
 // cnpgOperatorDeployment is the chart fullname with the module's fixed
 // release name "cnpg" (`<release>-<chart>`), one per cluster.
 const cnpgOperatorDeployment = "cnpg-cloudnative-pg"
 
-// cnpgPluginDeployment is the plugin chart's fullname with the module's
-// fixed release name (release == chart name, so the fullname collapses).
-const cnpgPluginDeployment = "plugin-barman-cloud"
+// cnpgOperatorLabelSelector is the label every CloudNativePG install
+// carries -- the official Helm chart's and a platform operator's alike --
+// so an operator installed by ANY hand can be found without knowing the
+// name that hand gave its Deployment.
+const cnpgOperatorLabelSelector = "app.kubernetes.io/name=cloudnative-pg"
 
 func (v *CnpgOperatorInstallVerifier) VerifyExists(ctx context.Context, kubeconfig string) error {
-	fmt.Printf("  [verify] cloudnative-pg operator in namespace %q (operator=%v plugin=%v)\n", v.Namespace, v.InstallOperator, v.PluginEnabled)
+	fmt.Printf("  [verify] cloudnative-pg operator in namespace %q\n", v.Namespace)
 
 	if err := KubectlResourceExists(ctx, kubeconfig, "namespace", v.Namespace, ""); err != nil {
 		return errors.Wrapf(err, "namespace %q not found for cloudnative-pg", v.Namespace)
 	}
 
-	if v.InstallOperator {
-		if err := kubectlWait(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace,
-			"condition=Available", 3*time.Minute); err != nil {
-			return errors.Wrap(err, "cloudnative-pg operator deployment not available")
-		}
+	if err := kubectlWait(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace,
+		"condition=Available", 3*time.Minute); err != nil {
+		return errors.Wrap(err, "cloudnative-pg operator deployment not available")
 	}
 
 	// The CRDs KubernetesPostgres renders against: the Cluster itself and
-	// the two backup-facing kinds. In the plugin-only posture they are the
-	// resident operator's — their presence is what proves a CloudNativePG
-	// is actually there for the plugin to register with.
+	// the two backup-facing kinds.
 	for _, crd := range []string{
 		"clusters.postgresql.cnpg.io",
 		"scheduledbackups.postgresql.cnpg.io",
@@ -68,14 +55,92 @@ func (v *CnpgOperatorInstallVerifier) VerifyExists(ctx context.Context, kubeconf
 		}
 	}
 
-	if !v.PluginEnabled {
-		return nil
+	return nil
+}
+
+func (v *CnpgOperatorInstallVerifier) VerifyAbsent(ctx context.Context, kubeconfig string) error {
+	// The CRDs intentionally SURVIVE uninstall (the chart stamps
+	// helm.sh/resource-policy: keep on them so removing the operator never
+	// cascade-deletes Cluster resources) -- only the Deployment's absence
+	// is asserted.
+	return KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace)
+}
+
+// CnpgBarmanPluginVerifier checks a Barman Cloud plugin installation: the
+// plugin Deployment Available in the operator's namespace, its Service
+// carrying the discovery label the operator finds it by, and the
+// ObjectStore CRD Established -- the preconditions every KubernetesPostgres
+// backup block depends on.
+//
+// When ResidentOperator is set (the scenario declared the operator as a
+// resident of the lane cluster), the destroy assertion also proves the
+// resident SURVIVED: a plugin destroy that took the operator with it would
+// be the defect the resident-operator shape exists to rule out. A verifier
+// whose "absent" branch asserts a DIFFERENT product's presence is its own
+// verifier -- that assertion belongs to the plugin, never to the operator's.
+type CnpgBarmanPluginVerifier struct {
+	Namespace        string
+	ResidentOperator bool
+}
+
+// cnpgPluginDeployment is the plugin chart's fullname with the module's
+// fixed release name (release == chart name, so the fullname collapses).
+const cnpgPluginDeployment = "plugin-barman-cloud"
+
+// cnpgPluginLabelSelector finds the plugin Deployment installed by any hand
+// (the chart's selector labels).
+const cnpgPluginLabelSelector = "app.kubernetes.io/name=plugin-barman-cloud"
+
+// cnpgPluginServiceName is the plugin's gRPC Service -- fixed by the chart
+// (baked into the TLS certificate). cnpgPluginNameLabel is the label the
+// operator discovers plugins through, in its own namespace only.
+const (
+	cnpgPluginServiceName = "barman-cloud"
+	cnpgPluginNameLabel   = "cnpg.io/pluginName=barman-cloud.cloudnative-pg.io"
+)
+
+func (v *CnpgBarmanPluginVerifier) VerifyExists(ctx context.Context, kubeconfig string) error {
+	fmt.Printf("  [verify] barman-cloud plugin in namespace %q (resident operator=%v)\n", v.Namespace, v.ResidentOperator)
+
+	if err := KubectlResourceExists(ctx, kubeconfig, "namespace", v.Namespace, ""); err != nil {
+		return errors.Wrapf(err, "namespace %q not found for the barman-cloud plugin", v.Namespace)
+	}
+
+	// The operator the plugin registers with must be in THIS namespace --
+	// the operator only discovers plugin Services in its own namespace, so
+	// a plugin that came up beside no operator is a plugin nobody will
+	// ever find. Found by label, whoever installed it.
+	operators, err := kubectlGetJSONPathList(ctx, kubeconfig, "deployment", v.Namespace,
+		cnpgOperatorLabelSelector, "{range .items[*]}{.metadata.name}{\"\\n\"}{end}")
+	if err != nil {
+		return errors.Wrap(err, "listing the cloudnative-pg operator deployments in the plugin's namespace")
+	}
+	if len(operators) == 0 {
+		return errors.Errorf("no CloudNativePG operator deployment (label %s) in namespace %q -- the plugin must be installed into the operator's namespace, or the operator never discovers it", cnpgOperatorLabelSelector, v.Namespace)
 	}
 
 	if err := kubectlWait(ctx, kubeconfig, "deployment", cnpgPluginDeployment, v.Namespace,
 		"condition=Available", 3*time.Minute); err != nil {
-		return errors.Wrap(err, "barman-cloud plugin deployment not available (is cert-manager installed? the plugin's TLS depends on it)")
+		return errors.Wrap(err, "barman-cloud plugin deployment not available (is cert-manager installed? the plugin's TLS certificates are cert-manager Certificates)")
 	}
+
+	// The discovery contract itself: the fixed-name Service with the
+	// pluginName label the operator's plugin controller keys on.
+	services, err := kubectlGetJSONPathList(ctx, kubeconfig, "service", v.Namespace,
+		cnpgPluginNameLabel, "{range .items[*]}{.metadata.name}{\"\\n\"}{end}")
+	if err != nil {
+		return errors.Wrap(err, "listing plugin services by the cnpg.io/pluginName label")
+	}
+	found := false
+	for _, name := range services {
+		if name == cnpgPluginServiceName {
+			found = true
+		}
+	}
+	if !found {
+		return errors.Errorf("plugin service %q with label %s not found in namespace %q -- the operator discovers the plugin through exactly that Service", cnpgPluginServiceName, cnpgPluginNameLabel, v.Namespace)
+	}
+
 	if err := kubectlWait(ctx, kubeconfig, "crd", "objectstores.barmancloud.cnpg.io", "",
 		"condition=Established", 2*time.Minute); err != nil {
 		return errors.Wrap(err, "ObjectStore CRD not established")
@@ -84,35 +149,29 @@ func (v *CnpgOperatorInstallVerifier) VerifyExists(ctx context.Context, kubeconf
 	return nil
 }
 
-func (v *CnpgOperatorInstallVerifier) VerifyAbsent(ctx context.Context, kubeconfig string) error {
-	// The CRDs intentionally SURVIVE uninstall (the chart stamps
-	// helm.sh/resource-policy: keep on them so removing the operator never
-	// cascade-deletes Cluster resources) — only the deployments' absence
-	// is asserted. In the plugin-only posture the operator Deployment is
-	// the resident's and must STILL be there after this resource is gone:
-	// a plugin-only destroy that took the operator with it would be the
-	// defect this posture exists to rule out.
-	if v.InstallOperator {
-		if err := KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgOperatorDeployment, v.Namespace); err != nil {
-			return err
-		}
-	} else {
-		// The resident is found by the label every CloudNativePG install
-		// carries (the Helm chart's and the Planton operator's alike), not
-		// by the chart's Deployment name — a resident installed by another
-		// hand is named by that hand.
+func (v *CnpgBarmanPluginVerifier) VerifyAbsent(ctx context.Context, kubeconfig string) error {
+	// The ObjectStore CRD intentionally SURVIVES uninstall (the chart
+	// stamps helm.sh/resource-policy: keep on it so removing the plugin
+	// never deletes the ObjectStore resources databases point at) -- a
+	// designed keep, asserted present here so a change in the chart's
+	// posture is caught rather than silently absorbed.
+	if err := KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgPluginDeployment, v.Namespace); err != nil {
+		return err
+	}
+	if err := KubectlResourceExists(ctx, kubeconfig, "crd", "objectstores.barmancloud.cnpg.io", ""); err != nil {
+		return errors.Wrap(err, "the ObjectStore CRD is a designed keep (helm.sh/resource-policy: keep) and must survive the plugin's uninstall")
+	}
+
+	if v.ResidentOperator {
 		residents, err := kubectlGetJSONPathList(ctx, kubeconfig, "deployment", v.Namespace,
-			"app.kubernetes.io/name=cloudnative-pg", "{range .items[*]}{.metadata.name}{\"\\n\"}{end}")
+			cnpgOperatorLabelSelector, "{range .items[*]}{.metadata.name}{\"\\n\"}{end}")
 		if err != nil {
 			return errors.Wrap(err, "listing the resident cloudnative-pg operator deployments")
 		}
 		if len(residents) == 0 {
-			return errors.New("the resident cloudnative-pg operator must survive a plugin-only destroy, but no deployment labeled app.kubernetes.io/name=cloudnative-pg remains in the namespace")
+			return errors.New("the resident cloudnative-pg operator must survive the plugin's destroy, but no deployment labeled " + cnpgOperatorLabelSelector + " remains in the namespace")
 		}
-		fmt.Printf("  [verify] resident cloudnative-pg operator %v untouched by the plugin-only destroy\n", residents)
-	}
-	if v.PluginEnabled {
-		return KubectlResourceAbsent(ctx, kubeconfig, "deployment", cnpgPluginDeployment, v.Namespace)
+		fmt.Printf("  [verify] resident cloudnative-pg operator %v untouched by the plugin destroy\n", residents)
 	}
 	return nil
 }
@@ -150,6 +209,13 @@ type CnpgClusterVerifier struct {
 	// Secret holds those credentials.
 	RecoveryProof         bool
 	RecoverySourceCluster string
+	// PluginRequired is set when the manifest declares a backup block or an
+	// object-store recovery: both render the Barman Cloud plugin into the
+	// Cluster, and without the plugin on the cluster the operator parks
+	// the Cluster in its unknown-plugin phase forever. Asserted FIRST, so
+	// the lane fails in seconds with the remedy instead of timing out on
+	// Ready fifteen minutes later.
+	PluginRequired bool
 }
 
 // cnpgRecoveryMarkers are the rows the recovery scenario's seed script wrote
@@ -160,6 +226,20 @@ var cnpgRecoveryMarkers = []string{"marker-a", "marker-b"}
 func (v *CnpgClusterVerifier) VerifyExists(ctx context.Context, kubeconfig string) error {
 	fmt.Printf("  [verify] cloudnative-pg cluster %q in namespace %q (instances=%d)\n",
 		v.ClusterName, v.Namespace, v.Instances)
+
+	if v.PluginRequired {
+		// Whoever installed it, wherever the operator lives: the plugin
+		// Deployment is found by its chart label across all namespaces.
+		plugins, err := kubectlGetJSONPathListAllNamespaces(ctx, kubeconfig, "deployment",
+			cnpgPluginLabelSelector, "{range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+		if err != nil {
+			return errors.Wrap(err, "listing barman-cloud plugin deployments")
+		}
+		if len(plugins) == 0 {
+			return errors.New("this cluster declares a backup block or an object-store recovery, which run through the Barman Cloud plugin, but no plugin deployment (label " + cnpgPluginLabelSelector + ") exists on the cluster -- declare a KubernetesCnpgBarmanCloudPlugin in the CloudNativePG operator's namespace before this database; without it the operator parks the Cluster in the phase \"Cluster cannot proceed to reconciliation due to an unknown plugin being required\"")
+		}
+		fmt.Printf("  [verify] barman-cloud plugin present: %v\n", plugins)
+	}
 
 	// Ready flips once the bootstrap completed and the topology matches
 	// the spec. First-boot includes an image pull plus initdb, and on a
@@ -439,4 +519,22 @@ func (v *CnpgClusterVerifier) psql(ctx context.Context, kubeconfig, podName, sql
 		return "", errors.Errorf("psql on %s: %v: %s", podName, err, string(out))
 	}
 	return string(out), nil
+}
+
+// kubectlGetJSONPathListAllNamespaces is kubectlGetJSONPathList over every
+// namespace (-A) -- for preconditions that live wherever another kind put
+// them.
+func kubectlGetJSONPathListAllNamespaces(ctx context.Context, kubeconfig, kind, selector, jsonPath string) ([]string, error) {
+	out, err := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfig,
+		"get", kind, "-A", "-l", selector, "-o", "jsonpath="+jsonPath).Output()
+	if err != nil {
+		return nil, errors.Wrapf(err, "kubectl get %s -A -l %s", kind, selector)
+	}
+	var lines []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines, nil
 }

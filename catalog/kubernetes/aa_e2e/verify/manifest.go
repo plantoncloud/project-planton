@@ -159,26 +159,6 @@ func manifestSpecInt(manifestPath, key string, fallback int64) int64 {
 	}
 }
 
-// manifestBarmanPluginEnabled reports whether the operator manifest enables
-// the Barman Cloud plugin (spec.barmanCloudPlugin.enabled) — the verifier
-// asserts the plugin deployment only when the spec asked for it.
-func manifestBarmanPluginEnabled(manifestPath string) bool {
-	spec := manifestSpecMap(manifestPath)
-	if spec == nil {
-		return false
-	}
-	plugin, ok := spec["barmanCloudPlugin"].(map[string]interface{})
-	if !ok {
-		// Scenario manifests use the snake_case field convention.
-		plugin, ok = spec["barman_cloud_plugin"].(map[string]interface{})
-		if !ok {
-			return false
-		}
-	}
-	enabled, _ := plugin["enabled"].(bool)
-	return enabled
-}
-
 // manifestNestedRecoveryOwnerSecret reads spec.bootstrap.recovery.owner_secret_name
 // (either field-name convention) from a KubernetesPostgres manifest — "" when
 // the manifest declares no recovery or brings no Secret.
@@ -197,21 +177,23 @@ func manifestNestedRecoveryOwnerSecret(manifestPath string) string {
 	return ""
 }
 
-// manifestInstallOperator reports whether the CloudNativePG operator manifest
-// installs the operator release (spec.installOperator, default true). False
-// is the plugin-only posture: a resident operator the verifier must neither
-// expect to own nor expect to disappear.
-func manifestInstallOperator(manifestPath string) bool {
+// manifestDeclaresBarmanPlugin reports whether a KubernetesPostgres manifest
+// renders the Barman Cloud plugin into its Cluster: a backup block or an
+// object-store recovery (either field-name convention). Both need the
+// plugin on the cluster before the Cluster can reconcile.
+func manifestDeclaresBarmanPlugin(manifestPath string) bool {
 	spec := manifestSpecMap(manifestPath)
 	if spec == nil {
+		return false
+	}
+	if _, ok := spec["backup"].(map[string]interface{}); ok {
 		return true
 	}
-	for _, key := range []string{"installOperator", "install_operator"} {
-		if value, ok := spec[key].(bool); ok {
-			return value
-		}
+	bootstrap, _ := spec["bootstrap"].(map[string]interface{})
+	if _, ok := bootstrap["recovery"].(map[string]interface{}); ok {
+		return true
 	}
-	return true
+	return false
 }
 
 // manifestAnnotation reads one metadata.annotations value, "" when absent or

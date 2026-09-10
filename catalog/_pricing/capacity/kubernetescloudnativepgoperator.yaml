@@ -4,9 +4,9 @@
 # replays the catalog presets through these rules to emit
 # ../estimates/kubernetescloudnativepgoperator.yaml; a server-side
 # estimator can evaluate the same rules against live manifests. The
-# footprint is the operator replicas plus the Barman Cloud plugin pod
-# when enabled. The PostgreSQL clusters the operator reconciles reserve
-# their own capacity on their KubernetesPostgres resources -- never here.
+# footprint is the operator replicas. The PostgreSQL clusters the operator
+# reconciles reserve their own capacity on their KubernetesPostgres
+# resources, and the Barman Cloud plugin on its own kind -- never here.
 # Schema: finops/componentcapacityderivation/v1.
 apiVersion: finops.planton.dev/v1
 kind: ComponentCapacityDerivation
@@ -20,27 +20,16 @@ spec:
         field_value:
           field_path: replicas
           default_when_unset: "1"
-    - label: backup plugin
-      resources_path: barman_cloud_plugin.resources
-      instances:
-        constant: "1"
   exclusions:
     - text: the dollar value of this capacity is the target cluster's node economics
     - text: "the PostgreSQL clusters this operator reconciles reserve their own capacity -- each rides its KubernetesPostgres resource"
     - applies_when:
         - field_path: helm_values
           op: is_set
-      text: the helm_values overlay (operator chart only) merges last and can override the modeled values, including resources
+      text: the helm_values overlay merges last and can override the modeled values, including resources
   notes:
     - applies_when:
         - field_path: resources
           op: is_unset
       text: the operator container declares no requests or limits (the chart ships no defaults), so it schedules unbounded and reserves nothing
-    - applies_when:
-        - field_path: barman_cloud_plugin.enabled
-          op: equals
-          value: "false"
-        - field_path: barman_cloud_plugin.resources
-          op: is_set
-      text: barman_cloud_plugin.resources is declared but the plugin is disabled -- the backup plugin line above overstates by that amount
     - text: extra operator replicas are leader-elected warm standbys shortening operator failover -- they add standby capacity, not reconciliation throughput

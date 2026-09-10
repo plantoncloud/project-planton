@@ -1,0 +1,110 @@
+# Least-privilege permissions the IaC runner's Kubernetes principal needs to
+# provision, update, and destroy this component with the official modules.
+# Every entry is `derived` (static analysis of the module sources, cited in
+# notes) until the live capture lane upgrades it to `proven`. Schema:
+# iac/componentpermissions/v1.
+apiVersion: iac.planton.dev/v1
+kind: ComponentPermissions
+metadata:
+  name: kubernetescnpgbarmancloudplugin
+spec:
+  kubernetes:
+    rules:
+      - api_groups:
+          - ""
+        resources:
+          - namespaces
+        verbs:
+          - get
+          - create
+          - update
+          - patch
+          - delete
+        cluster_scoped: true
+        provenance: derived
+        notes: Covers kubernetes_namespace_v1.barman_cloud_plugin -- created and owned only when spec.create_namespace is true (rare here; the namespace is the operator's); get is needed for refresh either way. delete applies only to module-owned namespaces.
+      - api_groups:
+          - ""
+        resources:
+          - services
+          - serviceaccounts
+          - configmaps
+          - secrets
+        verbs:
+          - get
+          - list
+          - create
+          - update
+          - patch
+          - delete
+        cluster_scoped: false
+        provenance: derived
+        notes: Chart-rendered objects applied by helm_release.barman_cloud_plugin -- the plugin ServiceAccount, the fixed-name gRPC Service barman-cloud (labeled cnpg.io/pluginName, which is how the operator discovers it), the plugin-barman-cloud-config ConfigMap carrying the sidecar image, and the two TLS Secrets cert-manager materializes for the chart's Certificates (barman-cloud-server-tls, barman-cloud-client-tls) that Helm reads back on refresh.
+      - api_groups:
+          - apps
+        resources:
+          - deployments
+        verbs:
+          - get
+          - list
+          - create
+          - update
+          - patch
+          - delete
+        cluster_scoped: false
+        provenance: derived
+        notes: The plugin Deployment (replicas from spec.replicas, Recreate strategy) applied by helm_release.barman_cloud_plugin.
+      - api_groups:
+          - rbac.authorization.k8s.io
+        resources:
+          - clusterroles
+          - clusterrolebindings
+        verbs:
+          - get
+          - create
+          - update
+          - patch
+          - delete
+        cluster_scoped: true
+        provenance: derived
+        notes: The plugin's ClusterRole and ClusterRoleBinding (rbac.create, the chart default) rendered by helm_release.barman_cloud_plugin -- per the chart's rbac.yaml the plugin manages ObjectStores (and their status and finalizers) in every namespace, reads Backups, updates Cluster finalizers, creates and deletes the Secrets its sidecars use, and creates the per-database Roles and RoleBindings that let each instance pod read its object-store credentials.
+      - api_groups:
+          - rbac.authorization.k8s.io
+        resources:
+          - roles
+          - rolebindings
+        verbs:
+          - get
+          - create
+          - update
+          - patch
+          - delete
+        cluster_scoped: false
+        provenance: derived
+        notes: The plugin's leader-election Role and RoleBinding in its own namespace (templates/additional-rbac/leader_election.yaml), rendered by helm_release.barman_cloud_plugin.
+      - api_groups:
+          - apiextensions.k8s.io
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - get
+          - create
+          - update
+          - patch
+        cluster_scoped: true
+        provenance: derived
+        notes: "The ObjectStore CRD (objectstores.barmancloud.cnpg.io) templated by the chart while crds.install is true (the default). No delete -- the chart stamps helm.sh/resource-policy: keep on it, so Helm never deletes it on uninstall and a later install with the same release name adopts it."
+      - api_groups:
+          - cert-manager.io
+        resources:
+          - issuers
+          - certificates
+        verbs:
+          - get
+          - create
+          - update
+          - patch
+          - delete
+        cluster_scoped: false
+        provenance: derived
+        notes: The chart renders a self-signed Issuer and two Certificates (server and client) for the operator-to-plugin gRPC TLS UNCONDITIONALLY -- applied by helm_release.barman_cloud_plugin, and the reason cert-manager (KubernetesCertManager) is a registry prerequisite of this kind.

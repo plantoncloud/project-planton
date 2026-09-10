@@ -4,9 +4,9 @@ This preset declares the production PostgreSQL posture on EKS: three
 instances with quorum synchronous replication (zero data loss on
 failover), a dedicated WAL volume, hard anti-affinity, and continuous
 backups — WAL archiving plus a nightly base backup — landing keylessly
-in S3 via IRSA, pruned after 30 days. Requires the operator installed
-with the Barman Cloud plugin
-(KubernetesCloudNativePgOperator with `barman_cloud_plugin.enabled`).
+in S3 via IRSA, pruned after 30 days. Requires the Barman Cloud plugin
+on the cluster, in the operator's namespace
+(KubernetesCnpgBarmanCloudPlugin).
 
 ## When to Use
 

@@ -4,8 +4,10 @@
 
 **The operator must already be on the cluster.** This component declares
 a database; KubernetesCloudNativePgOperator installs the ENGINE that
-reconciles it (with `barman_cloud_plugin.enabled` when backups are
-declared). Deploy the operator first, databases after.
+reconciles it, and KubernetesCnpgBarmanCloudPlugin (in the operator's
+namespace) is the backup engine a `backup` block or an object-store
+recovery runs through. Deploy the operator first, the plugin when any
+database will declare backups, databases after.
 
 Also not the right component when:
 
@@ -53,8 +55,10 @@ the new primary automatically.
   `ObjectStore` resource plus the Cluster's plugin wiring (WAL archiving
   starts immediately) and one `ScheduledBackup` per declared schedule.
   CloudNativePG's built-in object-store support is deprecated upstream
-  and deliberately not modeled. The operator must be installed with
-  `barman_cloud_plugin.enabled`.
+  and deliberately not modeled. The Barman Cloud plugin
+  (KubernetesCnpgBarmanCloudPlugin) must be on the cluster, in the
+  operator's namespace — without it the operator parks this Cluster in
+  its unknown-plugin phase and never creates the instances.
 - **Secrets never appear inline** — every declared credential (owner
   password, role passwords, superuser password, external-cluster
   passwords, object-store keys) materializes as a deterministic

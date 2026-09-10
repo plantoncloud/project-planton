@@ -1,3 +1,3 @@
 name: kubernetes-cloud-native-pg-operator
 runtime: go
-description: CloudNativePG operator installation from the official Helm chart — the CNCF PostgreSQL operator (HA clusters, automated failover, plugin-based backups), with the optional Barman Cloud backup plugin
+description: CloudNativePG operator installation from the official Helm chart — the CNCF PostgreSQL operator (HA clusters, automated failover, plugin-based backups); the Barman Cloud backup plugin is its own kind

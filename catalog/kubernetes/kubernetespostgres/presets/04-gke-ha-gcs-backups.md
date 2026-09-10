@@ -16,10 +16,10 @@ archive and referencing this cluster's `-app` Secret.
   `GcpGkeWorkloadIdentityBinding` for the cluster's ServiceAccount (named
   after the cluster, in its namespace), and a `GcpGcsBucket` granting the
   account `roles/storage.objectAdmin` and `roles/storage.legacyBucketReader`
-- Requires the operator with the Barman Cloud plugin — on a cluster that
-  already runs CloudNativePG (Planton self-hosted installs one), declare
-  `KubernetesCloudNativePgOperator` with `install_operator: false` and the
-  plugin enabled
+- Requires the Barman Cloud plugin (`KubernetesCnpgBarmanCloudPlugin`)
+  in the operator's namespace — on a cluster that already runs
+  CloudNativePG (a self-hosted platform installs one), declare it with
+  the resident operator's namespace as a literal
 
 ## Key Configuration Choices
 

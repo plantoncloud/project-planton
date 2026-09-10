@@ -37,20 +37,6 @@ variable "spec" {
     }))
     operator_config           = optional(map(string), {})
     max_concurrent_reconciles = optional(number)
-    barman_cloud_plugin = optional(object({
-      enabled       = optional(bool, false)
-      chart_version = optional(string)
-      resources = optional(object({
-        limits = optional(object({
-          cpu    = optional(string, "")
-          memory = optional(string, "")
-        }))
-        requests = optional(object({
-          cpu    = optional(string, "")
-          memory = optional(string, "")
-        }))
-      }))
-    }))
     monitoring = optional(object({
       pod_monitor_enabled = optional(bool, false)
       grafana_dashboard   = optional(bool, false)
@@ -69,7 +55,6 @@ variable "spec" {
       repository = optional(string, "")
       tag        = optional(string, "")
     }))
-    helm_values      = optional(string, "")
-    install_operator = optional(bool)
+    helm_values = optional(string, "")
   })
 }

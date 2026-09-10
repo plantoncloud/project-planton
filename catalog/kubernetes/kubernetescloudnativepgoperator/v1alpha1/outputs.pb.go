@@ -29,19 +29,15 @@ const (
 // installation rather than any workload.
 type KubernetesCloudNativePgOperatorStackOutputs struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Namespace the operator (and the plugin, when enabled) runs in.
+	// Namespace the operator runs in. The Barman Cloud plugin
+	// (KubernetesCnpgBarmanCloudPlugin) must be installed into this same
+	// namespace -- reference this output from its `namespace` field.
 	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// Helm release name of the operator (fixed: "cnpg" — one installation
-	// per cluster). Empty in the plugin-only posture (install_operator
-	// false): the operator on the cluster is someone else's, and this
-	// resource never claims a handle it does not own.
-	ReleaseName string `protobuf:"bytes,2,opt,name=release_name,json=releaseName,proto3" json:"release_name,omitempty"`
-	// Helm release name of the Barman Cloud plugin when enabled; empty
-	// otherwise. KubernetesPostgres backup blocks depend on this plugin
-	// being present.
-	BarmanPluginReleaseName string `protobuf:"bytes,3,opt,name=barman_plugin_release_name,json=barmanPluginReleaseName,proto3" json:"barman_plugin_release_name,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// per cluster).
+	ReleaseName   string `protobuf:"bytes,2,opt,name=release_name,json=releaseName,proto3" json:"release_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesCloudNativePgOperatorStackOutputs) Reset() {
@@ -88,22 +84,14 @@ func (x *KubernetesCloudNativePgOperatorStackOutputs) GetReleaseName() string {
 	return ""
 }
 
-func (x *KubernetesCloudNativePgOperatorStackOutputs) GetBarmanPluginReleaseName() string {
-	if x != nil {
-		return x.BarmanPluginReleaseName
-	}
-	return ""
-}
-
 var File_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_outputs_proto protoreflect.FileDescriptor
 
 const file_catalog_kubernetes_kubernetescloudnativepgoperator_v1alpha1_outputs_proto_rawDesc = "" +
 	"\n" +
-	"Icatalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/outputs.proto\x12?dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1\"\xab\x01\n" +
+	"Icatalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/outputs.proto\x12?dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1\"n\n" +
 	"+KubernetesCloudNativePgOperatorStackOutputs\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12!\n" +
-	"\frelease_name\x18\x02 \x01(\tR\vreleaseName\x12;\n" +
-	"\x1abarman_plugin_release_name\x18\x03 \x01(\tR\x17barmanPluginReleaseNameB\xf7\x03\n" +
+	"\frelease_name\x18\x02 \x01(\tR\vreleaseNameB\xf7\x03\n" +
 	"Ccom.dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1B\fOutputsProtoP\x01Z\x80\x01github.com/plantonhq/planton/catalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1;kubernetescloudnativepgoperatorv1alpha1\xa2\x02\x04DPKK\xaa\x02?Dev.Planton.Kubernetes.Kubernetescloudnativepgoperator.V1alpha1\xca\x02?Dev\\Planton\\Kubernetes\\Kubernetescloudnativepgoperator\\V1alpha1\xe2\x02KDev\\Planton\\Kubernetes\\Kubernetescloudnativepgoperator\\V1alpha1\\GPBMetadata\xea\x02CDev::Planton::Kubernetes::Kubernetescloudnativepgoperator::V1alpha1b\x06proto3"
 
 var (

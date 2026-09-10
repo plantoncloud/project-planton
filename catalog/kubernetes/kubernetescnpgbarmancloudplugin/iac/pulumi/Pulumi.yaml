@@ -1,0 +1,3 @@
+name: kubernetes-cnpg-barman-cloud-plugin
+runtime: go
+description: Barman Cloud plugin for CloudNativePG from the official Helm chart -- the object-store backup path (WAL archiving, base backups, restores) for every PostgreSQL cluster the operator manages, installed beside the operator

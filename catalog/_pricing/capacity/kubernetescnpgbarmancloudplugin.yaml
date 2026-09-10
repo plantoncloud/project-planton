@@ -1,0 +1,36 @@
+# Capacity derivation: the machine-executable rules turning any
+# KubernetesCnpgBarmanCloudPlugin manifest's spec values into the capacity
+# footprint it reserves from its target cluster. The estimate generator
+# replays the catalog presets through these rules to emit
+# ../estimates/kubernetescnpgbarmancloudplugin.yaml; a server-side
+# estimator can evaluate the same rules against live manifests. The
+# footprint is the plugin replicas. The sidecars the plugin injects into
+# PostgreSQL instance pods, and the PostgreSQL clusters themselves, reserve
+# their capacity on their KubernetesPostgres resources -- never here.
+# Schema: finops/componentcapacityderivation/v1.
+apiVersion: finops.planton.dev/v1
+kind: ComponentCapacityDerivation
+metadata:
+  name: kubernetescnpgbarmancloudplugin
+spec:
+  workloads:
+    - label: plugin replica
+      resources_path: resources
+      instances:
+        field_value:
+          field_path: replicas
+          default_when_unset: "1"
+  exclusions:
+    - text: the dollar value of this capacity is the target cluster's node economics
+    - text: "the sidecar injected into every PostgreSQL instance pod, and the clusters themselves, reserve their capacity on their KubernetesPostgres resources"
+    - text: "object-store bytes and egress are declared and accounted on each KubernetesPostgres backup block"
+    - applies_when:
+        - field_path: helm_values
+          op: is_set
+      text: the helm_values overlay merges last and can override the modeled values, including resources
+  notes:
+    - applies_when:
+        - field_path: resources
+          op: is_unset
+      text: the plugin container declares no requests or limits (the chart ships no defaults), so it schedules unbounded and reserves nothing
+    - text: extra plugin replicas are leader-elected warm standbys shortening plugin failover -- they add standby capacity, not backup throughput

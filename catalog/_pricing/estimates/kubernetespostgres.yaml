@@ -45,3 +45,14 @@ spec:
       exclusions:
         - the dollar value of this capacity is the target cluster's node and storage-class economics
         - object storage on the configured S3-compatible endpoint for the base backups and WAL archive grows with database churn across the retention window
+    - preset: 04-gke-ha-gcs-backups
+      capacity_footprint:
+        cpu_requests: "3"
+        memory_requests: 6Gi
+        cpu_limits: "6"
+        memory_limits: 12Gi
+        persistent_storage: 360Gi
+        basis: 3 instances x (1 CPU / 2Gi memory requests, 2 CPU / 4Gi limits) + 3 x (100Gi data + 20Gi WAL) volumes
+      exclusions:
+        - the dollar value of this capacity is the target cluster's node and storage-class economics
+        - object storage for the base backups and WAL archive grows with database churn across the retention window

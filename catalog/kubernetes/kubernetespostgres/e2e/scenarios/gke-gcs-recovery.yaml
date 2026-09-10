@@ -8,19 +8,21 @@
 # replay past the base backup, i.e. continuous archiving, not a copy — and
 # asserts the three instances landed on three distinct nodes.
 #
-# Lane declarations: the operator kind installs from the plugin-only
-# substitute (the cluster already runs CloudNativePG), cert-manager is
-# resident, and the scenario JOINS the fixture's namespace (fixture-owns /
-# scenario-joins; the recovery reads the source's `-app` Secret there).
+# Lane declarations: CloudNativePG and cert-manager are RESIDENT (the
+# cluster already runs both, installed by another hand), the Barman Cloud
+# plugin is declared as a kind prerequisite and lands beside the resident
+# operator from its own install profile (the plugin's registry edges onto
+# cert-manager and the operator are pruned with the residents), and the
+# scenario JOINS the fixture's namespace (fixture-owns / scenario-joins;
+# the recovery reads the source's `-app` Secret there).
 apiVersion: kubernetes.planton.dev/v1alpha1
 kind: KubernetesPostgres
 metadata:
   name: e2e-pg-gke-dr
   annotations:
     planton.dev/e2e-cluster-profile: "gcp-gke"
-    planton.dev/e2e-prerequisites: "catalog/kubernetes/kubernetespostgres/e2e/fixture-gke-source.yaml"
-    planton.dev/e2e-prerequisite-install-manifest: "KubernetesCloudNativePgOperator=catalog/kubernetes/kubernetespostgres/e2e/prerequisites/kubernetescloudnativepgoperator.gke-plugin-only.yaml"
-    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager"
+    planton.dev/e2e-prerequisites: "KubernetesCnpgBarmanCloudPlugin, catalog/kubernetes/kubernetespostgres/e2e/fixture-gke-source.yaml"
+    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager, KubernetesCloudNativePgOperator"
     planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetespostgres/e2e/scenarios/gke-gcs-recovery.setup.sh"
 spec:
   namespace:

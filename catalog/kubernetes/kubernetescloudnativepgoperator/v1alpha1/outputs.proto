@@ -10,17 +10,12 @@ package dev.planton.kubernetes.kubernetescloudnativepgoperator.v1alpha1;
  * installation rather than any workload.
  */
 message KubernetesCloudNativePgOperatorStackOutputs {
-  // Namespace the operator (and the plugin, when enabled) runs in.
+  // Namespace the operator runs in. The Barman Cloud plugin
+  // (KubernetesCnpgBarmanCloudPlugin) must be installed into this same
+  // namespace -- reference this output from its `namespace` field.
   string namespace = 1;
 
   // Helm release name of the operator (fixed: "cnpg" — one installation
-  // per cluster). Empty in the plugin-only posture (install_operator
-  // false): the operator on the cluster is someone else's, and this
-  // resource never claims a handle it does not own.
+  // per cluster).
   string release_name = 2;
-
-  // Helm release name of the Barman Cloud plugin when enabled; empty
-  // otherwise. KubernetesPostgres backup blocks depend on this plugin
-  // being present.
-  string barman_plugin_release_name = 3;
 }

@@ -85,10 +85,10 @@ const scenarioPrerequisitesAnnotation = "planton.dev/e2e-prerequisites"
 // This is a different thing from a manifest-path entry in e2e-prerequisites:
 // that one is an EXTRA INSTANCE (it never marks the kind as scheduled), so a
 // scenario could add a second copy of a kind but never say "install this kind
-// DIFFERENTLY here". Real clusters need exactly that: a lane cluster where
-// CloudNativePG already runs must install the operator kind in its
-// plugin-only posture (the plugin beside the resident operator) — the very
-// shape under test — and no consumer-wide profile can express a per-lane
+// DIFFERENTLY here". Real clusters need exactly that: a lane cluster can
+// need a prerequisite in a shape its consumer-wide profile does not describe
+// (a profile that creates and owns a namespace that, on this cluster, is
+// someone else's), and no consumer-wide profile can express a per-lane
 // truth. The substitute takes the kind's slot in the graph (its own edges
 // expand normally; its e2e-prerequisites annotation is read like any install
 // manifest's); the kind's other consumers are untouched.

@@ -405,14 +405,20 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 			Name:      info.Name,
 		}, nil
 
-	// CloudNativePG operator: Deployment Available + CRDs Established;
-	// when the manifest enables the Barman Cloud plugin, the plugin
-	// deployment and its ObjectStore CRD join the contract.
+	// CloudNativePG operator: Deployment Available + CRDs Established.
 	case "kubernetescloudnativepgoperator":
 		return &CnpgOperatorInstallVerifier{
-			Namespace:       info.Namespace,
-			InstallOperator: manifestInstallOperator(manifestPath),
-			PluginEnabled:   manifestBarmanPluginEnabled(manifestPath),
+			Namespace: info.Namespace,
+		}, nil
+
+	// Barman Cloud plugin for CloudNativePG: plugin Deployment Available
+	// beside an operator in the same namespace, the discovery Service
+	// present, the ObjectStore CRD Established; when the scenario declares
+	// the operator resident, the destroy proves the resident survived.
+	case "kubernetescnpgbarmancloudplugin":
+		return &CnpgBarmanPluginVerifier{
+			Namespace:        info.Namespace,
+			ResidentOperator: strings.Contains(manifestAnnotation(manifestPath, "planton.dev/e2e-resident-prerequisites"), "KubernetesCloudNativePgOperator"),
 		}, nil
 
 	// Percona operator installs: the operator Deployment Available plus
@@ -1141,6 +1147,7 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 			// The recovery reads the source's credentials from the Secret the
 			// manifest's recovery block names (`<source>-app`).
 			RecoverySourceCluster: strings.TrimSuffix(manifestNestedRecoveryOwnerSecret(manifestPath), "-app"),
+			PluginRequired:        manifestDeclaresBarmanPlugin(manifestPath),
 		}, nil
 
 	// cert-manager installation: the three component Deployments must be

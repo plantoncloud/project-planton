@@ -8,6 +8,7 @@ go_library(
         "main.go",
         "namespace.go",
         "outputs.go",
+        "restore.go",
         "secrets.go",
         "vars.go",
     ],

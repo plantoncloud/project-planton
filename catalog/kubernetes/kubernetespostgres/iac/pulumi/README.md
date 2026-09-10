@@ -9,8 +9,9 @@ CRDs — field or structure drift against the pinned CRD fails at COMPILE
 time, not at apply time.
 
 Prerequisites at deploy time: the CloudNativePG operator
-(`KubernetesCloudNativePgOperator`) on the cluster, installed with
-`barman_cloud_plugin.enabled` when backups are declared.
+(`KubernetesCloudNativePgOperator`) on the cluster, and the Barman Cloud
+plugin (`KubernetesCnpgBarmanCloudPlugin`, in the operator's namespace)
+when backups or an object-store recovery are declared.
 
 ## What the Module Creates
 

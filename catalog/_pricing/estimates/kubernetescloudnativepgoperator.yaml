@@ -24,14 +24,3 @@ spec:
         - the dollar value of this capacity is the target cluster's node economics
         - the PostgreSQL clusters this operator reconciles reserve their own capacity -- each rides its KubernetesPostgres resource
       notes: extra operator replicas are leader-elected warm standbys shortening operator failover -- they add standby capacity, not reconciliation throughput
-    - preset: 02-with-backup-plugin
-      capacity_footprint:
-        cpu_requests: 150m
-        memory_requests: 320Mi
-        cpu_limits: 1250m
-        memory_limits: 768Mi
-        basis: 1 operator replica x (100m CPU / 256Mi memory requests, 1 CPU / 512Mi limits); 1 backup plugin x (50m CPU / 64Mi memory requests, 250m CPU / 256Mi limits)
-      exclusions:
-        - the dollar value of this capacity is the target cluster's node economics
-        - the PostgreSQL clusters this operator reconciles reserve their own capacity -- each rides its KubernetesPostgres resource
-      notes: extra operator replicas are leader-elected warm standbys shortening operator failover -- they add standby capacity, not reconciliation throughput
