@@ -55,6 +55,21 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 	ownerRef := cp.OwnerReferenceFor(planton)
 
 	cfg := cp.buildConfig(planton, ownerRef)
+
+	// Every Secret spec.email names must exist with its keys BEFORE the
+	// Deployment projects them, or the pod sits in FailedMount with no reason
+	// anyone can read. A finding is reported as this component's message and
+	// the pod is rendered as if no email were declared: the platform keeps
+	// running, invitations stay links, and the person reads exactly which
+	// Secret to create. The 30-second requeue picks it up when it appears.
+	emailPreflight, err := preflightEmailSecrets(ctx, c, planton)
+	if err != nil {
+		return Result{}, fmt.Errorf("preflighting email Secrets: %w", err)
+	}
+	if emailPreflight != "" {
+		cfg.Email = nil
+	}
+
 	if cfg.Identity == nil {
 		// Unreachable in a healthy pass (the identity dependency implies a
 		// resolved front-door URL), but a Deployment without the identity arm
@@ -115,6 +130,13 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 		return Result{Ready: false, Message: "Waiting for ControlPlane Deployment"}, nil
 	}
 
+	// A healthy pod under a declaration that could not be honored is not
+	// Ready: "Ready" means what the manifest declared is what runs.
+	if emailPreflight != "" {
+		log.Info("ControlPlane running without the declared email", "reason", emailPreflight)
+		return Result{Ready: false, Message: emailPreflight}, nil
+	}
+
 	log.Info("ControlPlane ready")
 	return Result{Ready: true, Message: "ControlPlane healthy"}, nil
 }
@@ -160,6 +182,7 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 
 	cfg.SecretBackend = effectiveSecretBackend(planton)
 	cfg.License = effectiveLicense(planton)
+	cfg.Email = effectiveEmail(planton)
 
 	if isAuthorizationEnabled(planton) {
 		cfg.OpenFGA = resources.OpenFGAConnection(planton.Name, planton.Namespace)

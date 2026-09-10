@@ -97,7 +97,7 @@ type ActiveDirectorySpec struct {
 	// enterprise blocker. Omit it when the directory's certificate chains
 	// to a public root.
 	// +optional
-	CABundleSecretRef *IdentitySecretKeyRef `json:"caBundleSecretRef,omitempty"`
+	CABundleSecretRef *SecretKeyRef `json:"caBundleSecretRef,omitempty"`
 
 	// bindDn is the service account the identity server binds as to search
 	// the directory.
@@ -106,7 +106,7 @@ type ActiveDirectorySpec struct {
 
 	// bindCredentialSecretRef points at the bind password. Required by
 	// reference: the password is never inline.
-	BindCredentialSecretRef IdentitySecretKeyRef `json:"bindCredentialSecretRef"`
+	BindCredentialSecretRef SecretKeyRef `json:"bindCredentialSecretRef"`
 
 	// usersDn is the search base for people.
 	// +kubebuilder:validation:MinLength=1
@@ -194,7 +194,7 @@ type OIDCBrokerSpec struct {
 
 	// clientSecretRef points at the app registration's client secret.
 	// Required by reference: the secret is never inline.
-	ClientSecretRef IdentitySecretKeyRef `json:"clientSecretRef"`
+	ClientSecretRef SecretKeyRef `json:"clientSecretRef"`
 
 	// scopes requested from the upstream provider. Add the provider's group
 	// scope when group claims need it.
@@ -215,21 +215,6 @@ type OIDCBrokerSpec struct {
 	// +kubebuilder:default="sub"
 	// +optional
 	SubjectClaim string `json:"subjectClaim,omitempty"`
-}
-
-// IdentitySecretKeyRef names one entry of one Secret in the same namespace.
-// A narrowed, CRD-local mirror of corev1.SecretKeySelector (the
-// LicenseSecretKeyRef precedent): embedding the core type would admit its
-// optional flag, which has no meaning here -- a declared credential
-// reference must resolve.
-type IdentitySecretKeyRef struct {
-	// name of the Secret.
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
-
-	// key within the Secret.
-	// +kubebuilder:validation:MinLength=1
-	Key string `json:"key"`
 }
 
 // ConditionBound is the condition tracking platform binding resolution on a

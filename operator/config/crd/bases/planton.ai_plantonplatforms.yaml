@@ -36,6 +36,10 @@ spec:
       jsonPath: .status.license
       name: License
       type: string
+    - description: Email provider as declared (NotConfigured when spec.email is absent)
+      jsonPath: .status.email
+      name: Email
+      type: string
     - description: Why the platform is in its phase, in plain language
       jsonPath: .status.conditions[?(@.type=="Ready")].message
       name: Message
@@ -393,6 +397,201 @@ spec:
                         x-kubernetes-int-or-string: true
                     type: object
                 type: object
+              email:
+                description: |-
+                  email declares the mail provider this install sends through -- an SMTP
+                  relay or a Resend account, the address it sends as, credentials by
+                  Secret reference. Its presence is what turns email on: invitations are
+                  emailed as well as linked, alerts reach people, and the sign-in page
+                  offers "Forgot password?". Without it the install sends nothing and
+                  says so wherever an email would have gone.
+                properties:
+                  from:
+                    description: |-
+                      from is the identity every email carries: the address the install
+                      sends as and the display name beside it. The relay must permit sending
+                      as this address (a mailbox's own address, or one it has Send As rights
+                      to); SPF and DKIM for the domain are the domain owner's job.
+                    properties:
+                      address:
+                        description: |-
+                          address the install sends as, e.g. no-reply@planton.acme.com. Required
+                          whenever email is declared: there is no default address, because a
+                          default would name somebody else's domain.
+                        minLength: 1
+                        type: string
+                      name:
+                        default: Planton
+                        description: name shown beside the address in mail clients.
+                        type: string
+                    required:
+                    - address
+                    type: object
+                  replyTo:
+                    description: |-
+                      replyTo is where a person's reply lands -- a help desk or a shared
+                      mailbox -- when the sending address is a no-reply one. Unset, replies
+                      go to from.address.
+                    type: string
+                  resend:
+                    description: resend sends through Resend's API with an API key.
+                    properties:
+                      apiKeySecretRef:
+                        description: |-
+                          apiKeySecretRef points at the Resend API key. Required by reference:
+                          the key is never inline. Reaches the control plane as a mounted file,
+                          so a rotated key is live on the next send with no restart.
+                        properties:
+                          key:
+                            description: key within the Secret.
+                            minLength: 1
+                            type: string
+                          name:
+                            description: name of the Secret.
+                            minLength: 1
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                    required:
+                    - apiKeySecretRef
+                    type: object
+                  smtp:
+                    description: |-
+                      smtp sends through any SMTP relay: a workplace mail system (Exchange
+                      Online, Google Workspace, an internal smart host) or a transactional
+                      vendor's SMTP endpoint (SES, SendGrid, Postmark, Mailgun, Resend).
+                    properties:
+                      caBundleSecretRef:
+                        description: |-
+                          caBundleSecretRef points at a PEM CA bundle for verifying the relay's
+                          TLS certificate -- the private-CA case, the classic enterprise blocker.
+                          Omit it when the relay's certificate chains to a public root.
+                        properties:
+                          key:
+                            description: key within the Secret.
+                            minLength: 1
+                            type: string
+                          name:
+                            description: name of the Secret.
+                            minLength: 1
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                      credentialsSecretName:
+                        description: |-
+                          credentialsSecretName names a kubernetes.io/basic-auth Secret in this
+                          namespace whose username and password keys sign in to the relay:
+
+                            kubectl -n <namespace> create secret generic planton-email \
+                              --type=kubernetes.io/basic-auth \
+                              --from-literal=username=... --from-literal=password=...
+
+                          Omit it for a relay that admits this cluster by network address. The
+                          values are never inline and reach the control plane as mounted files,
+                          so a rotated password is live on the next send with no restart.
+                        type: string
+                      host:
+                        description: host of the relay, e.g. smtp.office365.com or
+                          smtp-relay.corp.acme.com.
+                        minLength: 1
+                        type: string
+                      oauth2:
+                        description: |-
+                          oauth2 signs in with a token from an OAuth2 client-credentials grant
+                          (SASL XOAUTH2) instead of a password. Exchange Online: tokenUrl
+                          https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token, scope
+                          https://outlook.office365.com/.default, the app registration's client
+                          id and secret, and user = the mailbox the app may send as.
+                        properties:
+                          clientId:
+                            description: clientId of the app registration.
+                            minLength: 1
+                            type: string
+                          clientSecretRef:
+                            description: |-
+                              clientSecretRef points at the app registration's client secret.
+                              Required by reference: the secret is never inline.
+                            properties:
+                              key:
+                                description: key within the Secret.
+                                minLength: 1
+                                type: string
+                              name:
+                                description: name of the Secret.
+                                minLength: 1
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                          scope:
+                            description: scope requested for the token.
+                            minLength: 1
+                            type: string
+                          tokenUrl:
+                            description: tokenUrl is the provider's OAuth2 token endpoint.
+                            pattern: ^https://
+                            type: string
+                          user:
+                            description: |-
+                              user is the mailbox the token sends as -- the account the app
+                              registration has been permitted to use.
+                            minLength: 1
+                            type: string
+                        required:
+                        - clientId
+                        - clientSecretRef
+                        - scope
+                        - tokenUrl
+                        - user
+                        type: object
+                      port:
+                        default: 587
+                        description: |-
+                          port the relay listens on. 587 is the submission port most relays use
+                          with STARTTLS; implicit-TLS relays (security: tls) usually listen on
+                          465; an internal plaintext relay on 25.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      security:
+                        default: starttls
+                        description: |-
+                          security protects the connection: starttls (required upgrade after
+                          connect, the default), tls (implicit TLS from the first byte), or none
+                          (plaintext, credential-free relays only).
+                        enum:
+                        - starttls
+                        - tls
+                        - none
+                        type: string
+                    required:
+                    - host
+                    type: object
+                    x-kubernetes-validations:
+                    - message: 'smtp authenticates one way: set credentialsSecretName
+                        for a username and password, or oauth2 for a token, not both'
+                      rule: '!(has(self.credentialsSecretName) && size(self.credentialsSecretName)
+                        > 0 && has(self.oauth2))'
+                    - message: 'security: none would send credentials in the clear;
+                        keep security at starttls or tls, or drop credentialsSecretName
+                        and oauth2 for a relay that admits this cluster''s address
+                        without them'
+                      rule: '!has(self.security) || self.security != ''none'' || (!(has(self.credentialsSecretName)
+                        && size(self.credentialsSecretName) > 0) && !has(self.oauth2))'
+                required:
+                - from
+                type: object
+                x-kubernetes-validations:
+                - message: 'email declares exactly one provider: set spec.email.smtp
+                    for a relay or spec.email.resend for a Resend account, never both,
+                    never neither'
+                  rule: has(self.smtp) != has(self.resend)
               gateway:
                 description: |-
                   gateway tunes the built-in front door that serves the platform when
@@ -635,8 +834,7 @@ spec:
                       a Secret edit, never a reinstall.
                     properties:
                       key:
-                        description: key within the Secret whose value is the license
-                          key.
+                        description: key within the Secret.
                         minLength: 1
                         type: string
                       name:
@@ -1196,6 +1394,14 @@ spec:
                   consoleUrl is the URL the web console is reachable at once ingress is
                   configured and admitted. The platform tells you your URL -- with an
                   auto-derived hostname this is where the derived address is published.
+                type: string
+              email:
+                description: |-
+                  email echoes which provider arm spec.email declares (NotConfigured,
+                  SMTP, or Resend) -- configuration echo like license, feeding the
+                  kubectl column. Whether the relay ACCEPTS mail is the control plane's
+                  own answer, checked on demand from its settings page, never guessed
+                  here: the operator has no channel to the relay and must not probe it.
                 type: string
               license:
                 description: |-

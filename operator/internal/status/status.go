@@ -34,6 +34,15 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		changed = true
 	}
 
+	// Same discipline for email: WHICH provider arm is declared, never
+	// whether the relay accepts mail (the control plane checks that on
+	// demand and reports each verdict in words -- the operator has no
+	// channel to the relay and must not probe it).
+	if mode := emailMode(planton); planton.Status.Email != mode {
+		planton.Status.Email = mode
+		changed = true
+	}
+
 	if planton.Status.Components.PostgreSQL == nil {
 		statuses := v1.ComponentStatuses{
 			PostgreSQL:   &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
@@ -137,6 +146,24 @@ func licenseMode(planton *v1.PlantonPlatform) string {
 		return v1.LicenseModeInlineKey
 	default:
 		return v1.LicenseModeCommunity
+	}
+}
+
+// emailMode mirrors component.effectiveEmail's arm resolution so the column
+// and the rendered Deployment cannot disagree about which provider was
+// declared. A block with neither arm (unreachable through the API server) is
+// NotConfigured, exactly as the component renders it.
+func emailMode(planton *v1.PlantonPlatform) string {
+	e := planton.Spec.Email
+	switch {
+	case e == nil:
+		return v1.EmailModeNotConfigured
+	case e.SMTP != nil:
+		return v1.EmailModeSMTP
+	case e.Resend != nil:
+		return v1.EmailModeResend
+	default:
+		return v1.EmailModeNotConfigured
 	}
 }
 

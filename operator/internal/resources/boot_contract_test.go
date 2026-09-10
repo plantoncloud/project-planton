@@ -150,6 +150,25 @@ func fullControlPlaneConfig() ControlPlaneConfig {
 	}
 	cfg.SecretBackend = &SecretBackendBinding{Type: "aws-secrets-manager", AwsRegion: "ap-south-1"}
 	cfg.License = &LicenseBinding{SecretName: "acme-license", SecretKey: "license-key"}
+	// Every email arm and every way in at once: not a shape the component can
+	// produce (the CRD keeps them exclusive), but the renderer emits by
+	// presence, and the contract lists every NAME the operator can render.
+	cfg.Email = &EmailBinding{
+		Provider:    EmailProviderSMTP,
+		FromAddress: "no-reply@planton.example.com",
+		FromName:    "Planton",
+		ReplyTo:     "help@planton.example.com",
+		SMTP: &EmailSMTPBinding{
+			Host: "smtp.example.com", Port: 587, Security: "starttls",
+			CredentialsSecretName: "planton-email",
+			OAuth2: &EmailSMTPOAuth2Binding{
+				User: "planton@example.com", TokenURL: "https://login.example.com/token", Scope: "smtp",
+				ClientID: "fixture", ClientSecretName: "planton-email-oauth", ClientSecretKey: "client-secret",
+			},
+			CABundleSecretName: "corp-ca", CABundleSecretKey: "ca.crt",
+		},
+		Resend: &EmailResendBinding{APIKeySecretName: "planton-email", APIKeySecretKey: "api-key"},
+	}
 	// The closed arm: it renders one more name (the reason) than the offered
 	// arm, and the contract lists the widest environment.
 	cfg.WebIdentity = &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: false, ClosedReason: "fixture reason"}

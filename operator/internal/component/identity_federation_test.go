@@ -37,7 +37,7 @@ func ldapIdentityProvider() *v1.PlantonIdentityProvider {
 	idp.Spec.ActiveDirectory = &v1.ActiveDirectorySpec{
 		Servers:                 []string{"ldaps://dc1.lab.example.internal:636"},
 		BindDN:                  "CN=svc,DC=lab,DC=example,DC=internal",
-		BindCredentialSecretRef: v1.IdentitySecretKeyRef{Name: "corp-bind", Key: "password"},
+		BindCredentialSecretRef: v1.SecretKeyRef{Name: "corp-bind", Key: "password"},
 		UsersDN:                 "OU=Staff,DC=lab,DC=example,DC=internal",
 		GroupsDN:                "OU=Groups,DC=lab,DC=example,DC=internal",
 	}
@@ -194,7 +194,7 @@ func TestBuildFederationState_BrokerDiscoveryAndReplay(t *testing.T) {
 	idp.Spec.OIDC = &v1.OIDCBrokerSpec{
 		IssuerURL:       server.URL,
 		ClientID:        "client-id",
-		ClientSecretRef: v1.IdentitySecretKeyRef{Name: "corp-oidc", Key: "client-secret"},
+		ClientSecretRef: v1.SecretKeyRef{Name: "corp-oidc", Key: "client-secret"},
 	}
 
 	c := fake.NewClientBuilder().WithScheme(bindingScheme(t)).

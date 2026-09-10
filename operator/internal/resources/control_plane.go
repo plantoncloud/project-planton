@@ -141,6 +141,12 @@ type ControlPlaneConfig struct {
 	// is entirely absent, never empty.
 	License *LicenseBinding
 
+	// Email is the resolved spec.email (control_plane_email.go). Nil renders
+	// PLANTON_EMAIL_PROVIDER=none -- said out loud, because the control
+	// plane's seam reads an unset provider as the hosted arm. The component
+	// resolves it purely and preflights every Secret it names first.
+	Email *EmailBinding
+
 	// ServiceAccountAnnotations land on the control plane's dedicated
 	// ServiceAccount -- the workload-identity seam for the platform's own
 	// cloud calls (ambient secret backends + KMS KEKs).
@@ -537,6 +543,39 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 
 	envFrom := controlPlaneEnvFrom(cfg)
 
+	// The identity component publishes federation facts (arm + verification
+	// verdicts from the bound identity manifest) as a ConfigMap the identity
+	// component ensures exists on every install BEFORE this Deployment
+	// renders (controlplane depends on identity). Mounted as a volume --
+	// never env -- so kubelet updates the content in place and a facts
+	// change NEVER rolls this pod; whole-directory mount, never subPath
+	// (subPath mounts freeze at pod start). Optional is belt-and-braces only.
+	volumes := []corev1.Volume{{
+		Name: "identity-federation-facts",
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: IdentityFederationFactsConfigMapName(cfg.CRName),
+				},
+				Optional: new(true),
+			},
+		},
+	}}
+	volumeMounts := []corev1.VolumeMount{{
+		Name:      "identity-federation-facts",
+		MountPath: IdentityFederationFactsMountPath,
+		ReadOnly:  true,
+	}}
+
+	// The email credentials volume follows the same live-update shape: every
+	// secret value spec.email references is a projected file, present only
+	// when a Secret is referenced, so a rotated relay password is live on the
+	// next send without a pod roll.
+	if volume, mount := emailCredentialsVolume(cfg.Email); volume != nil {
+		volumes = append(volumes, *volume)
+		volumeMounts = append(volumeMounts, *mount)
+	}
+
 	deploy := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -558,26 +597,7 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: ControlPlaneServiceAccountName(cfg.CRName),
-					// The identity component publishes federation facts (arm +
-					// verification verdicts from the bound identity manifest)
-					// as a ConfigMap the identity component ensures exists on
-					// every install BEFORE this Deployment renders (controlplane
-					// depends on identity). Mounted as a volume -- never env --
-					// so kubelet updates the content in place and a facts
-					// change NEVER rolls this pod; whole-directory mount, never
-					// subPath (subPath mounts freeze at pod start). Optional is
-					// belt-and-braces only.
-					Volumes: []corev1.Volume{{
-						Name: "identity-federation-facts",
-						VolumeSource: corev1.VolumeSource{
-							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: IdentityFederationFactsConfigMapName(cfg.CRName),
-								},
-								Optional: new(true),
-							},
-						},
-					}},
+					Volumes:            volumes,
 					Containers: []corev1.Container{{
 						Name:  "control-plane",
 						Image: fmt.Sprintf("%s:%s", imageRepo, imageTag),
@@ -587,13 +607,9 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 							{Name: controlPlaneWebhookPortName, ContainerPort: controlPlaneWebhookPort, Protocol: corev1.ProtocolTCP},
 							{Name: "debug", ContainerPort: controlPlaneDebugPort, Protocol: corev1.ProtocolTCP},
 						},
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "identity-federation-facts",
-							MountPath: IdentityFederationFactsMountPath,
-							ReadOnly:  true,
-						}},
-						Env:     envVars,
-						EnvFrom: envFrom,
+						VolumeMounts: volumeMounts,
+						Env:          envVars,
+						EnvFrom:      envFrom,
 						// First boot self-provisions and migrates every database, which
 						// on a cold cluster takes several minutes; allow a generous
 						// window (10s x 90 = 15m) before the kubelet gives up, so the
@@ -831,15 +847,6 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		{Name: "GITHUB_CHECKS_DETAILS_URL_FORMAT", Value: ""},
 		{Name: "GITHUB_WEBHOOKS_SECRET_TOKEN", Value: "local"},
 
-		// ── email: none, declared ──
-		// A self-hosted install has no email service unless the platform
-		// declares one, and the control plane is told so rather than handed a
-		// placeholder key it would dial and fail with. Every feature that emails
-		// as a courtesy (invitations above all) keeps working: an invitation is
-		// a link the admin hands over, and the create response says the email
-		// was not sent so the console can say "share the link".
-		{Name: "PLANTON_EMAIL_PROVIDER", Value: "none"},
-
 		// ── cloud oauth (connect): no self-hosted install carries Planton's apps ──
 		// Each cloud's sign-in and one-click keyless setup follow that cloud's
 		// OAuth app's own enabled flag; the credentials below are placeholders
@@ -935,6 +942,8 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 	envs = append(envs, vaultEnvVars(cfg.Vault)...)
 	envs = append(envs, secretBackendEnvVars(cfg.SecretBackend)...)
 	envs = append(envs, licenseEnvVars(cfg.License)...)
+	envs = append(envs, emailEnvVars(cfg.Email)...)
+	envs = append(envs, emailSetupHintEnvVars(cfg.CRName, cfg.Namespace)...)
 
 	// Remote-runners capability: the deploy-queue advertisement
 	// (CONNECT_RUNNER_TEMPORAL_*) that minted identity documents and the

@@ -94,6 +94,45 @@ func TestInitialize_UpdatesVersion(t *testing.T) {
 	}
 }
 
+// The email column follows the spec in both directions and speaks the
+// license column's grammar: which arm is declared, never whether the relay
+// accepts mail.
+func TestInitialize_EmailColumnFollowsSpec(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	if p.Status.Email != v1.EmailModeNotConfigured {
+		t.Errorf("email = %q, want NotConfigured on an install with no spec.email", p.Status.Email)
+	}
+
+	p.Spec.Email = &v1.EmailSpec{
+		From: v1.EmailFromSpec{Address: "no-reply@planton.acme.com"},
+		SMTP: &v1.EmailSMTPSpec{Host: "smtp.office365.com", Port: 587},
+	}
+	if changed := Initialize(p); !changed {
+		t.Fatal("expected Initialize to detect the declared email")
+	}
+	if p.Status.Email != v1.EmailModeSMTP {
+		t.Errorf("email = %q, want SMTP", p.Status.Email)
+	}
+
+	p.Spec.Email = &v1.EmailSpec{
+		From:   v1.EmailFromSpec{Address: "no-reply@planton.acme.com"},
+		Resend: &v1.EmailResendSpec{APIKeySecretRef: v1.SecretKeyRef{Name: "planton-email", Key: "api-key"}},
+	}
+	Initialize(p)
+	if p.Status.Email != v1.EmailModeResend {
+		t.Errorf("email = %q, want Resend", p.Status.Email)
+	}
+
+	p.Spec.Email = nil
+	if changed := Initialize(p); !changed {
+		t.Fatal("expected Initialize to detect the removed email")
+	}
+	if p.Status.Email != v1.EmailModeNotConfigured {
+		t.Errorf("email = %q, want NotConfigured after removal", p.Status.Email)
+	}
+}
+
 // The license column follows the spec in both directions (a key can be added
 // to or removed from a running install), and blank-tolerance matches
 // effectiveLicense so the column never claims a key the Deployment does not
@@ -114,7 +153,7 @@ func TestInitialize_LicenseColumnFollowsSpec(t *testing.T) {
 	}
 
 	p.Spec.License = &v1.LicenseSpec{
-		SecretKeyRef: &v1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+		SecretKeyRef: &v1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 	}
 	Initialize(p)
 	if p.Status.License != v1.LicenseModeSecretRef {

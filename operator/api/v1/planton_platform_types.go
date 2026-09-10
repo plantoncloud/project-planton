@@ -65,6 +65,15 @@ const (
 	LicenseModeSecretRef = "SecretRef"
 )
 
+// Email delivery modes reported in status.email -- which provider arm
+// spec.email declares, never whether the relay accepts mail (the control
+// plane checks that on demand and reports each verdict in words).
+const (
+	EmailModeNotConfigured = "NotConfigured"
+	EmailModeSMTP          = "SMTP"
+	EmailModeResend        = "Resend"
+)
+
 // OpenBAOInitMode controls how OpenBAO is initialized after deployment.
 // "auto" (default): the operator initializes and unseals OpenBAO automatically,
 // storing unseal keys and root token in a Kubernetes Secret.
@@ -307,6 +316,15 @@ type PlantonPlatformSpec struct {
 	// +optional
 	License *LicenseSpec `json:"license,omitempty"`
 
+	// email declares the mail provider this install sends through -- an SMTP
+	// relay or a Resend account, the address it sends as, credentials by
+	// Secret reference. Its presence is what turns email on: invitations are
+	// emailed as well as linked, alerts reach people, and the sign-in page
+	// offers "Forgot password?". Without it the install sends nothing and
+	// says so wherever an email would have gone.
+	// +optional
+	Email *EmailSpec `json:"email,omitempty"`
+
 	// storage sets platform-wide storage defaults for every persistent
 	// volume the operator creates: the StorageClass volumes are provisioned
 	// from and one size applied across all of them. Component settings
@@ -452,21 +470,163 @@ type LicenseSpec struct {
 	// re-delivers the key on the next control-plane restart -- a renewal is
 	// a Secret edit, never a reinstall.
 	// +optional
-	SecretKeyRef *LicenseSecretKeyRef `json:"secretKeyRef,omitempty"`
+	SecretKeyRef *SecretKeyRef `json:"secretKeyRef,omitempty"`
 }
 
-// LicenseSecretKeyRef names one entry of one Secret. A narrowed, CRD-local
-// mirror of corev1.SecretKeySelector: embedding the core type would admit
-// its optional flag, which has no meaning here (a declared license reference
-// must resolve).
-type LicenseSecretKeyRef struct {
-	// name of the Secret.
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
+// EmailSpec declares the one mail provider every sender on the install uses:
+// the control plane (invitations, alerts, license mail) and the identity
+// server (password resets) both send through it, so one declaration is the
+// whole configuration. Exactly one provider arm is set. The operator delivers
+// the declaration and preflights every Secret it names; it never probes the
+// relay itself (a relay probed every thirty seconds is somebody's intrusion
+// alert). The control plane checks the connection on demand and reports each
+// relay failure in the relay's own words.
+// +kubebuilder:validation:XValidation:rule="has(self.smtp) != has(self.resend)",message="email declares exactly one provider: set spec.email.smtp for a relay or spec.email.resend for a Resend account, never both, never neither"
+type EmailSpec struct {
+	// from is the identity every email carries: the address the install
+	// sends as and the display name beside it. The relay must permit sending
+	// as this address (a mailbox's own address, or one it has Send As rights
+	// to); SPF and DKIM for the domain are the domain owner's job.
+	From EmailFromSpec `json:"from"`
 
-	// key within the Secret whose value is the license key.
+	// replyTo is where a person's reply lands -- a help desk or a shared
+	// mailbox -- when the sending address is a no-reply one. Unset, replies
+	// go to from.address.
+	// +optional
+	ReplyTo string `json:"replyTo,omitempty"`
+
+	// smtp sends through any SMTP relay: a workplace mail system (Exchange
+	// Online, Google Workspace, an internal smart host) or a transactional
+	// vendor's SMTP endpoint (SES, SendGrid, Postmark, Mailgun, Resend).
+	// +optional
+	SMTP *EmailSMTPSpec `json:"smtp,omitempty"`
+
+	// resend sends through Resend's API with an API key.
+	// +optional
+	Resend *EmailResendSpec `json:"resend,omitempty"`
+}
+
+// EmailFromSpec is the sender identity on every email the install sends.
+type EmailFromSpec struct {
+	// address the install sends as, e.g. no-reply@planton.acme.com. Required
+	// whenever email is declared: there is no default address, because a
+	// default would name somebody else's domain.
 	// +kubebuilder:validation:MinLength=1
-	Key string `json:"key"`
+	Address string `json:"address"`
+
+	// name shown beside the address in mail clients.
+	// +kubebuilder:default="Planton"
+	// +optional
+	Name string `json:"name,omitempty"`
+}
+
+// EmailSMTPSecurity is how the connection to the relay is protected.
+// +kubebuilder:validation:Enum=starttls;tls;none
+type EmailSMTPSecurity string
+
+const (
+	// EmailSMTPSecurityStartTLS connects in the clear and REQUIRES the
+	// STARTTLS upgrade before anything else is sent; a relay that does not
+	// offer it is a failed connection, never a silent fallback. The
+	// submission default (port 587).
+	EmailSMTPSecurityStartTLS EmailSMTPSecurity = "starttls"
+	// EmailSMTPSecurityTLS opens a TLS connection from the first byte
+	// (implicit TLS, port 465 on most relays).
+	EmailSMTPSecurityTLS EmailSMTPSecurity = "tls"
+	// EmailSMTPSecurityNone is plaintext end to end and never upgrades. For
+	// an internal relay that admits this cluster's address without a
+	// credential; credentials are refused on it.
+	EmailSMTPSecurityNone EmailSMTPSecurity = "none"
+)
+
+// EmailSMTPSpec points the install at an SMTP relay. Three ways to be let in,
+// matching how mail teams actually run relays: a username and password
+// (kubernetes.io/basic-auth Secret), an OAuth2 app registration (Exchange
+// Online, whose password submission Microsoft is retiring), or no credential
+// at all (an internal smart host that allow-lists the cluster's egress).
+// +kubebuilder:validation:XValidation:rule="!(has(self.credentialsSecretName) && size(self.credentialsSecretName) > 0 && has(self.oauth2))",message="smtp authenticates one way: set credentialsSecretName for a username and password, or oauth2 for a token, not both"
+// +kubebuilder:validation:XValidation:rule="!has(self.security) || self.security != 'none' || (!(has(self.credentialsSecretName) && size(self.credentialsSecretName) > 0) && !has(self.oauth2))",message="security: none would send credentials in the clear; keep security at starttls or tls, or drop credentialsSecretName and oauth2 for a relay that admits this cluster's address without them"
+type EmailSMTPSpec struct {
+	// host of the relay, e.g. smtp.office365.com or smtp-relay.corp.acme.com.
+	// +kubebuilder:validation:MinLength=1
+	Host string `json:"host"`
+
+	// port the relay listens on. 587 is the submission port most relays use
+	// with STARTTLS; implicit-TLS relays (security: tls) usually listen on
+	// 465; an internal plaintext relay on 25.
+	// +kubebuilder:default=587
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// security protects the connection: starttls (required upgrade after
+	// connect, the default), tls (implicit TLS from the first byte), or none
+	// (plaintext, credential-free relays only).
+	// +kubebuilder:default="starttls"
+	// +optional
+	Security EmailSMTPSecurity `json:"security,omitempty"`
+
+	// credentialsSecretName names a kubernetes.io/basic-auth Secret in this
+	// namespace whose username and password keys sign in to the relay:
+	//
+	//   kubectl -n <namespace> create secret generic planton-email \
+	//     --type=kubernetes.io/basic-auth \
+	//     --from-literal=username=... --from-literal=password=...
+	//
+	// Omit it for a relay that admits this cluster by network address. The
+	// values are never inline and reach the control plane as mounted files,
+	// so a rotated password is live on the next send with no restart.
+	// +optional
+	CredentialsSecretName string `json:"credentialsSecretName,omitempty"`
+
+	// oauth2 signs in with a token from an OAuth2 client-credentials grant
+	// (SASL XOAUTH2) instead of a password. Exchange Online: tokenUrl
+	// https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token, scope
+	// https://outlook.office365.com/.default, the app registration's client
+	// id and secret, and user = the mailbox the app may send as.
+	// +optional
+	OAuth2 *EmailSMTPOAuth2Spec `json:"oauth2,omitempty"`
+
+	// caBundleSecretRef points at a PEM CA bundle for verifying the relay's
+	// TLS certificate -- the private-CA case, the classic enterprise blocker.
+	// Omit it when the relay's certificate chains to a public root.
+	// +optional
+	CABundleSecretRef *SecretKeyRef `json:"caBundleSecretRef,omitempty"`
+}
+
+// EmailSMTPOAuth2Spec is the client-credentials grant that yields the SMTP
+// token: the same four facts the identity server needs, so one declaration
+// powers both senders.
+type EmailSMTPOAuth2Spec struct {
+	// user is the mailbox the token sends as -- the account the app
+	// registration has been permitted to use.
+	// +kubebuilder:validation:MinLength=1
+	User string `json:"user"`
+
+	// tokenUrl is the provider's OAuth2 token endpoint.
+	// +kubebuilder:validation:Pattern=`^https://`
+	TokenURL string `json:"tokenUrl"`
+
+	// scope requested for the token.
+	// +kubebuilder:validation:MinLength=1
+	Scope string `json:"scope"`
+
+	// clientId of the app registration.
+	// +kubebuilder:validation:MinLength=1
+	ClientID string `json:"clientId"`
+
+	// clientSecretRef points at the app registration's client secret.
+	// Required by reference: the secret is never inline.
+	ClientSecretRef SecretKeyRef `json:"clientSecretRef"`
+}
+
+// EmailResendSpec sends through Resend's HTTP API.
+type EmailResendSpec struct {
+	// apiKeySecretRef points at the Resend API key. Required by reference:
+	// the key is never inline. Reaches the control plane as a mounted file,
+	// so a rotated key is live on the next send with no restart.
+	APIKeySecretRef SecretKeyRef `json:"apiKeySecretRef"`
 }
 
 // StorageSpec sets platform-wide storage defaults. Some backends make these
@@ -965,6 +1125,14 @@ type PlantonPlatformStatus struct {
 	// +optional
 	License string `json:"license,omitempty"`
 
+	// email echoes which provider arm spec.email declares (NotConfigured,
+	// SMTP, or Resend) -- configuration echo like license, feeding the
+	// kubectl column. Whether the relay ACCEPTS mail is the control plane's
+	// own answer, checked on demand from its settings page, never guessed
+	// here: the operator has no channel to the relay and must not probe it.
+	// +optional
+	Email string `json:"email,omitempty"`
+
 	// components reports the status of each individual component.
 	// +optional
 	Components ComponentStatuses `json:"components,omitempty"`
@@ -1025,6 +1193,7 @@ type ComponentStatus struct {
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.consoleUrl`,description="Web console URL once ingress is admitted"
 // +kubebuilder:printcolumn:name="Reachability",type=string,JSONPath=`.status.reachability`,description="Whether the public internet reaches the front door, as the operator concluded"
 // +kubebuilder:printcolumn:name="License",type=string,JSONPath=`.status.license`,description="License delivery mode (Community when none configured)"
+// +kubebuilder:printcolumn:name="Email",type=string,JSONPath=`.status.email`,description="Email provider as declared (NotConfigured when spec.email is absent)"
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`,description="Why the platform is in its phase, in plain language"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 

@@ -86,7 +86,7 @@ func TestEffectiveLicense(t *testing.T) {
 	}
 
 	p.Spec.License = &v1.LicenseSpec{
-		SecretKeyRef: &v1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+		SecretKeyRef: &v1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 	}
 	got = effectiveLicense(p)
 	if got == nil || got.SecretName != "acme-license" || got.SecretKey != "license-key" || got.Key != "" {

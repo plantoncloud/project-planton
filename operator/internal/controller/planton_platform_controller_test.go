@@ -437,7 +437,7 @@ var _ = Describe("PlantonPlatform Controller", func() {
 				Spec: plantonaiv1.PlantonPlatformSpec{
 					Version: "v1.0.0",
 					License: &plantonaiv1.LicenseSpec{
-						SecretKeyRef: &plantonaiv1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+						SecretKeyRef: &plantonaiv1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 					},
 				},
 			}
@@ -452,7 +452,7 @@ var _ = Describe("PlantonPlatform Controller", func() {
 					Version: "v1.0.0",
 					License: &plantonaiv1.LicenseSpec{
 						Key:          "plk1.1.claims.signature",
-						SecretKeyRef: &plantonaiv1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+						SecretKeyRef: &plantonaiv1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 					},
 				},
 			}

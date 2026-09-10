@@ -451,7 +451,7 @@ func (id *Identity) recordedFactsObservedAt(ctx context.Context, c client.Client
 
 // readSecretKey reads one key of a user-provided Secret in the platform's
 // namespace.
-func readSecretKey(ctx context.Context, c client.Client, namespace string, ref v1.IdentitySecretKeyRef) (string, error) {
+func readSecretKey(ctx context.Context, c client.Client, namespace string, ref v1.SecretKeyRef) (string, error) {
 	var secret corev1.Secret
 	if err := c.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: namespace}, &secret); err != nil {
 		return "", err

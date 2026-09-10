@@ -15,6 +15,31 @@ spec:
   #   key: plk1.1...                     # the token from your purchase email
   #   secretKeyRef: {name: planton-license, key: license-key}
 
+  # Email -- omit entirely and the install sends nothing (invitations are
+  # links, the sign-in page has no "Forgot password?"). Declare ONE provider
+  # and every sender uses it: the control plane and the identity server both.
+  # Credentials are Secret references only, delivered as mounted files, so a
+  # rotated password is live on the next send. kubectl's EMAIL column shows
+  # the declared provider; the console's Email settings page checks it live.
+  # email:
+  #   from: {address: no-reply@planton.acme.com, name: Planton}
+  #   replyTo: it-help@acme.com          # optional; where replies land
+  #   smtp:                              # exactly one of smtp | resend
+  #     host: smtp.office365.com
+  #     port: 587                        # 465 for security: tls; 25 for an internal plaintext relay
+  #     security: starttls               # starttls (default) | tls | none
+  #     # one way in -- or none, for an internal relay that admits this cluster's address:
+  #     credentialsSecretName: planton-email        # kubernetes.io/basic-auth: username + password
+  #     # oauth2:                                   # Exchange Online after password submission retires
+  #     #   user: planton@acme.com
+  #     #   tokenUrl: https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token
+  #     #   scope: https://outlook.office365.com/.default
+  #     #   clientId: 00000000-0000-0000-0000-000000000000
+  #     #   clientSecretRef: {name: planton-email-oauth, key: client-secret}
+  #     # caBundleSecretRef: {name: corp-ca, key: ca.crt}   # a relay behind a private CA
+  #   # resend:
+  #   #   apiKeySecretRef: {name: planton-email, key: api-key}
+
   database:
     postgresql:
       storageSize: 10Gi
