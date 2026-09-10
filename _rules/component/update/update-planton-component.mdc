@@ -211,6 +211,44 @@ need on the field comment, verified live — Barman Cloud probes the bucket with
 `roles/storage.legacyBucketReader` beside `roles/storage.objectAdmin`, and
 objectAdmin alone fails every archive (live-caught on GKE).
 
+**An S3-compatible store gets its own arm in ITS vocabulary, and the module
+does the S3 translation:** "S3-compatible" is a wire protocol, not a
+configuration surface. When a store the catalog already models (Cloudflare R2
+through `CloudflareR2Bucket` and `CloudflareAccountApiToken`) is reachable
+only by hand-typing an endpoint host, a region token, and a key pair minted
+elsewhere, add an arm whose fields are the store's own nouns as references
+onto those kinds (the bucket's account and jurisdiction, the token as the
+credential) and let the module compose what the client needs -- the
+jurisdiction's endpoint host, the fixed region, the addressing style, the
+credential pair the owning kind exports. Read three sources first: the
+store's published S3 compatibility matrix (which operations and checksum types
+it implements), the operator's CRD for the S3 block's knobs at the pin, and
+the storage CLIENT's code for what it sends by default -- a client's default
+request checksums (aws-sdk-go-v2's `RequestChecksumCalculation`, boto3's data
+integrity protections) are the first thing an S3-compatible store rejects,
+and the upstream's own escape hatch (the Barman Cloud plugin's
+`instanceSidecarConfiguration.env` with `AWS_REQUEST_CHECKSUM_CALCULATION=
+when_required`) belongs in the module, not in a user's manifest. Facts that
+are the store's, not the consumer's (the host table, a credential
+derivation), live once in a shared Go package the consuming modules import,
+with the Terraform twins carrying the same table under a comment naming that
+package.
+
+**A one-shot controller verb waits for the state its controller assumes:**
+the never-block-on-a-controller posture has one exception. When a module
+renders an object the operator runs exactly once and never retries on error
+(Percona's `PerconaServerMongoDBRestore`), and the operator's own
+precondition check is weaker than what the run needs (its "agents are up"
+check reads heartbeats that a fresh cluster's crash-looping agents wrote
+before they died; the resync it then sends reaches no listening agent and its
+30-second deadline parks the Restore in a terminal "not found"), the module
+gates the one-shot on the state the controller assumes -- the cluster's
+`status.state == ready` -- with the engine's own await (`pulumi.com/waitFor`
+with a JSONPath, `wait_for { field {...} }` on `kubectl_manifest`), sized
+with an explicit timeout, and ONLY when the one-shot is declared. Prove the
+race with the controller's log before writing the gate; a gate that merely
+"seems safer" is the posture violation the exception exists to prevent.
+
 **Validation message quality:** When adding or modifying CEL validations, every `message` string must meet the quality standards in rule `002-spec-validate` ("VALIDATION MESSAGE QUALITY"). These messages are rendered directly in user-facing UIs and CLIs. Write them like a knowledgeable colleague helping someone configure this component for the first time.
 
 #### Scenario 3: Refresh Documentation

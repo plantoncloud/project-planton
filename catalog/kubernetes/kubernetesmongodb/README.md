@@ -78,10 +78,13 @@ discover every member through the headless Service; connect with
   (`<name>-user-<username>`); rotating the Secret rotates the database
   password. Secrets never appear inline in the rendered resource.
 - **Backups are PBM + PITR** — named storages (S3 or any S3-compatible
-  store via `endpoint_url`, GCS, Azure Blob; declared credentials
+  store via `endpoint_url`, Cloudflare R2 in its own terms by reference to
+  the catalog's Cloudflare kinds, GCS, Azure Blob; declared credentials
   materialize as `<name>-backup-<storage>` Secrets; the keyless posture
   exists for real S3 only — GCS always needs a service-account key,
-  which a `GcpServiceAccount` can supply by reference), five-field cron
+  which a `GcpServiceAccount` can supply by reference, and R2 always
+  needs its token's key pair, which a `CloudflareAccountApiToken`
+  supplies by reference), five-field cron
   tasks with retention and logical/physical/incremental types, and
   point-in-time recovery archiving oplog chunks to the main storage.
 - **Restore is a declaration, not a runbook** — `spec.restore` names a
@@ -147,8 +150,8 @@ discover every member through the headless Service; connect with
 - **`spec.users`**: declarative application users — auth `db`
   (default `admin`), `roles` (name + db), and a password (empty =
   operator-generated into the same `<name>-user-<username>` Secret)
-- **`spec.backup`**: named `storages` (S3/S3-compatible, GCS, Azure
-  Blob — the first or the one marked `main` receives PITR oplog
+- **`spec.backup`**: named `storages` (S3/S3-compatible, Cloudflare R2,
+  GCS, Azure Blob — the first or the one marked `main` receives PITR oplog
   chunks; GCS requires `credentials` — a `service_account_key`, raw or
   a GcpServiceAccount's `key_base64` output, or an
   `existing_secret_name`), `tasks` (five-field cron, `storage_name`,

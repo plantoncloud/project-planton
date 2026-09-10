@@ -145,6 +145,16 @@ variable "spec" {
           storage_account = string
           access_key      = string
         }))
+        r2 = optional(object({
+          bucket       = string
+          prefix       = optional(string, "")
+          account_id   = string
+          jurisdiction = optional(string, "")
+          credentials = object({
+            access_key_id     = string
+            secret_access_key = string
+          })
+        }))
       }))
       tasks = optional(list(object({
         name                = string

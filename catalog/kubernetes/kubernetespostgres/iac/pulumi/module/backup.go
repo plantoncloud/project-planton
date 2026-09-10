@@ -3,6 +3,7 @@ package module
 import (
 	"github.com/pkg/errors"
 	kubernetespostgresv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetespostgres/v1alpha1"
+	"github.com/plantonhq/planton/pkg/cloudflare/r2"
 	barmancloudv1 "github.com/plantonhq/planton/pkg/kubernetes/kubernetestypes/cloudnativepg/kubernetes/barmancloud/v1"
 	postgresqlv1 "github.com/plantonhq/planton/pkg/kubernetes/kubernetestypes/cloudnativepg/kubernetes/postgresql/v1"
 	kubernetescorev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -71,6 +72,9 @@ func createObjectStore(ctx *pulumi.Context, locals *Locals,
 	}
 
 	var storeDeps []pulumi.Resource
+	// Set by an arm that needs the plugin's sidecar tuned for its store
+	// (today: the r2 arm's checksum posture); nil renders no block.
+	var instanceSidecarConfiguration *barmancloudv1.ObjectStoreSpecInstanceSidecarConfigurationArgs
 
 	switch {
 	case objectStore.GetS3() != nil:
@@ -103,8 +107,11 @@ func createObjectStore(ctx *pulumi.Context, locals *Locals,
 		if s3.GetRegion() != "" {
 			// The CRD models the region as a SecretKeySelector (not a plain
 			// string), so the literal region rides its own deterministic
-			// single-key Secret — works identically for the keyless and
-			// declared-key postures.
+			// single-key Secret. barman-cloud reads it ONLY on the declared-key
+			// path (its credential resolver returns before the region on
+			// inheritFromIAMRole, and the AWS SDK derives the region from the
+			// pod's IRSA environment there), so on a keyless store this Secret
+			// is rendered but inert -- kept for a uniform shape, not for effect.
 			regionSecretName := storeName + "-region"
 			regionSecret, err := createOpaqueSecret(ctx, locals, kubernetesProvider, dependencies,
 				regionSecretName, map[string]string{"AWS_REGION": s3.GetRegion()})
@@ -132,6 +139,71 @@ func createObjectStore(ctx *pulumi.Context, locals *Locals,
 				Name: pulumi.String(endpointCaSecretName),
 				Key:  pulumi.String("ca.crt"),
 			}
+		}
+
+	case objectStore.GetR2() != nil:
+		// Cloudflare R2 rides Barman Cloud's S3 code path, but the spec is in
+		// R2's own vocabulary; this branch performs the translation:
+		//   - endpoint: the jurisdiction's host, composed by the shared
+		//     pkg/cloudflare/r2 helper (an eu/fedramp/us bucket is served ONLY
+		//     through <account>.<jurisdiction>.r2.cloudflarestorage.com);
+		//   - region: "auto", the only region R2 accepts (Cloudflare aliases
+		//     "" and us-east-1 to it, but the plugin needs an explicit value
+		//     to set AWS_DEFAULT_REGION, so it is always rendered);
+		//   - credentials: the S3 key pair as declared -- by default the
+		//     CloudflareAccountApiToken's r2_access_key_id/r2_secret_access_key
+		//     outputs, which that kind derives (id, SHA-256 of the value); no
+		//     hashing happens here. There is no keyless posture for R2.
+		// The two AWS_*_CHECKSUM_* variables ride the sidecar for this arm:
+		// barman-cloud's boto3 attaches data-integrity checksums by default,
+		// which S3-compatible stores may reject; "when_required" is the
+		// plugin's documented posture for them and costs nothing on a store
+		// that accepts the checksums.
+		r2Store := objectStore.GetR2()
+		r2Creds := r2Store.GetCredentials()
+		credsSecret, err := createOpaqueSecret(ctx, locals, kubernetesProvider, dependencies,
+			credsSecretName, map[string]string{
+				"ACCESS_KEY_ID":     r2Creds.GetAccessKeyId().GetValue(),
+				"SECRET_ACCESS_KEY": r2Creds.GetSecretAccessKey().GetValue(),
+			})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create r2 credentials secret")
+		}
+		storeDeps = append(storeDeps, credsSecret)
+		regionSecretName := storeName + "-region"
+		regionSecret, err := createOpaqueSecret(ctx, locals, kubernetesProvider, dependencies,
+			regionSecretName, map[string]string{"AWS_REGION": r2.Region})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create r2 region secret")
+		}
+		storeDeps = append(storeDeps, regionSecret)
+		configuration.S3Credentials = barmancloudv1.ObjectStoreSpecConfigurationS3CredentialsArgs{
+			AccessKeyId: barmancloudv1.ObjectStoreSpecConfigurationS3CredentialsAccessKeyIdArgs{
+				Name: pulumi.String(credsSecretName),
+				Key:  pulumi.String("ACCESS_KEY_ID"),
+			},
+			SecretAccessKey: barmancloudv1.ObjectStoreSpecConfigurationS3CredentialsSecretAccessKeyArgs{
+				Name: pulumi.String(credsSecretName),
+				Key:  pulumi.String("SECRET_ACCESS_KEY"),
+			},
+			Region: barmancloudv1.ObjectStoreSpecConfigurationS3CredentialsRegionArgs{
+				Name: pulumi.String(regionSecretName),
+				Key:  pulumi.String("AWS_REGION"),
+			},
+		}
+		configuration.EndpointURL = pulumi.String(r2.S3Endpoint(
+			r2Store.GetAccountId().GetValue(), r2Store.GetJurisdiction().GetValue()))
+		instanceSidecarConfiguration = &barmancloudv1.ObjectStoreSpecInstanceSidecarConfigurationArgs{
+			Env: barmancloudv1.ObjectStoreSpecInstanceSidecarConfigurationEnvArray{
+				barmancloudv1.ObjectStoreSpecInstanceSidecarConfigurationEnvArgs{
+					Name:  pulumi.String("AWS_REQUEST_CHECKSUM_CALCULATION"),
+					Value: pulumi.String("when_required"),
+				},
+				barmancloudv1.ObjectStoreSpecInstanceSidecarConfigurationEnvArgs{
+					Name:  pulumi.String("AWS_RESPONSE_CHECKSUM_VALIDATION"),
+					Value: pulumi.String("when_required"),
+				},
+			},
 		}
 
 	case objectStore.GetGcs() != nil:
@@ -225,6 +297,9 @@ func createObjectStore(ctx *pulumi.Context, locals *Locals,
 
 	storeSpec := barmancloudv1.ObjectStoreSpecArgs{
 		Configuration: configuration,
+	}
+	if instanceSidecarConfiguration != nil {
+		storeSpec.InstanceSidecarConfiguration = instanceSidecarConfiguration
 	}
 	if retentionPolicy != "" {
 		storeSpec.RetentionPolicy = pulumi.String(retentionPolicy)

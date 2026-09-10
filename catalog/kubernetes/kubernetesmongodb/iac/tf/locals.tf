@@ -131,7 +131,10 @@ locals {
   # credentialsSecret — the PBM agents use the pods' ambient AWS identity.
   # GCS has no keyless arm (PBM's Google client requires a key); a GCS
   # storage naming an existing_secret_name creates no Secret either — the
-  # operator reads the one the user brought.
+  # operator reads the one the user brought. The r2 arm always carries a
+  # key pair (R2 has no keyless posture): the CloudflareAccountApiToken's
+  # r2_access_key_id / r2_secret_access_key outputs as declared (that kind
+  # derives them; no hashing happens here), under the same AWS_* keys.
   # All values are strings, so this chained ternary unifies safely to
   # map(string) — no number/bool stringification risk here.
   backup_credential_secrets = local.backup == null ? {} : {
@@ -139,6 +142,9 @@ locals {
       try(s.s3.access_keys, null) != null ? {
         AWS_ACCESS_KEY_ID     = s.s3.access_keys.access_key_id
         AWS_SECRET_ACCESS_KEY = s.s3.access_keys.secret_access_key
+        } : try(s.r2, null) != null ? {
+        AWS_ACCESS_KEY_ID     = s.r2.credentials.access_key_id
+        AWS_SECRET_ACCESS_KEY = s.r2.credentials.secret_access_key
         } : try(s.gcs.credentials.service_account_key, "") != "" ? {
         GCS_CLIENT_EMAIL = jsondecode(local.gcs_key_json[s.name]).client_email
         GCS_PRIVATE_KEY  = jsondecode(local.gcs_key_json[s.name]).private_key
@@ -149,9 +155,50 @@ locals {
     )
     if(
       try(s.s3.access_keys, null) != null ||
+      try(s.r2, null) != null ||
       try(s.gcs.credentials.service_account_key, "") != "" ||
       try(s.azure, null) != null
     )
+  }
+
+  # Every storage that rides the operator's `s3` block, seen through one
+  # S3-API view: the s3 arm as declared, and the r2 arm TRANSLATED from R2's
+  # own vocabulary -- the jurisdiction's endpoint host (an eu/fedramp/us
+  # bucket is served ONLY through <account>.<jurisdiction>.r2.cloudflarestorage.com;
+  # the host table mirrors the Go helper package pkg/cloudflare/r2, the
+  # source of truth both engines follow), region "auto" (the only region R2
+  # accepts; PBM would default to us-east-1, which Cloudflare aliases --
+  # rendered explicitly so the CR says what it means), and path-style
+  # addressing pinned (PBM's own default when unset). Both branches carry
+  # the SAME attribute set and types, so the ternary unifies cleanly; the
+  # jurisdiction is an optional scalar inside a present block, read
+  # null-safely (coalesce rejects the null tfvars carries for an unset
+  # optional; try() turns that into "").
+  backup_s3_api_storages = local.backup == null ? {} : {
+    for s in local.backup.storages : s.name => (
+      try(s.r2, null) != null ? {
+        bucket = s.r2.bucket
+        region = "auto"
+        prefix = try(s.r2.prefix, "")
+        endpoint_url = (
+          coalesce(try(coalesce(s.r2.jurisdiction), ""), "default") == "default"
+          ? "https://${s.r2.account_id}.r2.cloudflarestorage.com"
+          : "https://${s.r2.account_id}.${s.r2.jurisdiction}.r2.cloudflarestorage.com"
+        )
+        force_path_style  = true
+        insecure_skip_tls = false
+        has_credentials   = true
+        } : {
+        bucket            = s.s3.bucket
+        region            = try(s.s3.region, "")
+        prefix            = try(s.s3.prefix, "")
+        endpoint_url      = try(s.s3.endpoint_url, "")
+        force_path_style  = false
+        insecure_skip_tls = try(s.s3.insecure_skip_tls_verify, false)
+        has_credentials   = try(s.s3.access_keys, null) != null
+      }
+    )
+    if try(s.s3, null) != null || try(s.r2, null) != null
   }
 
   # A declared GCS service-account key arrives two ways — the raw JSON
@@ -414,17 +461,19 @@ locals {
     for s in local.backup.storages : s.name => {
       for k, v in {
         main = try(s.main, false) ? true : null
-        # Exactly one backend arm exists (spec oneof).
-        type = try(s.s3, null) != null ? "s3" : try(s.gcs, null) != null ? "gcs" : "azure"
+        # Exactly one backend arm exists (spec oneof). The r2 arm rides the
+        # operator's s3 block (R2 speaks S3) through backup_s3_api_storages.
+        type = try(s.s3, null) != null || try(s.r2, null) != null ? "s3" : try(s.gcs, null) != null ? "gcs" : "azure"
 
-        s3 = try(s.s3, null) == null ? null : {
+        s3 = !contains(keys(local.backup_s3_api_storages), s.name) ? null : {
           for sk, sv in {
-            bucket                = s.s3.bucket
-            region                = try(s.s3.region, "") != "" ? s.s3.region : null
-            prefix                = try(s.s3.prefix, "") != "" ? s.s3.prefix : null
-            endpointUrl           = try(s.s3.endpoint_url, "") != "" ? s.s3.endpoint_url : null
-            insecureSkipTLSVerify = try(s.s3.insecure_skip_tls_verify, false) ? true : null
-            credentialsSecret     = try(s.s3.access_keys, null) != null ? "${local.cluster_name}-backup-${s.name}" : null
+            bucket                = local.backup_s3_api_storages[s.name].bucket
+            region                = local.backup_s3_api_storages[s.name].region != "" ? local.backup_s3_api_storages[s.name].region : null
+            prefix                = local.backup_s3_api_storages[s.name].prefix != "" ? local.backup_s3_api_storages[s.name].prefix : null
+            endpointUrl           = local.backup_s3_api_storages[s.name].endpoint_url != "" ? local.backup_s3_api_storages[s.name].endpoint_url : null
+            forcePathStyle        = local.backup_s3_api_storages[s.name].force_path_style ? true : null
+            insecureSkipTLSVerify = local.backup_s3_api_storages[s.name].insecure_skip_tls ? true : null
+            credentialsSecret     = local.backup_s3_api_storages[s.name].has_credentials ? "${local.cluster_name}-backup-${s.name}" : null
           } : sk => sv if sv != null
         }
 

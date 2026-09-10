@@ -6,6 +6,7 @@ package verify
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -194,6 +195,17 @@ func manifestDeclaresBarmanPlugin(manifestPath string) bool {
 		return true
 	}
 	return false
+}
+
+// scenarioMatches reports whether the scenario file's name (its basename
+// without the extension) starts with prefix and ends with suffix -- the
+// store-neutral form of the name-keyed dispatch, so `gke-gcs-recovery` and
+// `gke-r2-recovery` switch on the same proof. The runner keeps a scenario's
+// basename on the expanded copies it hands to verification, so the match
+// holds for those too.
+func scenarioMatches(manifestPath, prefix, suffix string) bool {
+	name := strings.TrimSuffix(filepath.Base(manifestPath), filepath.Ext(manifestPath))
+	return strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix)
 }
 
 // manifestAnnotation reads one metadata.annotations value, "" when absent or

@@ -22,7 +22,7 @@ metadata:
   annotations:
     planton.dev/e2e-cluster-profile: "gcp-gke"
     planton.dev/e2e-prerequisites: "catalog/kubernetes/kubernetesmongodb/e2e/fixture-gke-source.yaml"
-    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetesmongodb/e2e/scenarios/gke-gcs-restore.setup.sh"
+    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetesmongodb/e2e/scenarios/gke-restore-seed.setup.sh"
 spec:
   namespace:
     value: e2e-mdb-gke

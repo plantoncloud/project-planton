@@ -35,6 +35,21 @@ case where `createNamespace: true` is wrong: wire `spec.namespace` to a
 dedicated KubernetesNamespace —
 [namespace-ownership pattern](../../_patterns/namespace-ownership.md).
 
+## A half-uninstalled cert-manager blocks every cluster
+
+The operator probes the cluster for cert-manager before it mints TLS
+certificates (a dry-run CertificateRequest that the cert-manager webhook must
+mutate). Three outcomes: no cert-manager CRDs — it generates the
+certificates itself; cert-manager running — it issues them through
+cert-manager, whether or not `tls.issuer` names one; cert-manager's CRDs
+present but nothing behind them — the probe fails and every new cluster parks
+in error before its first pod ("check cert-manager: the cert-manager mutation
+webhook did not mutate the dry-run CertificateRequest object"). The third
+state is what a `KubernetesCertManager` uninstall leaves behind by default
+(`crds.keep_on_uninstall`), and it is invisible until the next MongoDB
+declaration. Remove the orphaned CRDs, reinstall cert-manager, or bring your
+own `<name>-ssl` / `<name>-ssl-internal` Secrets.
+
 ## Disaster recovery on GKE: the resource set
 
 "Highly available, backed up, restorable" is five catalog resources on the
@@ -70,6 +85,55 @@ The validated manifests for this set are the `gcp-gke` lane's own:
 (#5), and the GCP side under `../aa_e2e/realcluster/gcp-gke/manifests/`
 (#1–#2). The `03-gke-replica-set-gcs-backups` preset is #4 as a starting
 point.
+
+## Disaster recovery on GKE with Cloudflare R2: the resource set
+
+The same story with the backups outside Google — in a Cloudflare R2 bucket
+declared from the catalog. R2 speaks S3, so Percona Backup for MongoDB reaches
+it through its S3 client, but the database declares the storage in R2's own
+terms and the module does the translation (the jurisdiction's endpoint host,
+region `auto`, path-style addressing, the token as an S3 key pair). Four
+resources, proven live on GKE: PBM backups plus oplog archiving landing in the
+R2 bucket, and a fresh replica set restored from that backup and rolled forward
+to the latest archived oplog.
+
+| # | Resource | What it is for | Wiring |
+|---|---|---|---|
+| 1 | `CloudflareR2Bucket` | The backup store | `jurisdiction` fixed at creation (`default`, `eu`, `fedramp`, `us`) — it decides which host serves the bucket; exports `bucket_name`, `account_id`, `jurisdiction`, `s3_endpoint` |
+| 2 | `CloudflareAccountApiToken` (e.g. `mongo-archive-writer`) | The credential — R2 has NO keyless posture from any cluster | one policy: permission group `Workers R2 Storage Bucket Item Write` on resource `com.cloudflare.edge.r2.bucket.<account>_<jurisdiction>_<bucket>` (least privilege: objects in this bucket only); exports the token as the S3 key pair, `r2_access_key_id` + `r2_secret_access_key` |
+| 3 | `KubernetesPerconaMongoOperator` | The engine (must watch the database's namespace) | — |
+| 4 | `KubernetesMongodb` (the production database) | HA + backups | `replica_sets[0].size: 3` on the default hostname anti-affinity, `backup.storages[r2]` with `bucket`, `account_id`, and `jurisdiction` by reference to #1, a per-cluster `prefix`, and `credentials.access_key_id` / `secret_access_key` by reference to #2; `backup.tasks` for the schedule; `backup.pitr.enabled: true` |
+| 5 | `KubernetesMongodb` (the restore target, on the bad day) | Restore | the SAME `backup.storages[r2]` entry (name, references, prefix); `restore.backup_source.storage_name` = that entry, `destination` = the backup's full path (`s3://<bucket>/<prefix>/<PBM timestamp>` — the DESTINATION column of `kubectl get psmdb-backup` while the source lives, or list the bucket over the S3 API), `restore.pitr.type: latest`; `system_users_secret_name` = the source's `<name>-secrets` |
+
+The credential-continuity rule above stands unchanged. Three R2-specific facts
+join it:
+
+- **The module owns the S3 dialect.** The rendered storage carries the
+  jurisdiction's endpoint, region `auto`, and path-style addressing; the
+  agents' aws-sdk-go-v2 defaults (request checksums included) work against
+  R2 unchanged. Logical backups, PITR oplog chunks, and a point-in-time
+  restore into a fresh 3-member replica set are live-proven on GKE with a
+  token scoped to the single bucket (`Workers R2 Storage Bucket Item Write`);
+  no account-level Cloudflare permission is needed. The restore target waits
+  for the cluster to report `ready` before the Restore object exists (see
+  the `restore` field) — declare the restore with the cluster and expect the
+  apply to take as long as the replica set takes to form.
+
+- **The token is the key.** Rotating the token (or deleting and recreating
+  it) mints a new key pair; the databases follow the references on their
+  next apply. A token without an R2 permission group authenticates and then
+  fails every backup with AccessDenied — the permission group is the grant,
+  there is no bucket-side policy to attach.
+- **Emptying the bucket is yours.** Deleting a `CloudflareR2Bucket` that
+  still holds objects is refused by Cloudflare (the provider has no
+  force-destroy); retire a backup store by emptying the bucket over the S3
+  API (`aws s3 rm --recursive`, against `s3_endpoint` with the token's pair)
+  before destroying it.
+
+The validated manifests for this set are the `gcp-gke` lane's own:
+`e2e/fixture-gke-r2-source.yaml` (#4), `e2e/scenarios/gke-r2-restore.yaml`
+(#5), and the Cloudflare side under `../aa_e2e/realcluster/gcp-gke/manifests/`
+(#1–#2). The `04-gke-replica-set-r2-backups` preset is #4 as a starting point.
 
 ## On the diagram
 

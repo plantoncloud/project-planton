@@ -88,6 +88,15 @@ func backupCredentialData(storage *kubernetesmongodbv1alpha1.KubernetesMongodbBa
 			"AWS_SECRET_ACCESS_KEY": s3.GetAccessKeys().GetSecretAccessKey(),
 		}, true, nil
 	}
+	if r2Storage := storage.GetR2(); r2Storage != nil {
+		// The same two keys the operator reads for any S3-API store; the
+		// values are the token's S3 pair as declared (the token kind derives
+		// them -- nothing is hashed here).
+		return map[string]string{
+			"AWS_ACCESS_KEY_ID":     r2Storage.GetCredentials().GetAccessKeyId().GetValue(),
+			"AWS_SECRET_ACCESS_KEY": r2Storage.GetCredentials().GetSecretAccessKey().GetValue(),
+		}, true, nil
+	}
 	if gcs := storage.GetGcs(); gcs != nil && gcs.GetCredentials().GetServiceAccountKey() != nil {
 		keyJSON, err := decodeServiceAccountKey(gcs.GetCredentials().GetServiceAccountKey().GetValue())
 		if err != nil {

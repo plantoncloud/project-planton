@@ -81,6 +81,28 @@ func gcsStorage(name string) *KubernetesMongodbBackupStorage {
 	}
 }
 
+// r2Storage returns a Cloudflare R2 backup storage with every reference in
+// its default-kind form (the bucket for name, account, and jurisdiction; the
+// account API token for the key pair) — the composed shape a chart or the
+// console produces.
+func r2Storage(name string) *KubernetesMongodbBackupStorage {
+	return &KubernetesMongodbBackupStorage{
+		Name: name,
+		Backend: &KubernetesMongodbBackupStorage_R2{
+			R2: &KubernetesMongodbR2Storage{
+				Bucket:       valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "mongo-archive", "status.outputs.bucket_name"),
+				Prefix:       "prod-mongo",
+				AccountId:    valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "mongo-archive", "status.outputs.account_id"),
+				Jurisdiction: valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "mongo-archive", "status.outputs.jurisdiction"),
+				Credentials: &KubernetesMongodbR2Credentials{
+					AccessKeyId:     valueFrom(cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken, "mongo-archive-writer", "status.outputs.r2_access_key_id"),
+					SecretAccessKey: valueFrom(cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken, "mongo-archive-writer", "status.outputs.r2_secret_access_key"),
+				},
+			},
+		},
+	}
+}
+
 // validBackup returns a minimal valid backup block (one S3 storage, no
 // tasks) for tests that mutate one backup rule at a time.
 func validBackup() *KubernetesMongodbBackup {
@@ -249,6 +271,50 @@ var _ = ginkgo.Describe("KubernetesMongodb Validation Tests", func() {
 				SecretAccessKey: "minio123",
 			}
 			input.Spec.Backup = backup
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to R2 composed from the Cloudflare kinds should be valid", func() {
+			input.Spec.Backup = &KubernetesMongodbBackup{
+				Storages: []*KubernetesMongodbBackupStorage{r2Storage("r2")},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to R2 with a literal bucket, account, jurisdiction, and dashboard-minted key pair should be valid", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Bucket = literal("mongo-archive")
+			storage.GetR2().AccountId = literal("4793d734c0b8e484dfc37ec392b5fa8a")
+			storage.GetR2().Jurisdiction = literal("eu")
+			storage.GetR2().Credentials.AccessKeyId = literal("f267e341f3dd4697bd3b9f71dd96247f")
+			storage.GetR2().Credentials.SecretAccessKey = literal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to R2 without a jurisdiction should be valid (empty is the default jurisdiction)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Jurisdiction = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from an R2 storage's location with PITR to latest should be valid (the DR shape on R2)", func() {
+			input.Spec.SystemUsersSecretName = "source-mongodb-secrets"
+			input.Spec.Backup = &KubernetesMongodbBackup{
+				Storages: []*KubernetesMongodbBackupStorage{r2Storage("r2")},
+				Pitr:     &KubernetesMongodbPitr{Enabled: true},
+			}
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "r2",
+						Destination: "s3://mongo-archive/prod-mongo/2026-09-10T12:00:00Z",
+						Type:        stringPtr("logical"),
+					},
+				},
+				Pitr: &KubernetesMongodbRestorePitr{Type: "latest"},
+			}
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
@@ -773,6 +839,48 @@ var _ = ginkgo.Describe("KubernetesMongodb Validation Tests", func() {
 			backup := validBackup()
 			backup.Storages[0].GetS3().AccessKeys = &KubernetesMongodbS3AccessKeys{AccessKeyId: "AKIAEXAMPLE"}
 			input.Spec.Backup = backup
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without a bucket should fail (required)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Bucket = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without an account_id should fail (required)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().AccountId = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 with a malformed literal account_id should fail (account_id_format)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().AccountId = literal("not-an-account-id")
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 with an unknown literal jurisdiction should fail (jurisdiction_valid)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Jurisdiction = literal("europe")
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without credentials should fail (required — R2 has no keyless posture)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Credentials = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 credentials missing the secret access key should fail (required)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Credentials.SecretAccessKey = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
 			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
 		})
 

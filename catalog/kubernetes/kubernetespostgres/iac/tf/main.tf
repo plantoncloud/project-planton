@@ -160,10 +160,11 @@ resource "kubernetes_secret_v1" "recovery_credentials_secret" {
 
 # S3 region secrets (`<store>-region`, key AWS_REGION): the ObjectStore CRD
 # models the region as a SecretKeySelector, not a plain string, so the
-# literal region rides its own deterministic single-key Secret — identical
-# for the keyless and declared-key postures.
+# literal region rides its own deterministic single-key Secret. Rendered for
+# the s3 arm's declared region and for the r2 arm (always "auto");
+# barman-cloud reads it only on the declared-key path (see locals.tf).
 resource "kubernetes_secret_v1" "backup_region_secret" {
-  count = try(local.backup.object_store.s3.region, "") != "" ? 1 : 0
+  count = lookup(local.object_store_region, "backup", "") != "" ? 1 : 0
 
   metadata {
     name      = "${local.backup_object_store_name}-region"
@@ -172,14 +173,14 @@ resource "kubernetes_secret_v1" "backup_region_secret" {
   }
 
   data = {
-    AWS_REGION = local.backup.object_store.s3.region
+    AWS_REGION = local.object_store_region["backup"]
   }
 
   depends_on = [kubernetes_namespace_v1.namespace]
 }
 
 resource "kubernetes_secret_v1" "recovery_region_secret" {
-  count = try(local.recovery.object_store.s3.region, "") != "" ? 1 : 0
+  count = lookup(local.object_store_region, "recovery", "") != "" ? 1 : 0
 
   metadata {
     name      = "${local.recovery_object_store_name}-region"
@@ -188,7 +189,7 @@ resource "kubernetes_secret_v1" "recovery_region_secret" {
   }
 
   data = {
-    AWS_REGION = local.recovery.object_store.s3.region
+    AWS_REGION = local.object_store_region["recovery"]
   }
 
   depends_on = [kubernetes_namespace_v1.namespace]

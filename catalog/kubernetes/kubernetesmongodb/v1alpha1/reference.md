@@ -311,6 +311,14 @@ spec:
 | `spec.backup.storages[].azure.endpointUrl` | `string` |  |  |  |
 | `spec.backup.storages[].azure.storageAccount` | `string` | yes |  |  |
 | `spec.backup.storages[].azure.accessKey` | `string` (sensitive) | yes |  |  |
+| `spec.backup.storages[].r2` | `KubernetesMongodbR2Storage` |  |  |  |
+| `spec.backup.storages[].r2.bucket` | `string \| valueFrom` | yes |  | CloudflareR2Bucket (`status.outputs.bucket_name`) |
+| `spec.backup.storages[].r2.prefix` | `string` |  |  |  |
+| `spec.backup.storages[].r2.accountId` | `string \| valueFrom` | yes |  | CloudflareR2Bucket (`status.outputs.account_id`) |
+| `spec.backup.storages[].r2.jurisdiction` | `string \| valueFrom` |  |  | CloudflareR2Bucket (`status.outputs.jurisdiction`) |
+| `spec.backup.storages[].r2.credentials` | `KubernetesMongodbR2Credentials` | yes |  |  |
+| `spec.backup.storages[].r2.credentials.accessKeyId` | `string \| valueFrom` | yes |  | CloudflareAccountApiToken (`status.outputs.r2_access_key_id`) |
+| `spec.backup.storages[].r2.credentials.secretAccessKey` | `string \| valueFrom` (sensitive) | yes |  | CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`) |
 | `spec.backup.tasks` | `[]KubernetesMongodbBackupTask` |  |  |  |
 | `spec.backup.tasks[].name` | `string` | yes |  |  |
 | `spec.backup.tasks[].schedule` | `string` | yes |  |  |
@@ -852,6 +860,22 @@ certificates (the upstream default). Point issuer at a cert-manager
 (Cluster)Issuer for an organization-trusted chain; disabling TLS
 REQUIRES unsafe.tls.
 
+The operator decides HOW it mints the certificates by probing the
+cluster for cert-manager, not by reading this block: with no
+cert-manager CRDs it generates the certificates itself; with
+cert-manager running it issues them through cert-manager even when no
+issuer is named here. A cluster that has cert-manager's CRDs but no
+cert-manager behind them — cert-manager uninstalled with its CRDs
+kept, the posture KubernetesCertManager's `crds.keep_on_uninstall`
+default leaves behind — fails the probe outright, and the cluster
+parks in error with "TLS secrets handler: check cert-manager: the
+cert-manager mutation webhook did not mutate the dry-run
+CertificateRequest object" before a single pod is created (verified
+at the pinned operator 1.22.0). The ways out: remove the orphaned
+cert-manager CRDs, reinstall cert-manager, or bring your own
+`<name>-ssl` and `<name>-ssl-internal` Secrets (the operator uses a
+pre-created TLS Secret without probing).
+
 ### spec.tls.mode
 
 `string` · optional (explicit presence)
@@ -993,7 +1017,9 @@ when several are declared; a single storage is main implicitly.
 `KubernetesMongodbS3Storage`
 
 AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, ...) via
-the endpoint_url override.
+the endpoint_url override. Cloudflare R2 has its own arm (`r2`)
+that composes the catalog's Cloudflare kinds; this arm still
+reaches R2 for a hand-carried endpoint and key pair.
 
 - rule: an S3-compatible endpoint (endpoint_url) authenticates with access_keys — the keyless posture only mints AWS credentials
 
@@ -1184,6 +1210,100 @@ Storage-account access key, materialized as a Kubernetes Secret
 the PBM agents read.
 
 - rule: {"required":true}
+
+### spec.backup.storages[].r2
+
+`KubernetesMongodbR2Storage`
+
+Cloudflare R2, in R2's own vocabulary: the bucket, the owning
+account, the bucket's jurisdiction, and a Cloudflare credential —
+each a reference onto the catalog's CloudflareR2Bucket and
+CloudflareAccountApiToken by default. The module performs the S3
+translation R2 needs (the jurisdiction's endpoint host, region
+`auto`, path-style addressing, the token as an S3 key pair);
+nothing S3-shaped is typed here.
+
+### spec.backup.storages[].r2.bucket
+
+`string | valueFrom` · required
+
+Bucket name. By reference to the bucket resource's `bucket_name`
+output, so the storage follows the bucket; a literal names a bucket
+outside the catalog.
+
+- references: CloudflareR2Bucket (`status.outputs.bucket_name`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.bucket_name}} -- a bare string does not parse
+
+### spec.backup.storages[].r2.prefix
+
+`string`
+
+Key prefix inside the bucket. One prefix per cluster: PBM keeps its
+backup and oplog metadata under the prefix, and a restore target
+declares this same prefix (as a storage of its own) to read the
+backups back — so two live clusters must never share one, while the
+source and its restore target deliberately do.
+
+### spec.backup.storages[].r2.accountId
+
+`string | valueFrom` · required
+
+The Cloudflare account that owns the bucket (32 hex characters). By
+reference to the bucket resource's `account_id` output.
+
+- references: CloudflareR2Bucket (`status.outputs.account_id`)
+- rule: account_id is the 32-hex-character Cloudflare account id
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.account_id}} -- a bare string does not parse
+
+### spec.backup.storages[].r2.jurisdiction
+
+`string | valueFrom`
+
+The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+`fedramp`, or `us`. It selects the S3 host the module composes — a
+bucket created in a jurisdiction is unreachable through any other
+host — so it must match the bucket exactly; by reference to the
+bucket resource's `jurisdiction` output it cannot drift.
+
+- references: CloudflareR2Bucket (`status.outputs.jurisdiction`)
+- rule: jurisdiction must be one of "default", "eu", "fedramp", "us" (or empty for default)
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.jurisdiction}} -- a bare string does not parse
+
+### spec.backup.storages[].r2.credentials
+
+`KubernetesMongodbR2Credentials` · required
+
+The Cloudflare credential, as the S3 key pair R2's S3 API
+authenticates. Materialized as the `<name>-backup-<storage>` Secret
+the PBM agents read; never plaintext in the rendered resource.
+
+- rule: {"required":true}
+
+### spec.backup.storages[].r2.credentials.accessKeyId
+
+`string | valueFrom` · required
+
+The S3 access key id: the API token's id. By reference to the token
+resource's `r2_access_key_id` output.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_access_key_id`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_access_key_id}} -- a bare string does not parse
+
+### spec.backup.storages[].r2.credentials.secretAccessKey
+
+`string | valueFrom` · required · sensitive
+
+The S3 secret access key: the SHA-256 of the API token's value. By
+reference to the token resource's `r2_secret_access_key` output. Rotates
+with the token: a rotated token is a new key pair, and the Secret the
+module materializes follows the reference on the next apply.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_secret_access_key}} -- a bare string does not parse
 
 ### spec.backup.tasks
 
@@ -1483,7 +1603,7 @@ started (e.g. 2026-09-09T12:00:00Z) — read it from the DESTINATION
 column of `kubectl get psmdb-backup` on the source cluster, or list
 the store.
 
-- rule: destination is the backup's full path in the store: s3://<bucket>/<prefix>/<backup-name>, gs://..., or azure://... — the backup name (PBM's start timestamp) is the last segment
+- rule: destination is the backup's full path in the store: s3://<bucket>/<prefix>/<backup-name> (S3, R2, and every S3-API store), gs://..., or azure://... — the backup name (PBM's start timestamp) is the last segment
 - rule: {"required":true}
 
 ### spec.restore.backupSource.type
@@ -1589,6 +1709,11 @@ Fields that can point at another resource's outputs:
 | `spec.sharding.configServer.storage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
 | `spec.tls.issuer` | KubernetesClusterIssuer | `metadata.name` |
 | `spec.backup.storages[].gcs.credentials.serviceAccountKey` | GcpServiceAccount | `status.outputs.key_base64` |
+| `spec.backup.storages[].r2.bucket` | CloudflareR2Bucket | `status.outputs.bucket_name` |
+| `spec.backup.storages[].r2.accountId` | CloudflareR2Bucket | `status.outputs.account_id` |
+| `spec.backup.storages[].r2.jurisdiction` | CloudflareR2Bucket | `status.outputs.jurisdiction` |
+| `spec.backup.storages[].r2.credentials.accessKeyId` | CloudflareAccountApiToken | `status.outputs.r2_access_key_id` |
+| `spec.backup.storages[].r2.credentials.secretAccessKey` | CloudflareAccountApiToken | `status.outputs.r2_secret_access_key` |
 
 ## See Also
 

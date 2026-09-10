@@ -111,6 +111,22 @@ type KubernetesMongodbSpec struct {
 	// certificates (the upstream default). Point issuer at a cert-manager
 	// (Cluster)Issuer for an organization-trusted chain; disabling TLS
 	// REQUIRES unsafe.tls.
+	//
+	// The operator decides HOW it mints the certificates by probing the
+	// cluster for cert-manager, not by reading this block: with no
+	// cert-manager CRDs it generates the certificates itself; with
+	// cert-manager running it issues them through cert-manager even when no
+	// issuer is named here. A cluster that has cert-manager's CRDs but no
+	// cert-manager behind them — cert-manager uninstalled with its CRDs
+	// kept, the posture KubernetesCertManager's `crds.keep_on_uninstall`
+	// default leaves behind — fails the probe outright, and the cluster
+	// parks in error with "TLS secrets handler: check cert-manager: the
+	// cert-manager mutation webhook did not mutate the dry-run
+	// CertificateRequest object" before a single pod is created (verified
+	// at the pinned operator 1.22.0). The ways out: remove the orphaned
+	// cert-manager CRDs, reinstall cert-manager, or bring your own
+	// `<name>-ssl` and `<name>-ssl-internal` Secrets (the operator uses a
+	// pre-created TLS Secret without probing).
 	Tls *KubernetesMongodbTls `protobuf:"bytes,6,opt,name=tls,proto3" json:"tls,omitempty"`
 	// *
 	// Declarative application users: the operator creates them, keeps
@@ -1183,6 +1199,7 @@ type KubernetesMongodbBackupStorage struct {
 	//	*KubernetesMongodbBackupStorage_S3
 	//	*KubernetesMongodbBackupStorage_Gcs
 	//	*KubernetesMongodbBackupStorage_Azure
+	//	*KubernetesMongodbBackupStorage_R2
 	Backend       isKubernetesMongodbBackupStorage_Backend `protobuf_oneof:"backend"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1266,6 +1283,15 @@ func (x *KubernetesMongodbBackupStorage) GetAzure() *KubernetesMongodbAzureStora
 	return nil
 }
 
+func (x *KubernetesMongodbBackupStorage) GetR2() *KubernetesMongodbR2Storage {
+	if x != nil {
+		if x, ok := x.Backend.(*KubernetesMongodbBackupStorage_R2); ok {
+			return x.R2
+		}
+	}
+	return nil
+}
+
 type isKubernetesMongodbBackupStorage_Backend interface {
 	isKubernetesMongodbBackupStorage_Backend()
 }
@@ -1273,7 +1299,9 @@ type isKubernetesMongodbBackupStorage_Backend interface {
 type KubernetesMongodbBackupStorage_S3 struct {
 	// *
 	// AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, ...) via
-	// the endpoint_url override.
+	// the endpoint_url override. Cloudflare R2 has its own arm (`r2`)
+	// that composes the catalog's Cloudflare kinds; this arm still
+	// reaches R2 for a hand-carried endpoint and key pair.
 	S3 *KubernetesMongodbS3Storage `protobuf:"bytes,3,opt,name=s3,proto3,oneof"`
 }
 
@@ -1289,11 +1317,25 @@ type KubernetesMongodbBackupStorage_Azure struct {
 	Azure *KubernetesMongodbAzureStorage `protobuf:"bytes,5,opt,name=azure,proto3,oneof"`
 }
 
+type KubernetesMongodbBackupStorage_R2 struct {
+	// *
+	// Cloudflare R2, in R2's own vocabulary: the bucket, the owning
+	// account, the bucket's jurisdiction, and a Cloudflare credential —
+	// each a reference onto the catalog's CloudflareR2Bucket and
+	// CloudflareAccountApiToken by default. The module performs the S3
+	// translation R2 needs (the jurisdiction's endpoint host, region
+	// `auto`, path-style addressing, the token as an S3 key pair);
+	// nothing S3-shaped is typed here.
+	R2 *KubernetesMongodbR2Storage `protobuf:"bytes,6,opt,name=r2,proto3,oneof"`
+}
+
 func (*KubernetesMongodbBackupStorage_S3) isKubernetesMongodbBackupStorage_Backend() {}
 
 func (*KubernetesMongodbBackupStorage_Gcs) isKubernetesMongodbBackupStorage_Backend() {}
 
 func (*KubernetesMongodbBackupStorage_Azure) isKubernetesMongodbBackupStorage_Backend() {}
+
+func (*KubernetesMongodbBackupStorage_R2) isKubernetesMongodbBackupStorage_Backend() {}
 
 // *
 // S3 / S3-compatible backup storage.
@@ -1651,6 +1693,205 @@ func (*KubernetesMongodbGcsCredentials_ExistingSecretName) isKubernetesMongodbGc
 }
 
 // *
+// Cloudflare R2 backup storage, composed from the catalog's Cloudflare
+// kinds.
+//
+// R2 speaks S3, so Percona Backup for MongoDB reaches it through its S3
+// client — but nothing S3-shaped is declared here. The module composes the
+// endpoint from the account and the bucket's jurisdiction
+// (`https://<account>.r2.cloudflarestorage.com`, or
+// `https://<account>.<jurisdiction>.r2.cloudflarestorage.com` for an eu,
+// fedramp, or us bucket — a jurisdictional bucket is served ONLY through
+// its own host; the default host fails rather than redirects), pins the
+// region to `auto` (the only region R2 accepts) and path-style addressing,
+// and hands the agents the credential as an S3 key pair. There is NO
+// keyless posture for R2 from any cluster: R2 has no equivalent of IRSA or
+// Workload Identity, so a credential is always declared — by reference to
+// a CloudflareAccountApiToken by default.
+//
+// A backup taken into this storage reports its destination as
+// `s3://<bucket>/<prefix>/<backup-name>` (the operator composes the
+// `s3://` form for every S3-API store), which is what a restore target's
+// `restore.backup_source.destination` carries. Logical backups, PITR
+// oplog chunks, and a point-in-time restore into a fresh replica set are
+// live-proven on GKE with a token scoped to the single bucket (`Workers R2
+// Storage Bucket Item Write`); no account-level Cloudflare permission is
+// needed. Emptying the bucket is not the module's job — R2 refuses to
+// delete a non-empty bucket, so a CloudflareR2Bucket that has ever held a
+// backup must be emptied over the S3 API before it can be destroyed.
+type KubernetesMongodbR2Storage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// *
+	// Bucket name. By reference to the bucket resource's `bucket_name`
+	// output, so the storage follows the bucket; a literal names a bucket
+	// outside the catalog.
+	Bucket *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	// *
+	// Key prefix inside the bucket. One prefix per cluster: PBM keeps its
+	// backup and oplog metadata under the prefix, and a restore target
+	// declares this same prefix (as a storage of its own) to read the
+	// backups back — so two live clusters must never share one, while the
+	// source and its restore target deliberately do.
+	Prefix string `protobuf:"bytes,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	// *
+	// The Cloudflare account that owns the bucket (32 hex characters). By
+	// reference to the bucket resource's `account_id` output.
+	AccountId *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// *
+	// The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+	// `fedramp`, or `us`. It selects the S3 host the module composes — a
+	// bucket created in a jurisdiction is unreachable through any other
+	// host — so it must match the bucket exactly; by reference to the
+	// bucket resource's `jurisdiction` output it cannot drift.
+	Jurisdiction *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=jurisdiction,proto3" json:"jurisdiction,omitempty"`
+	// *
+	// The Cloudflare credential, as the S3 key pair R2's S3 API
+	// authenticates. Materialized as the `<name>-backup-<storage>` Secret
+	// the PBM agents read; never plaintext in the rendered resource.
+	Credentials   *KubernetesMongodbR2Credentials `protobuf:"bytes,5,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KubernetesMongodbR2Storage) Reset() {
+	*x = KubernetesMongodbR2Storage{}
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesMongodbR2Storage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesMongodbR2Storage) ProtoMessage() {}
+
+func (x *KubernetesMongodbR2Storage) ProtoReflect() protoreflect.Message {
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesMongodbR2Storage.ProtoReflect.Descriptor instead.
+func (*KubernetesMongodbR2Storage) Descriptor() ([]byte, []int) {
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *KubernetesMongodbR2Storage) GetBucket() *v1.StringValueOrRef {
+	if x != nil {
+		return x.Bucket
+	}
+	return nil
+}
+
+func (x *KubernetesMongodbR2Storage) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
+}
+
+func (x *KubernetesMongodbR2Storage) GetAccountId() *v1.StringValueOrRef {
+	if x != nil {
+		return x.AccountId
+	}
+	return nil
+}
+
+func (x *KubernetesMongodbR2Storage) GetJurisdiction() *v1.StringValueOrRef {
+	if x != nil {
+		return x.Jurisdiction
+	}
+	return nil
+}
+
+func (x *KubernetesMongodbR2Storage) GetCredentials() *KubernetesMongodbR2Credentials {
+	if x != nil {
+		return x.Credentials
+	}
+	return nil
+}
+
+// *
+// The S3 key pair for Cloudflare R2. Cloudflare defines it from an account
+// API token: the access key id is the token's id and the secret access key
+// is the SHA-256 of the token's value — the two values a CloudflareAccountApiToken
+// exports as `r2_access_key_id` and `r2_secret_access_key`, and the two the
+// dashboard shows as "Access Key ID" / "Secret Access Key" when the same
+// token is created there. Reference the catalog token (the default kind)
+// or paste a dashboard-minted pair as literals; both are the same shape.
+//
+// The token needs an R2 permission group: `Workers R2 Storage Bucket Item
+// Write` scoped to this bucket (least privilege — read, write, list objects)
+// or `Workers R2 Storage Write` on the account. A token without one
+// authenticates and then fails every backup with AccessDenied.
+type KubernetesMongodbR2Credentials struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// *
+	// The S3 access key id: the API token's id. By reference to the token
+	// resource's `r2_access_key_id` output.
+	AccessKeyId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=access_key_id,json=accessKeyId,proto3" json:"access_key_id,omitempty"`
+	// *
+	// The S3 secret access key: the SHA-256 of the API token's value. By
+	// reference to the token resource's `r2_secret_access_key` output. Rotates
+	// with the token: a rotated token is a new key pair, and the Secret the
+	// module materializes follows the reference on the next apply.
+	SecretAccessKey *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=secret_access_key,json=secretAccessKey,proto3" json:"secret_access_key,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *KubernetesMongodbR2Credentials) Reset() {
+	*x = KubernetesMongodbR2Credentials{}
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesMongodbR2Credentials) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesMongodbR2Credentials) ProtoMessage() {}
+
+func (x *KubernetesMongodbR2Credentials) ProtoReflect() protoreflect.Message {
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesMongodbR2Credentials.ProtoReflect.Descriptor instead.
+func (*KubernetesMongodbR2Credentials) Descriptor() ([]byte, []int) {
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *KubernetesMongodbR2Credentials) GetAccessKeyId() *v1.StringValueOrRef {
+	if x != nil {
+		return x.AccessKeyId
+	}
+	return nil
+}
+
+func (x *KubernetesMongodbR2Credentials) GetSecretAccessKey() *v1.StringValueOrRef {
+	if x != nil {
+		return x.SecretAccessKey
+	}
+	return nil
+}
+
+// *
 // Azure Blob backup storage.
 type KubernetesMongodbAzureStorage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1681,7 +1922,7 @@ type KubernetesMongodbAzureStorage struct {
 
 func (x *KubernetesMongodbAzureStorage) Reset() {
 	*x = KubernetesMongodbAzureStorage{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[17]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1693,7 +1934,7 @@ func (x *KubernetesMongodbAzureStorage) String() string {
 func (*KubernetesMongodbAzureStorage) ProtoMessage() {}
 
 func (x *KubernetesMongodbAzureStorage) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[17]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1706,7 +1947,7 @@ func (x *KubernetesMongodbAzureStorage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbAzureStorage.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbAzureStorage) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{17}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *KubernetesMongodbAzureStorage) GetContainer() string {
@@ -1784,7 +2025,7 @@ type KubernetesMongodbBackupTask struct {
 
 func (x *KubernetesMongodbBackupTask) Reset() {
 	*x = KubernetesMongodbBackupTask{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[18]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1796,7 +2037,7 @@ func (x *KubernetesMongodbBackupTask) String() string {
 func (*KubernetesMongodbBackupTask) ProtoMessage() {}
 
 func (x *KubernetesMongodbBackupTask) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[18]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1809,7 +2050,7 @@ func (x *KubernetesMongodbBackupTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbBackupTask.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbBackupTask) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{18}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *KubernetesMongodbBackupTask) GetName() string {
@@ -1893,7 +2134,7 @@ type KubernetesMongodbPitr struct {
 
 func (x *KubernetesMongodbPitr) Reset() {
 	*x = KubernetesMongodbPitr{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[19]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1905,7 +2146,7 @@ func (x *KubernetesMongodbPitr) String() string {
 func (*KubernetesMongodbPitr) ProtoMessage() {}
 
 func (x *KubernetesMongodbPitr) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[19]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1918,7 +2159,7 @@ func (x *KubernetesMongodbPitr) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbPitr.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbPitr) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{19}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *KubernetesMongodbPitr) GetEnabled() bool {
@@ -1951,8 +2192,8 @@ func (x *KubernetesMongodbPitr) GetCompression() string {
 
 // *
 // Restore from a backup — rendered as a `psmdb.percona.com/v1`
-// PerconaServerMongoDBRestore against this cluster. The operator waits
-// for the members and their PBM agents, then replays the backup (and,
+// PerconaServerMongoDBRestore against this cluster, created only after
+// the cluster reports ready. The operator then replays the backup (and,
 // with `pitr`, the archived oplog after it) INTO the running cluster,
 // replacing its data. Every distinct declaration renders a distinctly
 // named Restore object, so a restore runs exactly once per declaration
@@ -1961,8 +2202,15 @@ func (x *KubernetesMongodbPitr) GetCompression() string {
 // `kubectl get psmdb-restore` for the error, fix the cause, and change
 // the declaration (or delete the Restore object) to run again. Declaring
 // this on a brand-new cluster together with `backup` is the intended DR
-// shape: the operator waits for the members and their PBM agents, syncs
-// the store's metadata, and restores — live-proven end to end on GKE.
+// shape, and the apply waits for the new cluster to be ready before the
+// Restore exists: the operator's own "agents are up" check passes while a
+// fresh cluster's backup agents are still restarting through the replica
+// set's first authentication, and a Restore created that early is parked
+// in a terminal "get backup meta: not found" (its one resync reaches no
+// listening agent and the operator gives it 30 seconds) — live-caught on
+// a three-member target. Readiness is the state after which every agent
+// listens and the store's metadata is already synced; the restore then
+// validates and runs — live-proven end to end on GKE, on GCS and on R2.
 type KubernetesMongodbRestore struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *
@@ -1990,7 +2238,7 @@ type KubernetesMongodbRestore struct {
 
 func (x *KubernetesMongodbRestore) Reset() {
 	*x = KubernetesMongodbRestore{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[20]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2002,7 +2250,7 @@ func (x *KubernetesMongodbRestore) String() string {
 func (*KubernetesMongodbRestore) ProtoMessage() {}
 
 func (x *KubernetesMongodbRestore) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[20]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2015,7 +2263,7 @@ func (x *KubernetesMongodbRestore) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbRestore.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbRestore) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{20}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *KubernetesMongodbRestore) GetSource() isKubernetesMongodbRestore_Source {
@@ -2120,7 +2368,7 @@ type KubernetesMongodbRestoreBackupSource struct {
 
 func (x *KubernetesMongodbRestoreBackupSource) Reset() {
 	*x = KubernetesMongodbRestoreBackupSource{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[21]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2132,7 +2380,7 @@ func (x *KubernetesMongodbRestoreBackupSource) String() string {
 func (*KubernetesMongodbRestoreBackupSource) ProtoMessage() {}
 
 func (x *KubernetesMongodbRestoreBackupSource) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[21]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2145,7 +2393,7 @@ func (x *KubernetesMongodbRestoreBackupSource) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use KubernetesMongodbRestoreBackupSource.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbRestoreBackupSource) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{21}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *KubernetesMongodbRestoreBackupSource) GetStorageName() string {
@@ -2188,7 +2436,7 @@ type KubernetesMongodbRestorePitr struct {
 
 func (x *KubernetesMongodbRestorePitr) Reset() {
 	*x = KubernetesMongodbRestorePitr{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[22]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2200,7 +2448,7 @@ func (x *KubernetesMongodbRestorePitr) String() string {
 func (*KubernetesMongodbRestorePitr) ProtoMessage() {}
 
 func (x *KubernetesMongodbRestorePitr) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[22]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2213,7 +2461,7 @@ func (x *KubernetesMongodbRestorePitr) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbRestorePitr.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbRestorePitr) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{22}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *KubernetesMongodbRestorePitr) GetType() string {
@@ -2256,7 +2504,7 @@ type KubernetesMongodbScheduling struct {
 
 func (x *KubernetesMongodbScheduling) Reset() {
 	*x = KubernetesMongodbScheduling{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[23]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2268,7 +2516,7 @@ func (x *KubernetesMongodbScheduling) String() string {
 func (*KubernetesMongodbScheduling) ProtoMessage() {}
 
 func (x *KubernetesMongodbScheduling) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[23]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2281,7 +2529,7 @@ func (x *KubernetesMongodbScheduling) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbScheduling.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbScheduling) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{23}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *KubernetesMongodbScheduling) GetAntiAffinityTopologyKey() string {
@@ -2331,7 +2579,7 @@ type KubernetesMongodbPodDisruptionBudget struct {
 
 func (x *KubernetesMongodbPodDisruptionBudget) Reset() {
 	*x = KubernetesMongodbPodDisruptionBudget{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[24]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2343,7 +2591,7 @@ func (x *KubernetesMongodbPodDisruptionBudget) String() string {
 func (*KubernetesMongodbPodDisruptionBudget) ProtoMessage() {}
 
 func (x *KubernetesMongodbPodDisruptionBudget) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[24]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2356,7 +2604,7 @@ func (x *KubernetesMongodbPodDisruptionBudget) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use KubernetesMongodbPodDisruptionBudget.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbPodDisruptionBudget) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{24}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *KubernetesMongodbPodDisruptionBudget) GetMaxUnavailable() int32 {
@@ -2389,7 +2637,7 @@ type KubernetesMongodbLogCollector struct {
 
 func (x *KubernetesMongodbLogCollector) Reset() {
 	*x = KubernetesMongodbLogCollector{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[25]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2401,7 +2649,7 @@ func (x *KubernetesMongodbLogCollector) String() string {
 func (*KubernetesMongodbLogCollector) ProtoMessage() {}
 
 func (x *KubernetesMongodbLogCollector) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[25]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2414,7 +2662,7 @@ func (x *KubernetesMongodbLogCollector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbLogCollector.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbLogCollector) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{25}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *KubernetesMongodbLogCollector) GetEnabled() bool {
@@ -2457,7 +2705,7 @@ type KubernetesMongodbUnsafe struct {
 
 func (x *KubernetesMongodbUnsafe) Reset() {
 	*x = KubernetesMongodbUnsafe{}
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[26]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2469,7 +2717,7 @@ func (x *KubernetesMongodbUnsafe) String() string {
 func (*KubernetesMongodbUnsafe) ProtoMessage() {}
 
 func (x *KubernetesMongodbUnsafe) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[26]
+	mi := &file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2482,7 +2730,7 @@ func (x *KubernetesMongodbUnsafe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesMongodbUnsafe.ProtoReflect.Descriptor instead.
 func (*KubernetesMongodbUnsafe) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{26}
+	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *KubernetesMongodbUnsafe) GetReplsetSize() bool {
@@ -2619,14 +2867,15 @@ const file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDesc = ""
 	"\x05tasks\x18\x02 \x03(\v2N.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupTaskB\x86\x01\xbaH\x82\x01\xba\x01\x7f\n" +
 	"\x1espec.backup.tasks.unique_names\x12&each backup task needs a distinct name\x1a5this.all(t1, this.exists_one(t2, t1.name == t2.name))R\x05tasks\x12\\\n" +
 	"\x04pitr\x18\x03 \x01(\v2H.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPitrR\x04pitr:\x84\x02\xbaH\x80\x02\x1a\xfd\x01\n" +
-	" spec.backup.storages.single_main\x12\x96\x01with multiple backup storages, mark exactly one main: true — PITR oplog chunks and restore metadata land there (a single storage is main implicitly)\x1a@this.storages.size() <= 1 || this.storages.exists_one(s, s.main)\"\xb3\x04\n" +
+	" spec.backup.storages.single_main\x12\x96\x01with multiple backup storages, mark exactly one main: true — PITR oplog chunks and restore metadata land there (a single storage is main implicitly)\x1a@this.storages.size() <= 1 || this.storages.exists_one(s, s.main)\"\x94\x05\n" +
 	"\x1eKubernetesMongodbBackupStorage\x12\xbb\x01\n" +
 	"\x04name\x18\x01 \x01(\tB\xa6\x01\xbaH\xa2\x01\xba\x01\x9b\x01\n" +
 	" spec.backup.storages.name_format\x12Fstorage name must be a lowercase DNS label (letters, numbers, hyphens)\x1a/this.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')\xc8\x01\x01R\x04name\x12\x12\n" +
 	"\x04main\x18\x02 \x01(\bR\x04main\x12_\n" +
 	"\x02s3\x18\x03 \x01(\v2M.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3StorageH\x00R\x02s3\x12b\n" +
 	"\x03gcs\x18\x04 \x01(\v2N.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsStorageH\x00R\x03gcs\x12h\n" +
-	"\x05azure\x18\x05 \x01(\v2P.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbAzureStorageH\x00R\x05azureB\x10\n" +
+	"\x05azure\x18\x05 \x01(\v2P.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbAzureStorageH\x00R\x05azure\x12_\n" +
+	"\x02r2\x18\x06 \x01(\v2M.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2StorageH\x00R\x02r2B\x10\n" +
 	"\abackend\x12\x05\xbaH\x02\b\x01\"\xdd\x05\n" +
 	"\x1aKubernetesMongodbS3Storage\x12\x1e\n" +
 	"\x06bucket\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x06bucket\x12\x16\n" +
@@ -2649,7 +2898,19 @@ const file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDesc = ""
 	"\x1fKubernetesMongodbGcsCredentials\x12\x8c\x01\n" +
 	"\x13service_account_key\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB&\xa0\xa6\x1d\x01\x88\xd4a\xc6\x17\x92\xd4a\x19status.outputs.key_base64H\x00R\x11serviceAccountKey\x122\n" +
 	"\x14existing_secret_name\x18\x02 \x01(\tH\x00R\x12existingSecretNameB\x0f\n" +
-	"\x06source\x12\x05\xbaH\x02\b\x01\"\xdc\x01\n" +
+	"\x06source\x12\x05\xbaH\x02\b\x01\"\x9f\a\n" +
+	"\x1aKubernetesMongodbR2Storage\x12u\n" +
+	"\x06bucket\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\xbaH\x03\xc8\x01\x01\x88\xd4a\xda6\x92\xd4a\x1astatus.outputs.bucket_nameR\x06bucket\x12\x16\n" +
+	"\x06prefix\x18\x02 \x01(\tR\x06prefix\x12\x9a\x02\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\xc6\x01\xbaH\xa0\x01\xba\x01\x99\x01\n" +
+	" spec.backup.r2.account_id_format\x128account_id is the 32-hex-character Cloudflare account id\x1a;!has(this.value) || this.value.matches('^[0-9a-fA-F]{32}$')\xc8\x01\x01\x88\xd4a\xda6\x92\xd4a\x19status.outputs.account_idR\taccountId\x12\xd7\x02\n" +
+	"\fjurisdiction\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\xfe\x01\xbaH\xd6\x01\xba\x01\xd2\x01\n" +
+	"!spec.backup.r2.jurisdiction_valid\x12Sjurisdiction must be one of \"default\", \"eu\", \"fedramp\", \"us\" (or empty for default)\x1aX!has(this.value) || this.value == '' || this.value in ['default', 'eu', 'fedramp', 'us']\x88\xd4a\xda6\x92\xd4a\x1bstatus.outputs.jurisdictionR\fjurisdiction\x12{\n" +
+	"\vcredentials\x18\x05 \x01(\v2Q.dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2CredentialsB\x06\xbaH\x03\xc8\x01\x01R\vcredentials\"\xc2\x02\n" +
+	"\x1eKubernetesMongodbR2Credentials\x12\x86\x01\n" +
+	"\raccess_key_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xca9\x92\xd4a\x1fstatus.outputs.r2_access_key_idR\vaccessKeyId\x12\x96\x01\n" +
+	"\x11secret_access_key\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB6\xbaH\x03\xc8\x01\x01\xa0\xa6\x1d\x01\x88\xd4a\xca9\x92\xd4a#status.outputs.r2_secret_access_keyR\x0fsecretAccessKey\"\xdc\x01\n" +
 	"\x1dKubernetesMongodbAzureStorage\x12$\n" +
 	"\tcontainer\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\tcontainer\x12\x16\n" +
 	"\x06prefix\x18\x02 \x01(\tR\x06prefix\x12!\n" +
@@ -2693,11 +2954,11 @@ const file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDesc = ""
 	"\x15ReplsetRemappingEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
-	"\x06source\x12\x05\xbaH\x02\b\x01\"\x80\x05\n" +
+	"\x06source\x12\x05\xbaH\x02\b\x01\"\xa1\x05\n" +
 	"$KubernetesMongodbRestoreBackupSource\x12)\n" +
-	"\fstorage_name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\vstorageName\x12\xbb\x02\n" +
-	"\vdestination\x18\x02 \x01(\tB\x98\x02\xbaH\x94\x02\xba\x01\x8d\x02\n" +
-	"*spec.restore.backup_source.destination_uri\x12\xb2\x01destination is the backup's full path in the store: s3://<bucket>/<prefix>/<backup-name>, gs://..., or azure://... — the backup name (PBM's start timestamp) is the last segment\x1a*this.matches('^(s3|gs|azure)://[^/]+/.+$')\xc8\x01\x01R\vdestination\x12\xe5\x01\n" +
+	"\fstorage_name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\vstorageName\x12\xdc\x02\n" +
+	"\vdestination\x18\x02 \x01(\tB\xb9\x02\xbaH\xb5\x02\xba\x01\xae\x02\n" +
+	"*spec.restore.backup_source.destination_uri\x12\xd3\x01destination is the backup's full path in the store: s3://<bucket>/<prefix>/<backup-name> (S3, R2, and every S3-API store), gs://..., or azure://... — the backup name (PBM's start timestamp) is the last segment\x1a*this.matches('^(s3|gs|azure)://[^/]+/.+$')\xc8\x01\x01R\vdestination\x12\xe5\x01\n" +
 	"\x04type\x18\x03 \x01(\tB\xcb\x01\xbaH\xbc\x01\xba\x01\xb8\x01\n" +
 	"$spec.restore.backup_source.type_enum\x12arestore type must be logical or physical (incremental chains restore through their physical base)\x1a-this == '' || this in ['logical', 'physical']\x8a\xa6\x1d\alogicalH\x00R\x04type\x88\x01\x01B\a\n" +
 	"\x05_type\"\xa8\x04\n" +
@@ -2743,7 +3004,7 @@ func file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescGZIP()
 	return file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDescData
 }
 
-var file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_goTypes = []any{
 	(*KubernetesMongodbSpec)(nil),                // 0: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec
 	(*KubernetesMongodbReplicaSet)(nil),          // 1: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet
@@ -2762,69 +3023,78 @@ var file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_goTypes = []an
 	(*KubernetesMongodbS3AccessKeys)(nil),        // 14: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3AccessKeys
 	(*KubernetesMongodbGcsStorage)(nil),          // 15: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsStorage
 	(*KubernetesMongodbGcsCredentials)(nil),      // 16: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsCredentials
-	(*KubernetesMongodbAzureStorage)(nil),        // 17: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbAzureStorage
-	(*KubernetesMongodbBackupTask)(nil),          // 18: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupTask
-	(*KubernetesMongodbPitr)(nil),                // 19: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPitr
-	(*KubernetesMongodbRestore)(nil),             // 20: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore
-	(*KubernetesMongodbRestoreBackupSource)(nil), // 21: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestoreBackupSource
-	(*KubernetesMongodbRestorePitr)(nil),         // 22: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestorePitr
-	(*KubernetesMongodbScheduling)(nil),          // 23: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling
-	(*KubernetesMongodbPodDisruptionBudget)(nil), // 24: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPodDisruptionBudget
-	(*KubernetesMongodbLogCollector)(nil),        // 25: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbLogCollector
-	(*KubernetesMongodbUnsafe)(nil),              // 26: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUnsafe
-	nil,                                          // 27: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose.AnnotationsEntry
-	nil,                                          // 28: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.ReplsetRemappingEntry
-	nil,                                          // 29: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.NodeSelectorEntry
-	(*v1.StringValueOrRef)(nil),                  // 30: dev.planton.shared.foreignkey.v1.StringValueOrRef
-	(*kubernetes.ContainerResources)(nil),        // 31: dev.planton.kubernetes.ContainerResources
-	(*kubernetes.WorkloadToleration)(nil),        // 32: dev.planton.kubernetes.WorkloadToleration
+	(*KubernetesMongodbR2Storage)(nil),           // 17: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Storage
+	(*KubernetesMongodbR2Credentials)(nil),       // 18: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Credentials
+	(*KubernetesMongodbAzureStorage)(nil),        // 19: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbAzureStorage
+	(*KubernetesMongodbBackupTask)(nil),          // 20: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupTask
+	(*KubernetesMongodbPitr)(nil),                // 21: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPitr
+	(*KubernetesMongodbRestore)(nil),             // 22: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore
+	(*KubernetesMongodbRestoreBackupSource)(nil), // 23: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestoreBackupSource
+	(*KubernetesMongodbRestorePitr)(nil),         // 24: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestorePitr
+	(*KubernetesMongodbScheduling)(nil),          // 25: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling
+	(*KubernetesMongodbPodDisruptionBudget)(nil), // 26: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPodDisruptionBudget
+	(*KubernetesMongodbLogCollector)(nil),        // 27: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbLogCollector
+	(*KubernetesMongodbUnsafe)(nil),              // 28: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUnsafe
+	nil,                                          // 29: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose.AnnotationsEntry
+	nil,                                          // 30: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.ReplsetRemappingEntry
+	nil,                                          // 31: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.NodeSelectorEntry
+	(*v1.StringValueOrRef)(nil),                  // 32: dev.planton.shared.foreignkey.v1.StringValueOrRef
+	(*kubernetes.ContainerResources)(nil),        // 33: dev.planton.kubernetes.ContainerResources
+	(*kubernetes.WorkloadToleration)(nil),        // 34: dev.planton.kubernetes.WorkloadToleration
 }
 var file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_depIdxs = []int32{
-	30, // 0: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	32, // 0: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
 	1,  // 1: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.replica_sets:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet
 	5,  // 2: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.sharding:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSharding
 	8,  // 3: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.tls:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbTls
 	9,  // 4: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.users:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUser
 	11, // 5: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.backup:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackup
-	25, // 6: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.log_collector:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbLogCollector
-	26, // 7: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.unsafe:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUnsafe
-	20, // 8: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.restore:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore
+	27, // 6: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.log_collector:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbLogCollector
+	28, // 7: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.unsafe:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUnsafe
+	22, // 8: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSpec.restore:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore
 	2,  // 9: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.storage:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbStorage
-	31, // 10: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.resources:type_name -> dev.planton.kubernetes.ContainerResources
+	33, // 10: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.resources:type_name -> dev.planton.kubernetes.ContainerResources
 	3,  // 11: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.arbiter:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbArbiter
 	4,  // 12: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.expose:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose
-	24, // 13: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.pod_disruption_budget:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPodDisruptionBudget
-	23, // 14: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.scheduling:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling
-	30, // 15: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbStorage.storage_class:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
-	27, // 16: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose.annotations:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose.AnnotationsEntry
+	26, // 13: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.pod_disruption_budget:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPodDisruptionBudget
+	25, // 14: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbReplicaSet.scheduling:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling
+	32, // 15: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbStorage.storage_class:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	29, // 16: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose.annotations:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose.AnnotationsEntry
 	6,  // 17: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSharding.config_server:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbConfigServer
 	7,  // 18: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbSharding.mongos:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbMongos
 	2,  // 19: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbConfigServer.storage:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbStorage
-	31, // 20: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbConfigServer.resources:type_name -> dev.planton.kubernetes.ContainerResources
-	31, // 21: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbMongos.resources:type_name -> dev.planton.kubernetes.ContainerResources
+	33, // 20: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbConfigServer.resources:type_name -> dev.planton.kubernetes.ContainerResources
+	33, // 21: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbMongos.resources:type_name -> dev.planton.kubernetes.ContainerResources
 	4,  // 22: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbMongos.expose:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbExpose
-	30, // 23: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbTls.issuer:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	32, // 23: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbTls.issuer:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
 	10, // 24: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUser.roles:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbUserRole
 	12, // 25: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackup.storages:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupStorage
-	18, // 26: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackup.tasks:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupTask
-	19, // 27: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackup.pitr:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPitr
+	20, // 26: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackup.tasks:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupTask
+	21, // 27: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackup.pitr:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbPitr
 	13, // 28: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupStorage.s3:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3Storage
 	15, // 29: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupStorage.gcs:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsStorage
-	17, // 30: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupStorage.azure:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbAzureStorage
-	14, // 31: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3Storage.access_keys:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3AccessKeys
-	16, // 32: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsStorage.credentials:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsCredentials
-	30, // 33: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsCredentials.service_account_key:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
-	21, // 34: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.backup_source:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestoreBackupSource
-	22, // 35: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.pitr:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestorePitr
-	28, // 36: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.replset_remapping:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.ReplsetRemappingEntry
-	29, // 37: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.node_selector:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.NodeSelectorEntry
-	32, // 38: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.tolerations:type_name -> dev.planton.kubernetes.WorkloadToleration
-	31, // 39: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbLogCollector.resources:type_name -> dev.planton.kubernetes.ContainerResources
-	40, // [40:40] is the sub-list for method output_type
-	40, // [40:40] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	19, // 30: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupStorage.azure:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbAzureStorage
+	17, // 31: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbBackupStorage.r2:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Storage
+	14, // 32: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3Storage.access_keys:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbS3AccessKeys
+	16, // 33: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsStorage.credentials:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsCredentials
+	32, // 34: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbGcsCredentials.service_account_key:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	32, // 35: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Storage.bucket:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	32, // 36: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Storage.account_id:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	32, // 37: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Storage.jurisdiction:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	18, // 38: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Storage.credentials:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Credentials
+	32, // 39: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Credentials.access_key_id:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	32, // 40: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbR2Credentials.secret_access_key:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	23, // 41: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.backup_source:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestoreBackupSource
+	24, // 42: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.pitr:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestorePitr
+	30, // 43: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.replset_remapping:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbRestore.ReplsetRemappingEntry
+	31, // 44: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.node_selector:type_name -> dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.NodeSelectorEntry
+	34, // 45: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbScheduling.tolerations:type_name -> dev.planton.kubernetes.WorkloadToleration
+	33, // 46: dev.planton.kubernetes.kubernetesmongodb.v1alpha1.KubernetesMongodbLogCollector.resources:type_name -> dev.planton.kubernetes.ContainerResources
+	47, // [47:47] is the sub-list for method output_type
+	47, // [47:47] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_init() }
@@ -2845,26 +3115,27 @@ func file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_init() {
 		(*KubernetesMongodbBackupStorage_S3)(nil),
 		(*KubernetesMongodbBackupStorage_Gcs)(nil),
 		(*KubernetesMongodbBackupStorage_Azure)(nil),
+		(*KubernetesMongodbBackupStorage_R2)(nil),
 	}
 	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[16].OneofWrappers = []any{
 		(*KubernetesMongodbGcsCredentials_ServiceAccountKey)(nil),
 		(*KubernetesMongodbGcsCredentials_ExistingSecretName)(nil),
 	}
-	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[18].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[19].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[20].OneofWrappers = []any{
+	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[20].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[21].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[22].OneofWrappers = []any{
 		(*KubernetesMongodbRestore_BackupName)(nil),
 		(*KubernetesMongodbRestore_BackupSource)(nil),
 	}
-	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[21].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[25].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[23].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_msgTypes[27].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDesc), len(file_catalog_kubernetes_kubernetesmongodb_v1alpha1_spec_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

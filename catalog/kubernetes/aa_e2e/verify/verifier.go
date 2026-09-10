@@ -452,7 +452,7 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 			BackupProof:     strings.Contains(manifestPath, "with-backup"),
 			BackupStorage:   mongodbFirstBackupStorage(spec),
 			UsersSecretName: mongodbUsersSecretName(spec),
-			RestoreProof:    strings.Contains(manifestPath, "gke-gcs-restore"),
+			RestoreProof:    scenarioMatches(manifestPath, "gke-", "-restore"),
 		}, nil
 
 	// A Strimzi-operator-managed KRaft Kafka cluster: the Kafka resource
@@ -1143,7 +1143,7 @@ func GetVerifierFromManifest(manifestPath string) (ResourceVerifier, error) {
 			Instances:     manifestSpecInt(manifestPath, "instances", 1),
 			Behavioral:    strings.Contains(manifestPath, "behavioral-failover"),
 			BackupProof:   strings.Contains(manifestPath, "with-backup"),
-			RecoveryProof: strings.Contains(manifestPath, "gke-gcs-recovery"),
+			RecoveryProof: scenarioMatches(manifestPath, "gke-", "-recovery"),
 			// The recovery reads the source's credentials from the Secret the
 			// manifest's recovery block names (`<source>-app`).
 			RecoverySourceCluster: strings.TrimSuffix(manifestNestedRecoveryOwnerSecret(manifestPath), "-app"),

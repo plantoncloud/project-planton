@@ -80,6 +80,53 @@ prerequisite beside the resident operator), and the GCP side under
 `../aa_e2e/realcluster/gcp-gke/manifests/` (#1–#3). The
 `04-gke-ha-gcs-backups` preset is #5 as a starting point.
 
+## Disaster recovery on GKE with Cloudflare R2: the resource set
+
+The same story with the archive outside Google — in a Cloudflare R2 bucket
+declared from the catalog. R2 speaks S3, so Barman Cloud reaches it through
+its S3 code path, but the database declares the store in R2's own terms and
+the module does the translation (the jurisdiction's endpoint host, region
+`auto`, the token as an S3 key pair). Four resources, proven live on GKE:
+WAL and a base backup landing in the R2 bucket, a fresh cluster bootstrapped
+from that archive carrying rows written before and after the base backup.
+
+| # | Resource | What it is for | Wiring |
+|---|---|---|---|
+| 1 | `CloudflareR2Bucket` | The archive: WAL + base backups | `jurisdiction` fixed at creation (`default`, `eu`, `fedramp`, `us`) — it decides which host serves the bucket; exports `bucket_name`, `account_id`, `jurisdiction`, `s3_endpoint` |
+| 2 | `CloudflareAccountApiToken` (e.g. `pg-archive-writer`) | The credential — R2 has NO keyless posture from any cluster | one policy: permission group `Workers R2 Storage Bucket Item Write` on resource `com.cloudflare.edge.r2.bucket.<account>_<jurisdiction>_<bucket>` (least privilege: objects in this bucket only); exports the token as the S3 key pair, `r2_access_key_id` + `r2_secret_access_key` |
+| 3 | `KubernetesCnpgBarmanCloudPlugin` | The backup engine, beside the operator | as in the GCS set above |
+| 4 | `KubernetesPostgres` (the production database) | HA + backups | `instances: 3`, `scheduling.anti_affinity_type: required`, `backup.object_store` at `s3://<bucket>/<path>` with the `r2` arm: `account_id` and `jurisdiction` by reference to #1, `credentials.access_key_id` / `secret_access_key` by reference to #2; a schedule with `immediate: true`, `retention_policy`. No `workload_identity` — nothing on the cluster side identifies the pods to R2 |
+| 5 | `KubernetesPostgres` (the recovery target, on the bad day) | Restore | `bootstrap.recovery.object_store` = #4's store (the same `r2` arm, the same references), `source_server_name` = #4's name, `database`/`owner` = #4's initdb values, `owner_secret_name` = #4's `<name>-app` Secret; its own `backup` at a DIFFERENT path in the same bucket |
+
+The two rules above (credential continuity; one archive path per cluster,
+forever) stand unchanged. Three R2-specific facts join them:
+
+- **The module owns the S3 dialect.** The rendered ObjectStore carries the
+  jurisdiction's endpoint, region `auto`, and the plugin sidecar's
+  `AWS_REQUEST_CHECKSUM_CALCULATION=when_required` /
+  `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required` (the plugin's documented
+  posture for S3-compatible stores: barman-cloud's boto3 otherwise attaches
+  data-integrity checksums an S3-compatible store may reject). Archiving,
+  base backups, and recovery through this shape are live-proven on GKE with
+  a token scoped to `Workers R2 Storage Bucket Item Write` alone — no
+  account-level permission is needed for backup and restore.
+
+- **The token is the key.** Rotating the token (or deleting and recreating
+  it) mints a new key pair; the databases follow the references on their
+  next apply. A token without an R2 permission group authenticates and then
+  fails every archive with AccessDenied — the permission group is the
+  grant, there is no bucket-side policy to attach.
+- **Emptying the bucket is yours.** Deleting a `CloudflareR2Bucket` that
+  still holds objects is refused by Cloudflare (the provider has no
+  force-destroy); retire an archive by emptying the bucket over the S3 API
+  (`aws s3 rm --recursive`, against `s3_endpoint` with the token's pair)
+  before destroying it.
+
+The validated manifests for this set are the `gcp-gke` lane's own:
+`e2e/fixture-gke-r2-source.yaml` (#4), `e2e/scenarios/gke-r2-recovery.yaml`
+(#5), and the Cloudflare side under `../aa_e2e/realcluster/gcp-gke/manifests/`
+(#1–#2). The `05-gke-ha-r2-backups` preset is #4 as a starting point.
+
 ## On the diagram
 
 Wiring `spec.namespace` via `valueFrom` draws the database's namespace edge

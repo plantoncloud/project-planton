@@ -27,12 +27,14 @@ import (
 // The Terraform twin (local.restore_name in locals.tf) hashes the identical
 // canonical string, so both engines name the same run the same way.
 //
-// The operator gates the run on the cluster: it requeues until the members
-// and their PBM agents are up (reading `backup.storages` for the storage the
-// backup lives in — which is why the spec requires the backup block), then
-// replays the backup INTO the running cluster. The module renders the object
-// after the cluster and lets the operator own the wait — no await on a
-// controller-driven verb, the same posture as the cluster itself.
+// The operator replays the backup INTO the running cluster (reading
+// `backup.storages` for the storage the backup lives in — which is why the
+// spec requires the backup block). Its own agent check is NOT a readiness
+// check (see createCluster): the module therefore renders this object only
+// after the cluster reports ready -- the cluster resource awaits that state
+// when a restore is declared, and this resource depends on it -- and lets
+// the operator own the run itself; the run's outcome is the Restore object's
+// status.
 func createRestore(ctx *pulumi.Context, locals *Locals,
 	kubernetesProvider pulumi.ProviderResource,
 	dependencies []pulumi.ResourceOption,
@@ -102,6 +104,11 @@ func buildRestoreSpec(clusterName string, restore *kubernetesmongodbv1alpha1.Kub
 				backupSource["gcs"] = buildBackupGcs(storage.GetGcs(), clusterName, storage.GetName())
 			case storage.GetAzure() != nil:
 				backupSource["azure"] = buildBackupAzure(storage.GetAzure(), clusterName, storage.GetName())
+			case storage.GetR2() != nil:
+				// R2 rides the operator's s3 block; the restore controller
+				// validates an `s3` backupSource against an s3:// destination,
+				// which is exactly what an R2 backup reports.
+				backupSource["s3"] = buildBackupR2(storage.GetR2(), clusterName, storage.GetName())
 			}
 		}
 		out["backupSource"] = backupSource

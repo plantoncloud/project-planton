@@ -151,7 +151,8 @@ flag tells the Barman Cloud plugin to use that ambient identity.
 | EKS / AWS S3 | `eks.role_arn` — the `eks.amazonaws.com/role-arn` annotation (IRSA) | `s3.keyless: true` | `s3.access_keys` — materialized as the `<name>-backup-creds` Secret |
 | GKE / GCS | `gke.service_account_email` — the `iam.gke.io/gcp-service-account` annotation | `gcs.keyless: true` | `gcs.service_account_key_json` |
 | AKS / Azure Blob | `aks.client_id` (+ optional `tenant_id`) — the `azure.workload.identity/*` annotations | `azure_blob.keyless: true` + `storage_account` (identifies the endpoint) | `connection_string` XOR `storage_account` + `storage_key` |
-| S3-compatible (MinIO, R2, Ceph RGW, ...) | — | `s3.endpoint_url` + `access_keys` (keyless is spec-rejected: it only mints AWS credentials) | `endpoint_ca_pem` for self-signed endpoints |
+| Cloudflare R2 (from any cluster) | — (R2 has no ambient-identity path) | `r2` — `account_id` + `jurisdiction` by reference to a `CloudflareR2Bucket`, `credentials` by reference to a `CloudflareAccountApiToken` (the token IS the S3 key pair); the module composes the jurisdiction's endpoint and region `auto` | the same two `credentials` fields as literals (a dashboard-minted "Access Key ID" / "Secret Access Key") |
+| S3-compatible (MinIO, Ceph RGW, ...) | — | `s3.endpoint_url` + `access_keys` (keyless is spec-rejected: it only mints AWS credentials) | `endpoint_ca_pem` for self-signed endpoints |
 
 The cloud-side half of each keyless contract (IRSA trust policy, GCP WI
 binding, Entra federated credential) is written against the cluster's

@@ -1,0 +1,61 @@
+# The SOURCE cluster of the gcp-gke recovery proof on Cloudflare R2: the
+# database a customer runs in production, owning the lane namespace. Three
+# instances on REQUIRED node anti-affinity (the GKE autoscaler adds nodes to
+# honor it), WAL archiving plus an immediate base backup into the batch's R2
+# bucket through the Barman Cloud plugin, on the `r2` arm: the account and
+# jurisdiction the bucket lives in and the S3 pair of the batch's writer
+# token, as the batch exported them (the same values the CloudflareR2Bucket
+# and CloudflareAccountApiToken kinds export — the lane carries them by
+# value because the Cloudflare side is not part of the lane's own graph).
+# There is no keyless posture for R2; the credential is the token. The seed
+# script writes markers and takes a backup here; the recovery scenario
+# restores from this cluster's archive and references this cluster's `-app`
+# Secret for credential continuity. The archive path carries the run id:
+# Barman refuses to archive into a path already holding another cluster's
+# WAL, and the failure is quiet (live-caught on GCS; the rule is Barman's,
+# not the store's). Same namespace and cluster name as the GCS source so the
+# one seed script serves both lanes; the two never run at once.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesPostgres
+metadata:
+  name: e2e-pg-gke-src
+spec:
+  namespace:
+    value: e2e-pg-gke
+  create_namespace: true
+  instances: 3
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  scheduling:
+    anti_affinity_type: required
+    topology_key: kubernetes.io/hostname
+  bootstrap:
+    initdb:
+      database: appdb
+      owner: appuser
+      data_checksums: true
+  backup:
+    object_store:
+      destination_path: s3://${E2E_ENV:PLANTON_E2E_GKE_R2_BUCKET}/postgres/${E2E_RUN_ID}/e2e-pg-gke-src
+      r2:
+        account_id:
+          value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCOUNT_ID}
+        jurisdiction:
+          value: ${E2E_ENV:PLANTON_E2E_GKE_R2_JURISDICTION}
+        credentials:
+          access_key_id:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCESS_KEY_ID}
+          secret_access_key:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_SECRET_ACCESS_KEY}
+    retention_policy: 7d
+    schedules:
+      - name: initial
+        schedule: "0 0 3 * * *"
+        immediate: true

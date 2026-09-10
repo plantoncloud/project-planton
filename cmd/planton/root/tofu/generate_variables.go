@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"os"
+	"strings"
 )
 
 var GenerateVariables = &cobra.Command{
@@ -67,7 +68,11 @@ func generateVariablesHandler(cmd *cobra.Command, args []string) {
 		)
 	}
 	if outputFile != "" {
-		if err := os.WriteFile(outputFile, []byte(variablesTfContent), 0644); err != nil {
+		// A committed variables.tf ends with a newline (tofu fmt's shape); the
+		// generator's text does not carry one, so add it here rather than
+		// leaving every regenerated module with a "no newline at end of file"
+		// diff hunk.
+		if err := os.WriteFile(outputFile, []byte(strings.TrimRight(variablesTfContent, "\n")+"\n"), 0644); err != nil {
 			ui.Failure(
 				fmt.Sprintf("the generated variables could not be written to %s: %v", outputFile, err),
 				"the output path is not writable, or its parent directory does not exist",

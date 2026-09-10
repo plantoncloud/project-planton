@@ -1,0 +1,56 @@
+# The SOURCE cluster of the gcp-gke restore proof on Cloudflare R2: the
+# database a customer runs in production, owning the lane namespace. A
+# three-member replica set on the operator's default REQUIRED hostname
+# anti-affinity (the GKE autoscaler adds nodes to honor it), PBM backups into
+# the batch's R2 bucket on the `r2` arm — the bucket, the account and
+# jurisdiction it lives in, and the S3 pair of the batch's writer token, as
+# the batch exported them (the same values the CloudflareR2Bucket and
+# CloudflareAccountApiToken kinds export; carried by value because the
+# Cloudflare side is not part of the lane's own graph) — and PITR archiving
+# the oplog between backups. There is no keyless posture for R2; the
+# credential is the token. The seed script writes markers and takes a backup
+# here; the restore scenario restores from that backup and references this
+# cluster's system-users Secret for credential continuity. The storage prefix
+# carries the run id so no two lanes ever share a PBM archive. Same namespace
+# and cluster name as the GCS source so the one seed script serves both lanes;
+# the two never run at once.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesMongodb
+metadata:
+  name: e2e-mdb-gke-src
+spec:
+  namespace:
+    value: e2e-mdb-gke
+  create_namespace: true
+  replica_sets:
+    - name: rs0
+      size: 3
+      storage:
+        size: 2Gi
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+  backup:
+    storages:
+      - name: r2
+        main: true
+        r2:
+          bucket:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_BUCKET}
+          prefix: mongo/${E2E_RUN_ID}/e2e-mdb-gke-src
+          account_id:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCOUNT_ID}
+          jurisdiction:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_JURISDICTION}
+          credentials:
+            access_key_id:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCESS_KEY_ID}
+            secret_access_key:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_R2_SECRET_ACCESS_KEY}
+    pitr:
+      enabled: true
+      oplog_span_min: 1

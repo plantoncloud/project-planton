@@ -458,7 +458,7 @@ committed scenarios honest: no manifest hardcodes a backup name only one run
 ever produced.
 
 ```bash
-# in gke-gcs-restore.setup.sh, after the backup reaches ready:
+# in gke-restore-seed.setup.sh, after the backup reaches ready:
 echo "MONGO_BACKUP_DESTINATION=$(kubectl get psmdb-backup "$name" -o jsonpath='{.status.destination}')" >> "$E2E_SETUP_OUTPUT"
 ```
 

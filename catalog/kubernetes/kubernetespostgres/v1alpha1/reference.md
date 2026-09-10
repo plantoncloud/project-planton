@@ -232,6 +232,12 @@ spec:
 | `spec.bootstrap.recovery.objectStore.azureBlob.connectionString` | `string` (sensitive) |  |  |  |
 | `spec.bootstrap.recovery.objectStore.azureBlob.storageAccount` | `string` |  |  |  |
 | `spec.bootstrap.recovery.objectStore.azureBlob.storageKey` | `string` (sensitive) |  |  |  |
+| `spec.bootstrap.recovery.objectStore.r2` | `KubernetesPostgresR2ObjectStore` |  |  |  |
+| `spec.bootstrap.recovery.objectStore.r2.accountId` | `string \| valueFrom` | yes |  | CloudflareR2Bucket (`status.outputs.account_id`) |
+| `spec.bootstrap.recovery.objectStore.r2.jurisdiction` | `string \| valueFrom` |  |  | CloudflareR2Bucket (`status.outputs.jurisdiction`) |
+| `spec.bootstrap.recovery.objectStore.r2.credentials` | `KubernetesPostgresR2Credentials` | yes |  |  |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId` | `string \| valueFrom` | yes |  | CloudflareAccountApiToken (`status.outputs.r2_access_key_id`) |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey` | `string \| valueFrom` (sensitive) | yes |  | CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`) |
 | `spec.bootstrap.recovery.objectStore.wal` | `KubernetesPostgresWalTuning` |  |  |  |
 | `spec.bootstrap.recovery.objectStore.wal.compression` | `string` |  |  |  |
 | `spec.bootstrap.recovery.objectStore.wal.maxParallel` | `int32` |  |  |  |
@@ -291,6 +297,12 @@ spec:
 | `spec.backup.objectStore.azureBlob.connectionString` | `string` (sensitive) |  |  |  |
 | `spec.backup.objectStore.azureBlob.storageAccount` | `string` |  |  |  |
 | `spec.backup.objectStore.azureBlob.storageKey` | `string` (sensitive) |  |  |  |
+| `spec.backup.objectStore.r2` | `KubernetesPostgresR2ObjectStore` |  |  |  |
+| `spec.backup.objectStore.r2.accountId` | `string \| valueFrom` | yes |  | CloudflareR2Bucket (`status.outputs.account_id`) |
+| `spec.backup.objectStore.r2.jurisdiction` | `string \| valueFrom` |  |  | CloudflareR2Bucket (`status.outputs.jurisdiction`) |
+| `spec.backup.objectStore.r2.credentials` | `KubernetesPostgresR2Credentials` | yes |  |  |
+| `spec.backup.objectStore.r2.credentials.accessKeyId` | `string \| valueFrom` | yes |  | CloudflareAccountApiToken (`status.outputs.r2_access_key_id`) |
+| `spec.backup.objectStore.r2.credentials.secretAccessKey` | `string \| valueFrom` (sensitive) | yes |  | CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`) |
 | `spec.backup.objectStore.wal` | `KubernetesPostgresWalTuning` |  |  |  |
 | `spec.backup.objectStore.wal.compression` | `string` |  |  |  |
 | `spec.backup.objectStore.wal.maxParallel` | `int32` |  |  |  |
@@ -754,14 +766,15 @@ it restored from.
 - rule: the s3 backend stores at an s3:// destination path (also for S3-compatible stores like MinIO and R2)
 - rule: the gcs backend stores at a gs:// destination path
 - rule: the azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)
+- rule: the r2 backend stores at an s3:// destination path (s3://<bucket>/<path> — R2 is addressed through its S3 API; the bucket name is the CloudflareR2Bucket's bucket_name)
 
 ### spec.bootstrap.recovery.objectStore.destinationPath
 
 `string` · required
 
 Where in the store the data lives — the backend's native URI form:
-`s3://bucket/path` for S3 and every S3-compatible store,
-`gs://bucket/path` for GCS, and
+`s3://bucket/path` for S3, Cloudflare R2, and every S3-compatible
+store, `gs://bucket/path` for GCS, and
 `https://<account>.blob.core.windows.net/<container>/<path>` for
 Azure Blob. WAL and base backups are stored under separate folders
 beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
@@ -778,8 +791,10 @@ ContinuousArchiving condition stays false and no backup ever lands
 
 `KubernetesPostgresS3ObjectStore`
 
-AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, Cloudflare
-R2, DigitalOcean Spaces, ...) via the endpoint_url override.
+AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, DigitalOcean
+Spaces, ...) via the endpoint_url override. Cloudflare R2 has its
+own arm (`r2`) that composes the catalog's Cloudflare kinds; this
+arm still reaches R2 for a hand-carried endpoint and key pair.
 
 - rule: keyless and access_keys are alternative credential postures — set exactly one
 - rule: an S3-compatible endpoint (endpoint_url) authenticates with access_keys — the keyless posture only mints AWS credentials
@@ -789,17 +804,17 @@ R2, DigitalOcean Spaces, ...) via the endpoint_url override.
 `string`
 
 AWS region of the bucket. Required for real S3; for S3-compatible
-stores use the store's expected value (MinIO accepts any, "auto"
-for Cloudflare R2).
+stores use the store's expected value (MinIO accepts any; the `r2`
+arm pins Cloudflare R2's `auto` itself).
 
 ### spec.bootstrap.recovery.objectStore.s3.endpointUrl
 
 `string`
 
 S3-COMPATIBLE ARM: endpoint URL of the store (e.g.
-http://minio.minio-system.svc:9000 for in-cluster MinIO,
-https://<account>.r2.cloudflarestorage.com for R2). Empty = real
-AWS S3.
+http://minio.minio-system.svc:9000 for in-cluster MinIO). Empty =
+real AWS S3. For Cloudflare R2 prefer the `r2` arm, which composes
+the endpoint from the bucket's account and jurisdiction.
 
 - rule: endpoint_url must be an http(s) URL (e.g. http://minio.minio-system.svc:9000)
 
@@ -919,6 +934,79 @@ keyless (the account identifies the storage endpoint).
 `string` · sensitive
 
 Storage-account access key, paired with storage_account.
+
+### spec.bootstrap.recovery.objectStore.r2
+
+`KubernetesPostgresR2ObjectStore`
+
+Cloudflare R2, in R2's own vocabulary: the owning account, the
+bucket's jurisdiction, and a Cloudflare credential — each a
+reference onto the catalog's CloudflareR2Bucket and
+CloudflareAccountApiToken by default. The module performs the S3
+translation R2 needs (the jurisdiction's endpoint host, region
+`auto`, the token as an S3 key pair); nothing S3-shaped is typed
+here.
+
+### spec.bootstrap.recovery.objectStore.r2.accountId
+
+`string | valueFrom` · required
+
+The Cloudflare account that owns the bucket (32 hex characters). By
+reference to the bucket resource's `account_id` output, so the arm
+follows the bucket; a literal names an account outside the catalog.
+
+- references: CloudflareR2Bucket (`status.outputs.account_id`)
+- rule: account_id is the 32-hex-character Cloudflare account id
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.account_id}} -- a bare string does not parse
+
+### spec.bootstrap.recovery.objectStore.r2.jurisdiction
+
+`string | valueFrom`
+
+The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+`fedramp`, or `us`. It selects the S3 host the module composes — a
+bucket created in a jurisdiction is unreachable through any other
+host — so it must match the bucket exactly; by reference to the
+bucket resource's `jurisdiction` output it cannot drift.
+
+- references: CloudflareR2Bucket (`status.outputs.jurisdiction`)
+- rule: jurisdiction must be one of "default", "eu", "fedramp", "us" (or empty for default)
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.jurisdiction}} -- a bare string does not parse
+
+### spec.bootstrap.recovery.objectStore.r2.credentials
+
+`KubernetesPostgresR2Credentials` · required
+
+The Cloudflare credential, as the S3 key pair R2's S3 API
+authenticates. Materialized as a Kubernetes Secret the plugin reads;
+never plaintext in the rendered resource.
+
+- rule: {"required":true}
+
+### spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId
+
+`string | valueFrom` · required
+
+The S3 access key id: the API token's id. By reference to the token
+resource's `r2_access_key_id` output.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_access_key_id`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_access_key_id}} -- a bare string does not parse
+
+### spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey
+
+`string | valueFrom` · required · sensitive
+
+The S3 secret access key: the SHA-256 of the API token's value. By
+reference to the token resource's `r2_secret_access_key` output. Rotates
+with the token: a rotated token is a new key pair, and the Secret this
+arm materializes follows the reference on the next apply.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_secret_access_key}} -- a bare string does not parse
 
 ### spec.bootstrap.recovery.objectStore.wal
 
@@ -1274,14 +1362,15 @@ below add the periodic base backups PITR needs.
 - rule: the s3 backend stores at an s3:// destination path (also for S3-compatible stores like MinIO and R2)
 - rule: the gcs backend stores at a gs:// destination path
 - rule: the azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)
+- rule: the r2 backend stores at an s3:// destination path (s3://<bucket>/<path> — R2 is addressed through its S3 API; the bucket name is the CloudflareR2Bucket's bucket_name)
 
 ### spec.backup.objectStore.destinationPath
 
 `string` · required
 
 Where in the store the data lives — the backend's native URI form:
-`s3://bucket/path` for S3 and every S3-compatible store,
-`gs://bucket/path` for GCS, and
+`s3://bucket/path` for S3, Cloudflare R2, and every S3-compatible
+store, `gs://bucket/path` for GCS, and
 `https://<account>.blob.core.windows.net/<container>/<path>` for
 Azure Blob. WAL and base backups are stored under separate folders
 beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
@@ -1298,8 +1387,10 @@ ContinuousArchiving condition stays false and no backup ever lands
 
 `KubernetesPostgresS3ObjectStore`
 
-AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, Cloudflare
-R2, DigitalOcean Spaces, ...) via the endpoint_url override.
+AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, DigitalOcean
+Spaces, ...) via the endpoint_url override. Cloudflare R2 has its
+own arm (`r2`) that composes the catalog's Cloudflare kinds; this
+arm still reaches R2 for a hand-carried endpoint and key pair.
 
 - rule: keyless and access_keys are alternative credential postures — set exactly one
 - rule: an S3-compatible endpoint (endpoint_url) authenticates with access_keys — the keyless posture only mints AWS credentials
@@ -1309,17 +1400,17 @@ R2, DigitalOcean Spaces, ...) via the endpoint_url override.
 `string`
 
 AWS region of the bucket. Required for real S3; for S3-compatible
-stores use the store's expected value (MinIO accepts any, "auto"
-for Cloudflare R2).
+stores use the store's expected value (MinIO accepts any; the `r2`
+arm pins Cloudflare R2's `auto` itself).
 
 ### spec.backup.objectStore.s3.endpointUrl
 
 `string`
 
 S3-COMPATIBLE ARM: endpoint URL of the store (e.g.
-http://minio.minio-system.svc:9000 for in-cluster MinIO,
-https://<account>.r2.cloudflarestorage.com for R2). Empty = real
-AWS S3.
+http://minio.minio-system.svc:9000 for in-cluster MinIO). Empty =
+real AWS S3. For Cloudflare R2 prefer the `r2` arm, which composes
+the endpoint from the bucket's account and jurisdiction.
 
 - rule: endpoint_url must be an http(s) URL (e.g. http://minio.minio-system.svc:9000)
 
@@ -1439,6 +1530,79 @@ keyless (the account identifies the storage endpoint).
 `string` · sensitive
 
 Storage-account access key, paired with storage_account.
+
+### spec.backup.objectStore.r2
+
+`KubernetesPostgresR2ObjectStore`
+
+Cloudflare R2, in R2's own vocabulary: the owning account, the
+bucket's jurisdiction, and a Cloudflare credential — each a
+reference onto the catalog's CloudflareR2Bucket and
+CloudflareAccountApiToken by default. The module performs the S3
+translation R2 needs (the jurisdiction's endpoint host, region
+`auto`, the token as an S3 key pair); nothing S3-shaped is typed
+here.
+
+### spec.backup.objectStore.r2.accountId
+
+`string | valueFrom` · required
+
+The Cloudflare account that owns the bucket (32 hex characters). By
+reference to the bucket resource's `account_id` output, so the arm
+follows the bucket; a literal names an account outside the catalog.
+
+- references: CloudflareR2Bucket (`status.outputs.account_id`)
+- rule: account_id is the 32-hex-character Cloudflare account id
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.account_id}} -- a bare string does not parse
+
+### spec.backup.objectStore.r2.jurisdiction
+
+`string | valueFrom`
+
+The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+`fedramp`, or `us`. It selects the S3 host the module composes — a
+bucket created in a jurisdiction is unreachable through any other
+host — so it must match the bucket exactly; by reference to the
+bucket resource's `jurisdiction` output it cannot drift.
+
+- references: CloudflareR2Bucket (`status.outputs.jurisdiction`)
+- rule: jurisdiction must be one of "default", "eu", "fedramp", "us" (or empty for default)
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.jurisdiction}} -- a bare string does not parse
+
+### spec.backup.objectStore.r2.credentials
+
+`KubernetesPostgresR2Credentials` · required
+
+The Cloudflare credential, as the S3 key pair R2's S3 API
+authenticates. Materialized as a Kubernetes Secret the plugin reads;
+never plaintext in the rendered resource.
+
+- rule: {"required":true}
+
+### spec.backup.objectStore.r2.credentials.accessKeyId
+
+`string | valueFrom` · required
+
+The S3 access key id: the API token's id. By reference to the token
+resource's `r2_access_key_id` output.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_access_key_id`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_access_key_id}} -- a bare string does not parse
+
+### spec.backup.objectStore.r2.credentials.secretAccessKey
+
+`string | valueFrom` · required · sensitive
+
+The S3 secret access key: the SHA-256 of the API token's value. By
+reference to the token resource's `r2_secret_access_key` output. Rotates
+with the token: a rotated token is a new key pair, and the Secret this
+arm materializes follows the reference on the next apply.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_secret_access_key}} -- a bare string does not parse
 
 ### spec.backup.objectStore.wal
 
@@ -1877,6 +2041,14 @@ Fields that can point at another resource's outputs:
 | `spec.namespace` | KubernetesNamespace | `spec.name` |
 | `spec.storage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
 | `spec.walStorage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
+| `spec.bootstrap.recovery.objectStore.r2.accountId` | CloudflareR2Bucket | `status.outputs.account_id` |
+| `spec.bootstrap.recovery.objectStore.r2.jurisdiction` | CloudflareR2Bucket | `status.outputs.jurisdiction` |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId` | CloudflareAccountApiToken | `status.outputs.r2_access_key_id` |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey` | CloudflareAccountApiToken | `status.outputs.r2_secret_access_key` |
+| `spec.backup.objectStore.r2.accountId` | CloudflareR2Bucket | `status.outputs.account_id` |
+| `spec.backup.objectStore.r2.jurisdiction` | CloudflareR2Bucket | `status.outputs.jurisdiction` |
+| `spec.backup.objectStore.r2.credentials.accessKeyId` | CloudflareAccountApiToken | `status.outputs.r2_access_key_id` |
+| `spec.backup.objectStore.r2.credentials.secretAccessKey` | CloudflareAccountApiToken | `status.outputs.r2_secret_access_key` |
 | `spec.workloadIdentity.gke.serviceAccountEmail` | GcpServiceAccount | `status.outputs.email` |
 | `spec.workloadIdentity.eks.roleArn` | AwsIamRole | `status.outputs.role_arn` |
 | `spec.workloadIdentity.aks.clientId` | AzureUserAssignedIdentity | `status.outputs.client_id` |

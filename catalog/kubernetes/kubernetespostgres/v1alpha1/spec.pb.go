@@ -1740,8 +1740,8 @@ type KubernetesPostgresObjectStore struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *
 	// Where in the store the data lives — the backend's native URI form:
-	// `s3://bucket/path` for S3 and every S3-compatible store,
-	// `gs://bucket/path` for GCS, and
+	// `s3://bucket/path` for S3, Cloudflare R2, and every S3-compatible
+	// store, `gs://bucket/path` for GCS, and
 	// `https://<account>.blob.core.windows.net/<container>/<path>` for
 	// Azure Blob. WAL and base backups are stored under separate folders
 	// beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
@@ -1763,6 +1763,7 @@ type KubernetesPostgresObjectStore struct {
 	//	*KubernetesPostgresObjectStore_S3
 	//	*KubernetesPostgresObjectStore_Gcs
 	//	*KubernetesPostgresObjectStore_AzureBlob
+	//	*KubernetesPostgresObjectStore_R2
 	Backend isKubernetesPostgresObjectStore_Backend `protobuf_oneof:"backend"`
 	// *
 	// WAL archiving tuning: compression and parallelism of the continuous
@@ -1847,6 +1848,15 @@ func (x *KubernetesPostgresObjectStore) GetAzureBlob() *KubernetesPostgresAzureB
 	return nil
 }
 
+func (x *KubernetesPostgresObjectStore) GetR2() *KubernetesPostgresR2ObjectStore {
+	if x != nil {
+		if x, ok := x.Backend.(*KubernetesPostgresObjectStore_R2); ok {
+			return x.R2
+		}
+	}
+	return nil
+}
+
 func (x *KubernetesPostgresObjectStore) GetWal() *KubernetesPostgresWalTuning {
 	if x != nil {
 		return x.Wal
@@ -1867,8 +1877,10 @@ type isKubernetesPostgresObjectStore_Backend interface {
 
 type KubernetesPostgresObjectStore_S3 struct {
 	// *
-	// AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, Cloudflare
-	// R2, DigitalOcean Spaces, ...) via the endpoint_url override.
+	// AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, DigitalOcean
+	// Spaces, ...) via the endpoint_url override. Cloudflare R2 has its
+	// own arm (`r2`) that composes the catalog's Cloudflare kinds; this
+	// arm still reaches R2 for a hand-carried endpoint and key pair.
 	S3 *KubernetesPostgresS3ObjectStore `protobuf:"bytes,2,opt,name=s3,proto3,oneof"`
 }
 
@@ -1884,11 +1896,25 @@ type KubernetesPostgresObjectStore_AzureBlob struct {
 	AzureBlob *KubernetesPostgresAzureBlobObjectStore `protobuf:"bytes,4,opt,name=azure_blob,json=azureBlob,proto3,oneof"`
 }
 
+type KubernetesPostgresObjectStore_R2 struct {
+	// *
+	// Cloudflare R2, in R2's own vocabulary: the owning account, the
+	// bucket's jurisdiction, and a Cloudflare credential — each a
+	// reference onto the catalog's CloudflareR2Bucket and
+	// CloudflareAccountApiToken by default. The module performs the S3
+	// translation R2 needs (the jurisdiction's endpoint host, region
+	// `auto`, the token as an S3 key pair); nothing S3-shaped is typed
+	// here.
+	R2 *KubernetesPostgresR2ObjectStore `protobuf:"bytes,7,opt,name=r2,proto3,oneof"`
+}
+
 func (*KubernetesPostgresObjectStore_S3) isKubernetesPostgresObjectStore_Backend() {}
 
 func (*KubernetesPostgresObjectStore_Gcs) isKubernetesPostgresObjectStore_Backend() {}
 
 func (*KubernetesPostgresObjectStore_AzureBlob) isKubernetesPostgresObjectStore_Backend() {}
+
+func (*KubernetesPostgresObjectStore_R2) isKubernetesPostgresObjectStore_Backend() {}
 
 // *
 // S3 / S3-compatible object-store backend.
@@ -1896,14 +1922,14 @@ type KubernetesPostgresS3ObjectStore struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *
 	// AWS region of the bucket. Required for real S3; for S3-compatible
-	// stores use the store's expected value (MinIO accepts any, "auto"
-	// for Cloudflare R2).
+	// stores use the store's expected value (MinIO accepts any; the `r2`
+	// arm pins Cloudflare R2's `auto` itself).
 	Region string `protobuf:"bytes,1,opt,name=region,proto3" json:"region,omitempty"`
 	// *
 	// S3-COMPATIBLE ARM: endpoint URL of the store (e.g.
-	// http://minio.minio-system.svc:9000 for in-cluster MinIO,
-	// https://<account>.r2.cloudflarestorage.com for R2). Empty = real
-	// AWS S3.
+	// http://minio.minio-system.svc:9000 for in-cluster MinIO). Empty =
+	// real AWS S3. For Cloudflare R2 prefer the `r2` arm, which composes
+	// the endpoint from the bucket's account and jurisdiction.
 	EndpointUrl string `protobuf:"bytes,2,opt,name=endpoint_url,json=endpointUrl,proto3" json:"endpoint_url,omitempty"`
 	// *
 	// PEM CA bundle for verifying a self-signed endpoint_url TLS
@@ -2207,6 +2233,183 @@ func (x *KubernetesPostgresAzureBlobObjectStore) GetStorageKey() string {
 }
 
 // *
+// Cloudflare R2 backend, composed from the catalog's Cloudflare kinds.
+//
+// R2 speaks S3, so Barman Cloud reaches it through its S3 code path — but
+// nothing S3-shaped is declared here. The module composes the endpoint
+// from the account and the bucket's jurisdiction
+// (`https://<account>.r2.cloudflarestorage.com`, or
+// `https://<account>.<jurisdiction>.r2.cloudflarestorage.com` for an eu,
+// fedramp, or us bucket — a jurisdictional bucket is served ONLY through
+// its own host; the default host fails rather than redirects), pins the
+// region to `auto` (the only region R2 accepts), and hands the plugin the
+// credential as an S3 key pair. There is NO keyless posture for R2 from
+// any cluster: R2 has no equivalent of IRSA or Workload Identity, so a
+// credential is always declared — by reference to a CloudflareAccountApiToken
+// by default.
+//
+// The module also owns the S3 dialect details R2 needs and an operator never
+// should: the plugin sidecar runs with `AWS_REQUEST_CHECKSUM_CALCULATION` and
+// `AWS_RESPONSE_CHECKSUM_VALIDATION` set to `when_required` (barman-cloud's
+// boto3 otherwise attaches the data-integrity checksums an S3-compatible
+// store may reject). Archiving, base backups, and recovery through this arm
+// are live-proven on GKE with a token scoped to the single bucket (`Workers
+// R2 Storage Bucket Item Write`); no account-level Cloudflare permission is
+// needed. Emptying the bucket is not the module's job — R2 refuses to delete
+// a non-empty bucket, so a CloudflareR2Bucket that has ever held an archive
+// must be emptied over the S3 API before it can be destroyed.
+//
+// The bucket itself is named in `destination_path` (`s3://<bucket>/<path>`),
+// exactly as the gcs and azure_blob arms name theirs — the path is Barman's
+// own vocabulary and the bucket is part of it.
+type KubernetesPostgresR2ObjectStore struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// *
+	// The Cloudflare account that owns the bucket (32 hex characters). By
+	// reference to the bucket resource's `account_id` output, so the arm
+	// follows the bucket; a literal names an account outside the catalog.
+	AccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// *
+	// The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+	// `fedramp`, or `us`. It selects the S3 host the module composes — a
+	// bucket created in a jurisdiction is unreachable through any other
+	// host — so it must match the bucket exactly; by reference to the
+	// bucket resource's `jurisdiction` output it cannot drift.
+	Jurisdiction *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=jurisdiction,proto3" json:"jurisdiction,omitempty"`
+	// *
+	// The Cloudflare credential, as the S3 key pair R2's S3 API
+	// authenticates. Materialized as a Kubernetes Secret the plugin reads;
+	// never plaintext in the rendered resource.
+	Credentials   *KubernetesPostgresR2Credentials `protobuf:"bytes,3,opt,name=credentials,proto3" json:"credentials,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KubernetesPostgresR2ObjectStore) Reset() {
+	*x = KubernetesPostgresR2ObjectStore{}
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesPostgresR2ObjectStore) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesPostgresR2ObjectStore) ProtoMessage() {}
+
+func (x *KubernetesPostgresR2ObjectStore) ProtoReflect() protoreflect.Message {
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesPostgresR2ObjectStore.ProtoReflect.Descriptor instead.
+func (*KubernetesPostgresR2ObjectStore) Descriptor() ([]byte, []int) {
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *KubernetesPostgresR2ObjectStore) GetAccountId() *v1.StringValueOrRef {
+	if x != nil {
+		return x.AccountId
+	}
+	return nil
+}
+
+func (x *KubernetesPostgresR2ObjectStore) GetJurisdiction() *v1.StringValueOrRef {
+	if x != nil {
+		return x.Jurisdiction
+	}
+	return nil
+}
+
+func (x *KubernetesPostgresR2ObjectStore) GetCredentials() *KubernetesPostgresR2Credentials {
+	if x != nil {
+		return x.Credentials
+	}
+	return nil
+}
+
+// *
+// The S3 key pair for Cloudflare R2. Cloudflare defines it from an account
+// API token: the access key id is the token's id and the secret access key
+// is the SHA-256 of the token's value — the two values a CloudflareAccountApiToken
+// exports as `r2_access_key_id` and `r2_secret_access_key`, and the two the
+// dashboard shows as "Access Key ID" / "Secret Access Key" when the same
+// token is created there. Reference the catalog token (the default kind)
+// or paste a dashboard-minted pair as literals; both are the same shape.
+//
+// The token needs an R2 permission group: `Workers R2 Storage Bucket Item
+// Write` scoped to this bucket (least privilege — read, write, list objects)
+// or `Workers R2 Storage Write` on the account. A token without one
+// authenticates and then fails every archive with AccessDenied.
+type KubernetesPostgresR2Credentials struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// *
+	// The S3 access key id: the API token's id. By reference to the token
+	// resource's `r2_access_key_id` output.
+	AccessKeyId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=access_key_id,json=accessKeyId,proto3" json:"access_key_id,omitempty"`
+	// *
+	// The S3 secret access key: the SHA-256 of the API token's value. By
+	// reference to the token resource's `r2_secret_access_key` output. Rotates
+	// with the token: a rotated token is a new key pair, and the Secret this
+	// arm materializes follows the reference on the next apply.
+	SecretAccessKey *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=secret_access_key,json=secretAccessKey,proto3" json:"secret_access_key,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *KubernetesPostgresR2Credentials) Reset() {
+	*x = KubernetesPostgresR2Credentials{}
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KubernetesPostgresR2Credentials) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KubernetesPostgresR2Credentials) ProtoMessage() {}
+
+func (x *KubernetesPostgresR2Credentials) ProtoReflect() protoreflect.Message {
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KubernetesPostgresR2Credentials.ProtoReflect.Descriptor instead.
+func (*KubernetesPostgresR2Credentials) Descriptor() ([]byte, []int) {
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *KubernetesPostgresR2Credentials) GetAccessKeyId() *v1.StringValueOrRef {
+	if x != nil {
+		return x.AccessKeyId
+	}
+	return nil
+}
+
+func (x *KubernetesPostgresR2Credentials) GetSecretAccessKey() *v1.StringValueOrRef {
+	if x != nil {
+		return x.SecretAccessKey
+	}
+	return nil
+}
+
+// *
 // WAL archiving tuning.
 type KubernetesPostgresWalTuning struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2225,7 +2428,7 @@ type KubernetesPostgresWalTuning struct {
 
 func (x *KubernetesPostgresWalTuning) Reset() {
 	*x = KubernetesPostgresWalTuning{}
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[20]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2237,7 +2440,7 @@ func (x *KubernetesPostgresWalTuning) String() string {
 func (*KubernetesPostgresWalTuning) ProtoMessage() {}
 
 func (x *KubernetesPostgresWalTuning) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[20]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2250,7 +2453,7 @@ func (x *KubernetesPostgresWalTuning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPostgresWalTuning.ProtoReflect.Descriptor instead.
 func (*KubernetesPostgresWalTuning) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{20}
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *KubernetesPostgresWalTuning) GetCompression() string {
@@ -2288,7 +2491,7 @@ type KubernetesPostgresDataTuning struct {
 
 func (x *KubernetesPostgresDataTuning) Reset() {
 	*x = KubernetesPostgresDataTuning{}
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[21]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2300,7 +2503,7 @@ func (x *KubernetesPostgresDataTuning) String() string {
 func (*KubernetesPostgresDataTuning) ProtoMessage() {}
 
 func (x *KubernetesPostgresDataTuning) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[21]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2313,7 +2516,7 @@ func (x *KubernetesPostgresDataTuning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPostgresDataTuning.ProtoReflect.Descriptor instead.
 func (*KubernetesPostgresDataTuning) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{21}
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *KubernetesPostgresDataTuning) GetCompression() string {
@@ -2364,7 +2567,7 @@ type KubernetesPostgresCertificates struct {
 
 func (x *KubernetesPostgresCertificates) Reset() {
 	*x = KubernetesPostgresCertificates{}
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[22]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2376,7 +2579,7 @@ func (x *KubernetesPostgresCertificates) String() string {
 func (*KubernetesPostgresCertificates) ProtoMessage() {}
 
 func (x *KubernetesPostgresCertificates) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[22]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2389,7 +2592,7 @@ func (x *KubernetesPostgresCertificates) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPostgresCertificates.ProtoReflect.Descriptor instead.
 func (*KubernetesPostgresCertificates) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{22}
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *KubernetesPostgresCertificates) GetServerTlsSecret() *v1.StringValueOrRef {
@@ -2433,7 +2636,7 @@ type KubernetesPostgresMonitoring struct {
 
 func (x *KubernetesPostgresMonitoring) Reset() {
 	*x = KubernetesPostgresMonitoring{}
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[23]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2445,7 +2648,7 @@ func (x *KubernetesPostgresMonitoring) String() string {
 func (*KubernetesPostgresMonitoring) ProtoMessage() {}
 
 func (x *KubernetesPostgresMonitoring) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[23]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2458,7 +2661,7 @@ func (x *KubernetesPostgresMonitoring) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPostgresMonitoring.ProtoReflect.Descriptor instead.
 func (*KubernetesPostgresMonitoring) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{23}
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *KubernetesPostgresMonitoring) GetTlsEnabled() bool {
@@ -2511,7 +2714,7 @@ type KubernetesPostgresScheduling struct {
 
 func (x *KubernetesPostgresScheduling) Reset() {
 	*x = KubernetesPostgresScheduling{}
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[24]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2523,7 +2726,7 @@ func (x *KubernetesPostgresScheduling) String() string {
 func (*KubernetesPostgresScheduling) ProtoMessage() {}
 
 func (x *KubernetesPostgresScheduling) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[24]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2536,7 +2739,7 @@ func (x *KubernetesPostgresScheduling) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPostgresScheduling.ProtoReflect.Descriptor instead.
 func (*KubernetesPostgresScheduling) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{24}
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *KubernetesPostgresScheduling) GetAntiAffinityType() string {
@@ -2596,7 +2799,7 @@ type KubernetesPostgresUpdateStrategy struct {
 
 func (x *KubernetesPostgresUpdateStrategy) Reset() {
 	*x = KubernetesPostgresUpdateStrategy{}
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[25]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2608,7 +2811,7 @@ func (x *KubernetesPostgresUpdateStrategy) String() string {
 func (*KubernetesPostgresUpdateStrategy) ProtoMessage() {}
 
 func (x *KubernetesPostgresUpdateStrategy) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[25]
+	mi := &file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2621,7 +2824,7 @@ func (x *KubernetesPostgresUpdateStrategy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPostgresUpdateStrategy.ProtoReflect.Descriptor instead.
 func (*KubernetesPostgresUpdateStrategy) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{25}
+	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *KubernetesPostgresUpdateStrategy) GetPrimaryUpdateStrategy() string {
@@ -2800,18 +3003,20 @@ const file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDesc = "
 	"\asuspend\x18\x04 \x01(\bR\asuspend\x12\xbe\x01\n" +
 	"\x06target\x18\x05 \x01(\tB\xa0\x01\xbaH\x8a\x01\xba\x01\x86\x01\n" +
 	"!spec.backup.schedules.target_enum\x12,target must be 'prefer-standby' or 'primary'\x1a3this == '' || this in ['prefer-standby', 'primary']\x8a\xa6\x1d\x0eprefer-standbyH\x00R\x06target\x88\x01\x01B\t\n" +
-	"\a_target\"\xe0\t\n" +
+	"\a_target\"\xdb\f\n" +
 	"\x1dKubernetesPostgresObjectStore\x121\n" +
 	"\x10destination_path\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x0fdestinationPath\x12e\n" +
 	"\x02s3\x18\x02 \x01(\v2S.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3ObjectStoreH\x00R\x02s3\x12h\n" +
 	"\x03gcs\x18\x03 \x01(\v2T.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresGcsObjectStoreH\x00R\x03gcs\x12{\n" +
 	"\n" +
-	"azure_blob\x18\x04 \x01(\v2Z.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresAzureBlobObjectStoreH\x00R\tazureBlob\x12a\n" +
+	"azure_blob\x18\x04 \x01(\v2Z.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresAzureBlobObjectStoreH\x00R\tazureBlob\x12e\n" +
+	"\x02r2\x18\a \x01(\v2S.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2ObjectStoreH\x00R\x02r2\x12a\n" +
 	"\x03wal\x18\x05 \x01(\v2O.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresWalTuningR\x03wal\x12d\n" +
-	"\x04data\x18\x06 \x01(\v2P.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresDataTuningR\x04data:\xe2\x04\xbaH\xde\x04\x1a\xcb\x01\n" +
+	"\x04data\x18\x06 \x01(\v2P.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresDataTuningR\x04data:\xf6\x06\xbaH\xf2\x06\x1a\xcb\x01\n" +
 	"'spec.backup.object_store.s3_path_scheme\x12dthe s3 backend stores at an s3:// destination path (also for S3-compatible stores like MinIO and R2)\x1a:!has(this.s3) || this.destination_path.startsWith('s3://')\x1a\x9b\x01\n" +
 	"(spec.backup.object_store.gcs_path_scheme\x122the gcs backend stores at a gs:// destination path\x1a;!has(this.gcs) || this.destination_path.startsWith('gs://')\x1a\xef\x01\n" +
-	"*spec.backup.object_store.azure_path_scheme\x12zthe azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)\x1aE!has(this.azure_blob) || this.destination_path.startsWith('https://')B\x10\n" +
+	"*spec.backup.object_store.azure_path_scheme\x12zthe azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)\x1aE!has(this.azure_blob) || this.destination_path.startsWith('https://')\x1a\x91\x02\n" +
+	"'spec.backup.object_store.r2_path_scheme\x12\xa9\x01the r2 backend stores at an s3:// destination path (s3://<bucket>/<path> — R2 is addressed through its S3 API; the bucket name is the CloudflareR2Bucket's bucket_name)\x1a:!has(this.r2) || this.destination_path.startsWith('s3://')B\x10\n" +
 	"\abackend\x12\x05\xbaH\x02\b\x01\"\xf8\x06\n" +
 	"\x1fKubernetesPostgresS3ObjectStore\x12\x16\n" +
 	"\x06region\x18\x01 \x01(\tR\x06region\x12\xe4\x01\n" +
@@ -2839,7 +3044,17 @@ const file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDesc = "
 	"storageKey:\xcd\x04\xbaH\xc9\x04\x1a\xe9\x01\n" +
 	" spec.backup.azure.single_posture\x12fset exactly one Azure credential posture: keyless, connection_string, or storage_account + storage_key\x1a][this.keyless, this.connection_string != '', this.storage_key != ''].filter(x, x).size() == 1\x1a\xa9\x01\n" +
 	"#spec.backup.azure.key_needs_account\x12Lstorage_key authenticates a specific account — set storage_account with it\x1a4this.storage_key == '' || this.storage_account != ''\x1a\xae\x01\n" +
-	"'spec.backup.azure.keyless_needs_account\x12Vthe keyless posture still needs storage_account — it identifies the storage endpoint\x1a+!this.keyless || this.storage_account != ''\"\xce\x02\n" +
+	"'spec.backup.azure.keyless_needs_account\x12Vthe keyless posture still needs storage_account — it identifies the storage endpoint\x1a+!this.keyless || this.storage_account != ''\"\x97\x06\n" +
+	"\x1fKubernetesPostgresR2ObjectStore\x12\x9a\x02\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\xc6\x01\xbaH\xa0\x01\xba\x01\x99\x01\n" +
+	" spec.backup.r2.account_id_format\x128account_id is the 32-hex-character Cloudflare account id\x1a;!has(this.value) || this.value.matches('^[0-9a-fA-F]{32}$')\xc8\x01\x01\x88\xd4a\xda6\x92\xd4a\x19status.outputs.account_idR\taccountId\x12\xd7\x02\n" +
+	"\fjurisdiction\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\xfe\x01\xbaH\xd6\x01\xba\x01\xd2\x01\n" +
+	"!spec.backup.r2.jurisdiction_valid\x12Sjurisdiction must be one of \"default\", \"eu\", \"fedramp\", \"us\" (or empty for default)\x1aX!has(this.value) || this.value == '' || this.value in ['default', 'eu', 'fedramp', 'us']\x88\xd4a\xda6\x92\xd4a\x1bstatus.outputs.jurisdictionR\fjurisdiction\x12}\n" +
+	"\vcredentials\x18\x03 \x01(\v2S.dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2CredentialsB\x06\xbaH\x03\xc8\x01\x01R\vcredentials\"\xc3\x02\n" +
+	"\x1fKubernetesPostgresR2Credentials\x12\x86\x01\n" +
+	"\raccess_key_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xca9\x92\xd4a\x1fstatus.outputs.r2_access_key_idR\vaccessKeyId\x12\x96\x01\n" +
+	"\x11secret_access_key\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB6\xbaH\x03\xc8\x01\x01\xa0\xa6\x1d\x01\x88\xd4a\xca9\x92\xd4a#status.outputs.r2_secret_access_keyR\x0fsecretAccessKey\"\xce\x02\n" +
 	"\x1bKubernetesPostgresWalTuning\x12\xec\x01\n" +
 	"\vcompression\x18\x01 \x01(\tB\xc9\x01\xbaH\xc5\x01\xba\x01\xc1\x01\n" +
 	" spec.backup.wal.compression_enum\x12UWAL compression must be one of gzip, bzip2, lz4, snappy, xz, zstd (or empty for none)\x1aFthis == '' || this in ['gzip', 'bzip2', 'lz4', 'snappy', 'xz', 'zstd']R\vcompression\x12/\n" +
@@ -2892,7 +3107,7 @@ func file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescGZIP(
 	return file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDescData
 }
 
-var file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_goTypes = []any{
 	(*KubernetesPostgresSpec)(nil),                   // 0: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec
 	(*KubernetesPostgresStorage)(nil),                // 1: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresStorage
@@ -2914,38 +3129,40 @@ var file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_goTypes = []a
 	(*KubernetesPostgresS3AccessKeys)(nil),           // 17: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3AccessKeys
 	(*KubernetesPostgresGcsObjectStore)(nil),         // 18: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresGcsObjectStore
 	(*KubernetesPostgresAzureBlobObjectStore)(nil),   // 19: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresAzureBlobObjectStore
-	(*KubernetesPostgresWalTuning)(nil),              // 20: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresWalTuning
-	(*KubernetesPostgresDataTuning)(nil),             // 21: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresDataTuning
-	(*KubernetesPostgresCertificates)(nil),           // 22: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresCertificates
-	(*KubernetesPostgresMonitoring)(nil),             // 23: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresMonitoring
-	(*KubernetesPostgresScheduling)(nil),             // 24: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling
-	(*KubernetesPostgresUpdateStrategy)(nil),         // 25: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresUpdateStrategy
-	nil,                                              // 26: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.ParametersEntry
-	nil,                                              // 27: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster.ConnectionParametersEntry
-	nil,                                              // 28: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.NodeSelectorEntry
-	(*v1.StringValueOrRef)(nil),                      // 29: dev.planton.shared.foreignkey.v1.StringValueOrRef
-	(*kubernetes.ContainerResources)(nil),            // 30: dev.planton.kubernetes.ContainerResources
-	(*kubernetes.KubernetesWorkloadIdentity)(nil),    // 31: dev.planton.kubernetes.KubernetesWorkloadIdentity
-	(*kubernetes.WorkloadToleration)(nil),            // 32: dev.planton.kubernetes.WorkloadToleration
+	(*KubernetesPostgresR2ObjectStore)(nil),          // 20: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2ObjectStore
+	(*KubernetesPostgresR2Credentials)(nil),          // 21: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2Credentials
+	(*KubernetesPostgresWalTuning)(nil),              // 22: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresWalTuning
+	(*KubernetesPostgresDataTuning)(nil),             // 23: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresDataTuning
+	(*KubernetesPostgresCertificates)(nil),           // 24: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresCertificates
+	(*KubernetesPostgresMonitoring)(nil),             // 25: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresMonitoring
+	(*KubernetesPostgresScheduling)(nil),             // 26: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling
+	(*KubernetesPostgresUpdateStrategy)(nil),         // 27: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresUpdateStrategy
+	nil,                                              // 28: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.ParametersEntry
+	nil,                                              // 29: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster.ConnectionParametersEntry
+	nil,                                              // 30: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.NodeSelectorEntry
+	(*v1.StringValueOrRef)(nil),                      // 31: dev.planton.shared.foreignkey.v1.StringValueOrRef
+	(*kubernetes.ContainerResources)(nil),            // 32: dev.planton.kubernetes.ContainerResources
+	(*kubernetes.KubernetesWorkloadIdentity)(nil),    // 33: dev.planton.kubernetes.KubernetesWorkloadIdentity
+	(*kubernetes.WorkloadToleration)(nil),            // 34: dev.planton.kubernetes.WorkloadToleration
 }
 var file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_depIdxs = []int32{
-	29, // 0: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	31, // 0: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
 	1,  // 1: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.storage:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresStorage
 	1,  // 2: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.wal_storage:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresStorage
-	30, // 3: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.resources:type_name -> dev.planton.kubernetes.ContainerResources
+	32, // 3: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.resources:type_name -> dev.planton.kubernetes.ContainerResources
 	2,  // 4: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.postgresql:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig
 	4,  // 5: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.bootstrap:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrap
 	10, // 6: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.external_clusters:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster
 	11, // 7: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.superuser:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSuperuser
 	12, // 8: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.roles:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresRole
 	13, // 9: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.backup:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBackup
-	31, // 10: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.workload_identity:type_name -> dev.planton.kubernetes.KubernetesWorkloadIdentity
-	22, // 11: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.certificates:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresCertificates
-	23, // 12: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.monitoring:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresMonitoring
-	24, // 13: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.scheduling:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling
-	25, // 14: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.update_strategy:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresUpdateStrategy
-	29, // 15: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresStorage.storage_class:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
-	26, // 16: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.parameters:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.ParametersEntry
+	33, // 10: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.workload_identity:type_name -> dev.planton.kubernetes.KubernetesWorkloadIdentity
+	24, // 11: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.certificates:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresCertificates
+	25, // 12: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.monitoring:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresMonitoring
+	26, // 13: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.scheduling:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling
+	27, // 14: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSpec.update_strategy:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresUpdateStrategy
+	31, // 15: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresStorage.storage_class:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	28, // 16: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.parameters:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.ParametersEntry
 	3,  // 17: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresServerConfig.synchronous:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresSynchronousReplication
 	5,  // 18: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrap.initdb:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrapInitDb
 	7,  // 19: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrap.recovery:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrapRecovery
@@ -2953,23 +3170,29 @@ var file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_depIdxs = []i
 	6,  // 21: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrapInitDb.import:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresImport
 	15, // 22: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrapRecovery.object_store:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore
 	8,  // 23: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBootstrapRecovery.recovery_target:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresRecoveryTarget
-	27, // 24: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster.connection_parameters:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster.ConnectionParametersEntry
+	29, // 24: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster.connection_parameters:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresExternalCluster.ConnectionParametersEntry
 	15, // 25: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBackup.object_store:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore
 	14, // 26: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBackup.schedules:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresBackupSchedule
 	16, // 27: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.s3:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3ObjectStore
 	18, // 28: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.gcs:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresGcsObjectStore
 	19, // 29: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.azure_blob:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresAzureBlobObjectStore
-	20, // 30: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.wal:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresWalTuning
-	21, // 31: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.data:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresDataTuning
-	17, // 32: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3ObjectStore.access_keys:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3AccessKeys
-	29, // 33: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresCertificates.server_tls_secret:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
-	28, // 34: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.node_selector:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.NodeSelectorEntry
-	32, // 35: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.tolerations:type_name -> dev.planton.kubernetes.WorkloadToleration
-	36, // [36:36] is the sub-list for method output_type
-	36, // [36:36] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	20, // 30: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.r2:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2ObjectStore
+	22, // 31: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.wal:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresWalTuning
+	23, // 32: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresObjectStore.data:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresDataTuning
+	17, // 33: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3ObjectStore.access_keys:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresS3AccessKeys
+	31, // 34: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2ObjectStore.account_id:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	31, // 35: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2ObjectStore.jurisdiction:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	21, // 36: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2ObjectStore.credentials:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2Credentials
+	31, // 37: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2Credentials.access_key_id:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	31, // 38: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresR2Credentials.secret_access_key:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	31, // 39: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresCertificates.server_tls_secret:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	30, // 40: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.node_selector:type_name -> dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.NodeSelectorEntry
+	34, // 41: dev.planton.kubernetes.kubernetespostgres.v1alpha1.KubernetesPostgresScheduling.tolerations:type_name -> dev.planton.kubernetes.WorkloadToleration
+	42, // [42:42] is the sub-list for method output_type
+	42, // [42:42] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_init() }
@@ -2992,18 +3215,19 @@ func file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_init() {
 		(*KubernetesPostgresObjectStore_S3)(nil),
 		(*KubernetesPostgresObjectStore_Gcs)(nil),
 		(*KubernetesPostgresObjectStore_AzureBlob)(nil),
+		(*KubernetesPostgresObjectStore_R2)(nil),
 	}
-	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[20].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[21].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[24].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[25].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[22].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[23].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[26].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_msgTypes[27].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDesc), len(file_catalog_kubernetes_kubernetespostgres_v1alpha1_spec_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   29,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -869,8 +869,8 @@ message KubernetesPostgresBackupSchedule {
 message KubernetesPostgresObjectStore {
   /**
    * Where in the store the data lives — the backend's native URI form:
-   * `s3://bucket/path` for S3 and every S3-compatible store,
-   * `gs://bucket/path` for GCS, and
+   * `s3://bucket/path` for S3, Cloudflare R2, and every S3-compatible
+   * store, `gs://bucket/path` for GCS, and
    * `https://<account>.blob.core.windows.net/<container>/<path>` for
    * Azure Blob. WAL and base backups are stored under separate folders
    * beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
@@ -893,8 +893,10 @@ message KubernetesPostgresObjectStore {
     option (buf.validate.oneof).required = true;
 
     /**
-     * AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, Cloudflare
-     * R2, DigitalOcean Spaces, ...) via the endpoint_url override.
+     * AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, DigitalOcean
+     * Spaces, ...) via the endpoint_url override. Cloudflare R2 has its
+     * own arm (`r2`) that composes the catalog's Cloudflare kinds; this
+     * arm still reaches R2 for a hand-carried endpoint and key pair.
      */
     KubernetesPostgresS3ObjectStore s3 = 2;
 
@@ -907,6 +909,17 @@ message KubernetesPostgresObjectStore {
      * Azure Blob Storage.
      */
     KubernetesPostgresAzureBlobObjectStore azure_blob = 4;
+
+    /**
+     * Cloudflare R2, in R2's own vocabulary: the owning account, the
+     * bucket's jurisdiction, and a Cloudflare credential — each a
+     * reference onto the catalog's CloudflareR2Bucket and
+     * CloudflareAccountApiToken by default. The module performs the S3
+     * translation R2 needs (the jurisdiction's endpoint host, region
+     * `auto`, the token as an S3 key pair); nothing S3-shaped is typed
+     * here.
+     */
+    KubernetesPostgresR2ObjectStore r2 = 7;
   }
 
   /**
@@ -936,6 +949,11 @@ message KubernetesPostgresObjectStore {
     message: "the azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)"
     expression: "!has(this.azure_blob) || this.destination_path.startsWith('https://')"
   };
+  option (buf.validate.message).cel = {
+    id: "spec.backup.object_store.r2_path_scheme"
+    message: "the r2 backend stores at an s3:// destination path (s3://<bucket>/<path> — R2 is addressed through its S3 API; the bucket name is the CloudflareR2Bucket's bucket_name)"
+    expression: "!has(this.r2) || this.destination_path.startsWith('s3://')"
+  };
 }
 
 /**
@@ -944,16 +962,16 @@ message KubernetesPostgresObjectStore {
 message KubernetesPostgresS3ObjectStore {
   /**
    * AWS region of the bucket. Required for real S3; for S3-compatible
-   * stores use the store's expected value (MinIO accepts any, "auto"
-   * for Cloudflare R2).
+   * stores use the store's expected value (MinIO accepts any; the `r2`
+   * arm pins Cloudflare R2's `auto` itself).
    */
   string region = 1;
 
   /**
    * S3-COMPATIBLE ARM: endpoint URL of the store (e.g.
-   * http://minio.minio-system.svc:9000 for in-cluster MinIO,
-   * https://<account>.r2.cloudflarestorage.com for R2). Empty = real
-   * AWS S3.
+   * http://minio.minio-system.svc:9000 for in-cluster MinIO). Empty =
+   * real AWS S3. For Cloudflare R2 prefer the `r2` arm, which composes
+   * the endpoint from the bucket's account and jurisdiction.
    */
   string endpoint_url = 2 [(buf.validate.field).cel = {
     id: "spec.backup.s3.endpoint_format"
@@ -1095,6 +1113,118 @@ message KubernetesPostgresAzureBlobObjectStore {
     message: "the keyless posture still needs storage_account — it identifies the storage endpoint"
     expression: "!this.keyless || this.storage_account != ''"
   };
+}
+
+/**
+ * Cloudflare R2 backend, composed from the catalog's Cloudflare kinds.
+ *
+ * R2 speaks S3, so Barman Cloud reaches it through its S3 code path — but
+ * nothing S3-shaped is declared here. The module composes the endpoint
+ * from the account and the bucket's jurisdiction
+ * (`https://<account>.r2.cloudflarestorage.com`, or
+ * `https://<account>.<jurisdiction>.r2.cloudflarestorage.com` for an eu,
+ * fedramp, or us bucket — a jurisdictional bucket is served ONLY through
+ * its own host; the default host fails rather than redirects), pins the
+ * region to `auto` (the only region R2 accepts), and hands the plugin the
+ * credential as an S3 key pair. There is NO keyless posture for R2 from
+ * any cluster: R2 has no equivalent of IRSA or Workload Identity, so a
+ * credential is always declared — by reference to a CloudflareAccountApiToken
+ * by default.
+ *
+ * The module also owns the S3 dialect details R2 needs and an operator never
+ * should: the plugin sidecar runs with `AWS_REQUEST_CHECKSUM_CALCULATION` and
+ * `AWS_RESPONSE_CHECKSUM_VALIDATION` set to `when_required` (barman-cloud's
+ * boto3 otherwise attaches the data-integrity checksums an S3-compatible
+ * store may reject). Archiving, base backups, and recovery through this arm
+ * are live-proven on GKE with a token scoped to the single bucket (`Workers
+ * R2 Storage Bucket Item Write`); no account-level Cloudflare permission is
+ * needed. Emptying the bucket is not the module's job — R2 refuses to delete
+ * a non-empty bucket, so a CloudflareR2Bucket that has ever held an archive
+ * must be emptied over the S3 API before it can be destroyed.
+ *
+ * The bucket itself is named in `destination_path` (`s3://<bucket>/<path>`),
+ * exactly as the gcs and azure_blob arms name theirs — the path is Barman's
+ * own vocabulary and the bucket is part of it.
+ */
+message KubernetesPostgresR2ObjectStore {
+  /**
+   * The Cloudflare account that owns the bucket (32 hex characters). By
+   * reference to the bucket resource's `account_id` output, so the arm
+   * follows the bucket; a literal names an account outside the catalog.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef account_id = 1 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareR2Bucket,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.account_id",
+    (buf.validate.field).cel = {
+      id: "spec.backup.r2.account_id_format"
+      message: "account_id is the 32-hex-character Cloudflare account id"
+      expression: "!has(this.value) || this.value.matches('^[0-9a-fA-F]{32}$')"
+    }
+  ];
+
+  /**
+   * The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+   * `fedramp`, or `us`. It selects the S3 host the module composes — a
+   * bucket created in a jurisdiction is unreachable through any other
+   * host — so it must match the bucket exactly; by reference to the
+   * bucket resource's `jurisdiction` output it cannot drift.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef jurisdiction = 2 [
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareR2Bucket,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.jurisdiction",
+    (buf.validate.field).cel = {
+      id: "spec.backup.r2.jurisdiction_valid"
+      message: "jurisdiction must be one of \"default\", \"eu\", \"fedramp\", \"us\" (or empty for default)"
+      expression: "!has(this.value) || this.value == '' || this.value in ['default', 'eu', 'fedramp', 'us']"
+    }
+  ];
+
+  /**
+   * The Cloudflare credential, as the S3 key pair R2's S3 API
+   * authenticates. Materialized as a Kubernetes Secret the plugin reads;
+   * never plaintext in the rendered resource.
+   */
+  KubernetesPostgresR2Credentials credentials = 3 [(buf.validate.field).required = true];
+}
+
+/**
+ * The S3 key pair for Cloudflare R2. Cloudflare defines it from an account
+ * API token: the access key id is the token's id and the secret access key
+ * is the SHA-256 of the token's value — the two values a CloudflareAccountApiToken
+ * exports as `r2_access_key_id` and `r2_secret_access_key`, and the two the
+ * dashboard shows as "Access Key ID" / "Secret Access Key" when the same
+ * token is created there. Reference the catalog token (the default kind)
+ * or paste a dashboard-minted pair as literals; both are the same shape.
+ *
+ * The token needs an R2 permission group: `Workers R2 Storage Bucket Item
+ * Write` scoped to this bucket (least privilege — read, write, list objects)
+ * or `Workers R2 Storage Write` on the account. A token without one
+ * authenticates and then fails every archive with AccessDenied.
+ */
+message KubernetesPostgresR2Credentials {
+  /**
+   * The S3 access key id: the API token's id. By reference to the token
+   * resource's `r2_access_key_id` output.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef access_key_id = 1 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareAccountApiToken,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.r2_access_key_id"
+  ];
+
+  /**
+   * The S3 secret access key: the SHA-256 of the API token's value. By
+   * reference to the token resource's `r2_secret_access_key` output. Rotates
+   * with the token: a rotated token is a new key pair, and the Secret this
+   * arm materializes follows the reference on the next apply.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef secret_access_key = 2 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.options.sensitive) = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareAccountApiToken,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.r2_secret_access_key"
+  ];
 }
 
 /**

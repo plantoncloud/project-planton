@@ -92,6 +92,14 @@ variable "spec" {
             storage_account   = optional(string, "")
             storage_key       = optional(string, "")
           }))
+          r2 = optional(object({
+            account_id   = string
+            jurisdiction = optional(string, "")
+            credentials = object({
+              access_key_id     = string
+              secret_access_key = string
+            })
+          }))
           wal = optional(object({
             compression  = optional(string, "")
             max_parallel = optional(number)
@@ -164,6 +172,14 @@ variable "spec" {
           connection_string = optional(string, "")
           storage_account   = optional(string, "")
           storage_key       = optional(string, "")
+        }))
+        r2 = optional(object({
+          account_id   = string
+          jurisdiction = optional(string, "")
+          credentials = object({
+            access_key_id     = string
+            secret_access_key = string
+          })
         }))
         wal = optional(object({
           compression  = optional(string, "")

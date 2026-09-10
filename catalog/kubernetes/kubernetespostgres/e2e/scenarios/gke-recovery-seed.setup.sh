@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# SETUP for the gke-gcs-recovery scenario: seeds the SOURCE cluster
-# (fixture-gke-source.yaml, already deployed and healthy) with the evidence
-# the recovery proof reads back.
+# SETUP for the gke-*-recovery scenarios: seeds the SOURCE cluster (the
+# lane's fixture-gke-*-source.yaml, already deployed and healthy) with the
+# evidence the recovery proof reads back. The script seeds the DATABASE, not
+# the store: the base backup goes through the cluster's own plugin
+# configuration, whatever archive (GCS, R2, ...) that names, so one script
+# serves every store's lane.
 #
 #   1. marker A  -> a row written BEFORE the base backup
-#   2. a Backup   -> a real base backup into the GCS archive, waited to Completed
+#   2. a Backup   -> a real base backup into the cluster's archive, waited to Completed
 #   3. marker B  -> a row written AFTER the base backup, then a WAL switch so
 #                   the segment carrying it reaches the archive
 #

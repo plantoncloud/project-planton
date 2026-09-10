@@ -23,7 +23,7 @@ metadata:
     planton.dev/e2e-cluster-profile: "gcp-gke"
     planton.dev/e2e-prerequisites: "KubernetesCnpgBarmanCloudPlugin, catalog/kubernetes/kubernetespostgres/e2e/fixture-gke-source.yaml"
     planton.dev/e2e-resident-prerequisites: "KubernetesCertManager, KubernetesCloudNativePgOperator"
-    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetespostgres/e2e/scenarios/gke-gcs-recovery.setup.sh"
+    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetespostgres/e2e/scenarios/gke-recovery-seed.setup.sh"
 spec:
   namespace:
     value: e2e-pg-gke

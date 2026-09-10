@@ -22,6 +22,19 @@ kubeconfig path, not the cluster's origin. Every test still deploys, verifies,
 destroys, and verifies cleanup of its own resources — only the cluster outlives
 the run.
 
+What also outlives a run on the persistent cluster: the CRDs of kinds whose
+uninstall keeps them by design (`crds.keep_on_uninstall`, the posture of
+KubernetesCertManager, KubernetesCloudNativePgOperator, the Barman Cloud
+plugin, the Percona operators). Most are inert between lanes; cert-manager's
+are NOT — the Percona MongoDB operator probes for cert-manager and, finding
+its CRDs with no webhook behind them, refuses to mint TLS for every cluster
+("the cert-manager mutation webhook did not mutate the dry-run
+CertificateRequest object"). After a lane that installed cert-manager as a
+dependency (any Postgres backup lane, through the plugin), sweep the six
+`*.cert-manager.io` CRDs before running a Percona MongoDB lane on the same
+kind cluster (`kubectl delete crd -l app.kubernetes.io/name=cert-manager`, or
+by name).
+
 ## Cluster Profiles
 
 Some scenarios need a cluster the default kind cluster cannot be: a Cilium
@@ -41,7 +54,7 @@ metadata:
 | (absent) | the default shared cluster | everything else |
 | `cilium-cni` | `<base>-cilium`, single-node, `disableDefaultCNI: true` | Cilium-as-primary-CNI lanes; NetworkPolicy behavioral enforcement |
 | `aws-eks` | REAL cluster (no local constructor) — batch-provisioned EKS via `realcluster/aws-eks/` | Cloud-LB provisioning, IRSA identity hops, snapshot-capable CSI storage, real node autoscaling |
-| `gcp-gke` | REAL cluster (no local constructor) — an existing GKE cluster with Workload Identity; the GCP side (identities, bindings, bucket) created from the catalog via `realcluster/gcp-gke/` | Keyless GCS backups and restores through Workload Identity, multi-node HA under real anti-affinity, lanes beside resident operators |
+| `gcp-gke` | REAL cluster (no local constructor) — an existing GKE cluster with Workload Identity; the GCP side (identities, bindings, bucket) and the Cloudflare R2 side (bucket, scoped API token) created from the catalog via `realcluster/gcp-gke/` | Keyless GCS backups and restores through Workload Identity, R2 backups and restores through the databases' `r2` arms, multi-node HA under real anti-affinity, lanes beside resident operators |
 
 Mechanics, all verified against the framework's own contracts:
 
