@@ -499,21 +499,27 @@ message AzureContainerInstanceVolumeAzureFile {
   ];
 
   // The storage account holding the share. Can be a literal or a
-  // reference to an AzureStorageAccount output.
+  // reference to an AzureStorageAccount output. The container group
+  // MOUNTS the share and lives in its own resource group (or its subnet),
+  // so the reference is access, not placement, on a diagram -- the same
+  // reasoning the Container App environment's storage registration
+  // carries for the identical pair of fields.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_name = 2 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_name"
   ];
 
   // The storage account's access key. SECRET -- Azure never returns it
   // on reads; both engines re-send it from configuration on updates.
   // Reference an AzureStorageAccount's primary_access_key output or
-  // pass a literal.
+  // pass a literal. Access, not placement, like storage_account_name.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_key = 3 [
     (buf.validate.field).required = true,
     (dev.planton.shared.options.sensitive) = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.primary_access_key"
   ];
 }

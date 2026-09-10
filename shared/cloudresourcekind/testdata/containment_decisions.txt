@@ -117,11 +117,8 @@ contained dev.planton.azure.azureaifoundry.v1alpha1.AzureAiFoundrySpec.storage_a
 contained dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterApiServerAccessProfile.subnet_id -> AzureSubnet
 contained dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterDefaultNodePool.pod_subnet_id -> AzureSubnet
 contained dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterDefaultNodePool.vnet_subnet_id -> AzureSubnet
-contained dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterIngressApplicationGateway.subnet_id -> AzureSubnet
 contained dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azureaksnodepool.v1alpha1.AzureAksNodePoolSpec.kubernetes_cluster_id -> AzureAksCluster
-contained dev.planton.azure.azureaksnodepool.v1alpha1.AzureAksNodePoolSpec.pod_subnet_id -> AzureSubnet
-contained dev.planton.azure.azureaksnodepool.v1alpha1.AzureAksNodePoolSpec.vnet_subnet_id -> AzureSubnet
 contained dev.planton.azure.azureapplicationgateway.v1alpha1.AzureApplicationGatewayFrontendIpConfiguration.subnet_id -> AzureSubnet
 contained dev.planton.azure.azureapplicationgateway.v1alpha1.AzureApplicationGatewayPrivateLinkIpConfiguration.subnet_id -> AzureSubnet
 contained dev.planton.azure.azureapplicationgateway.v1alpha1.AzureApplicationGatewaySpec.resource_group -> AzureResourceGroup
@@ -158,8 +155,6 @@ contained dev.planton.azure.azurecontainerappjob.v1alpha1.AzureContainerAppJobSp
 contained dev.planton.azure.azurecontainerappjob.v1alpha1.AzureContainerAppJobSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurecontainerinstance.v1alpha1.AzureContainerInstanceSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurecontainerinstance.v1alpha1.AzureContainerInstanceSpec.subnet_id -> AzureSubnet
-contained dev.planton.azure.azurecontainerinstance.v1alpha1.AzureContainerInstanceVolumeAzureFile.storage_account_key -> AzureStorageAccount
-contained dev.planton.azure.azurecontainerinstance.v1alpha1.AzureContainerInstanceVolumeAzureFile.storage_account_name -> AzureStorageAccount
 contained dev.planton.azure.azurecontainerregistry.v1alpha1.AzureContainerRegistrySpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurecosmosdbaccount.v1alpha1.AzureCosmosdbAccountSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurecosmosdbmongocollection.v1alpha1.AzureCosmosdbMongoCollectionSpec.mongo_database_id -> AzureCosmosdbMongoDatabase
@@ -181,7 +176,6 @@ contained dev.planton.azure.azuredatafactorytrigger.v1alpha1.AzureDataFactoryTri
 contained dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceBlobStorage.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceDataLakeStorage.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceDisk.snapshot_resource_group_name -> AzureResourceGroup
-contained dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceKubernetesCluster.kubernetes_cluster_id -> AzureAksCluster
 contained dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceKubernetesCluster.snapshot_resource_group_name -> AzureResourceGroup
 contained dev.planton.azure.azuredataprotectionbackupvault.v1alpha1.AzureDataProtectionBackupVaultSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuredataprotectionresourceguard.v1alpha1.AzureDataProtectionResourceGuardSpec.resource_group -> AzureResourceGroup
@@ -682,12 +676,18 @@ exempt    dev.planton.aws.awsroute53zone.v1alpha1.AwsRoute53ZoneVpcAssociation.v
 exempt    dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainEfsFileSystemConfig.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awssesconfigurationset.v1alpha1.AwsSesConfigurationSetEventDestination.event_bus -> AwsEventBridgeBus
 exempt    dev.planton.aws.awsvpcendpoint.v1alpha1.AwsVpcEndpointSpec.route_table_ids -> AwsSubnet
+exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterIngressApplicationGateway.subnet_id -> AzureSubnet
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterServiceMeshCertificateAuthority.key_vault_id -> AzureKeyVault
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterSpec.private_dns_zone_id -> AzurePrivateDnsZone
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterWebAppRouting.dns_zone_ids -> AzureDnsZone
+exempt    dev.planton.azure.azureaksnodepool.v1alpha1.AzureAksNodePoolSpec.pod_subnet_id -> AzureSubnet
+exempt    dev.planton.azure.azureaksnodepool.v1alpha1.AzureAksNodePoolSpec.vnet_subnet_id -> AzureSubnet
 exempt    dev.planton.azure.azurecontainerappenvironmentstorage.v1alpha1.AzureContainerAppEnvironmentStorageSpec.access_key -> AzureStorageAccount
 exempt    dev.planton.azure.azurecontainerappenvironmentstorage.v1alpha1.AzureContainerAppEnvironmentStorageSpec.account_name -> AzureStorageAccount
+exempt    dev.planton.azure.azurecontainerinstance.v1alpha1.AzureContainerInstanceVolumeAzureFile.storage_account_key -> AzureStorageAccount
+exempt    dev.planton.azure.azurecontainerinstance.v1alpha1.AzureContainerInstanceVolumeAzureFile.storage_account_name -> AzureStorageAccount
 exempt    dev.planton.azure.azurecosmosdbaccount.v1alpha1.AzureCosmosdbAccountVirtualNetworkRule.subnet_id -> AzureSubnet
+exempt    dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceKubernetesCluster.kubernetes_cluster_id -> AzureAksCluster
 exempt    dev.planton.azure.azureeventhub.v1alpha1.AzureEventHubCaptureDestination.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventhubdisasterrecoveryconfig.v1alpha1.AzureEventHubDisasterRecoveryConfigSpec.partner_namespace_id -> AzureEventHubNamespace
 exempt    dev.planton.azure.azureeventhubnamespace.v1alpha1.AzureEventHubNamespaceVirtualNetworkRule.subnet_id -> AzureSubnet

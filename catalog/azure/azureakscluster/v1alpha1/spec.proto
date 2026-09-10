@@ -2034,9 +2034,12 @@ message AzureAksClusterIngressApplicationGateway {
   string subnet_cidr = 3;
 
   // Existing subnet to host the new gateway -- must be dedicated to it
-  // and at least /27.
+  // and at least /27. The add-on's GATEWAY lives in this subnet; the
+  // cluster does not, so the reference is access, not placement, on a
+  // diagram -- the cluster's own node subnet places it.
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 4 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 

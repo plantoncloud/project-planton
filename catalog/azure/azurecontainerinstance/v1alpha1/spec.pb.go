@@ -932,12 +932,16 @@ type AzureContainerInstanceVolumeAzureFile struct {
 	// AzureStorageShare output.
 	ShareName *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=share_name,json=shareName,proto3" json:"share_name,omitempty"`
 	// The storage account holding the share. Can be a literal or a
-	// reference to an AzureStorageAccount output.
+	// reference to an AzureStorageAccount output. The container group
+	// MOUNTS the share and lives in its own resource group (or its subnet),
+	// so the reference is access, not placement, on a diagram -- the same
+	// reasoning the Container App environment's storage registration
+	// carries for the identical pair of fields.
 	StorageAccountName *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=storage_account_name,json=storageAccountName,proto3" json:"storage_account_name,omitempty"`
 	// The storage account's access key. SECRET -- Azure never returns it
 	// on reads; both engines re-send it from configuration on updates.
 	// Reference an AzureStorageAccount's primary_access_key output or
-	// pass a literal.
+	// pass a literal. Access, not placement, like storage_account_name.
 	StorageAccountKey *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=storage_account_key,json=storageAccountKey,proto3" json:"storage_account_key,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -1731,12 +1735,12 @@ const file_catalog_azure_azurecontainerinstance_v1alpha1_spec_proto_rawDesc = ""
 	"\vSecretEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xff\x01\xbaH\xfb\x01\x1a\xf8\x01\n" +
-	"*container_instance_volume_exactly_one_form\x12Gset exactly one volume form: azure_file, empty_dir, git_repo, or secret\x1a\x80\x01(has(this.azure_file) ? 1 : 0) + (this.empty_dir ? 1 : 0) + (has(this.git_repo) ? 1 : 0) + (this.secret.size() > 0 ? 1 : 0) == 1\"\xda\x03\n" +
+	"*container_instance_volume_exactly_one_form\x12Gset exactly one volume form: azure_file, empty_dir, git_repo, or secret\x1a\x80\x01(has(this.azure_file) ? 1 : 0) + (this.empty_dir ? 1 : 0) + (has(this.git_repo) ? 1 : 0) + (this.secret.size() > 0 ? 1 : 0) == 1\"\xe2\x03\n" +
 	"%AzureContainerInstanceVolumeAzureFile\x12{\n" +
 	"\n" +
-	"share_name\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\xab\x10\x92\xd4a\x19status.outputs.share_nameR\tshareName\x12\x98\x01\n" +
-	"\x14storage_account_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB2\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a#status.outputs.storage_account_nameR\x12storageAccountName\x12\x98\x01\n" +
-	"\x13storage_account_key\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\xa0\xa6\x1d\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.primary_access_keyR\x11storageAccountKey\"}\n" +
+	"share_name\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\xab\x10\x92\xd4a\x19status.outputs.share_nameR\tshareName\x12\x9c\x01\n" +
+	"\x14storage_account_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB6\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a#status.outputs.storage_account_name\x98\xd4a\x01R\x12storageAccountName\x12\x9c\x01\n" +
+	"\x13storage_account_key\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB8\xbaH\x03\xc8\x01\x01\xa0\xa6\x1d\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.primary_access_key\x98\xd4a\x01R\x11storageAccountKey\"}\n" +
 	"#AzureContainerInstanceVolumeGitRepo\x12\x1c\n" +
 	"\x03url\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x03url\x12\x1c\n" +

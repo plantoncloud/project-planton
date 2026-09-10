@@ -165,10 +165,12 @@ message AzureDataProtectionBackupInstanceKubernetesCluster {
   // cluster must carry the AKS Backup extension and its
   // trusted-access role binding to the vault before create -- an
   // apply-time contract Azure enforces, not something this spec can
-  // check.
+  // check. The backup instance PROTECTS the cluster and lives in its
+  // vault, so the reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef kubernetes_cluster_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureAksCluster,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.cluster_id"
   ];
 
