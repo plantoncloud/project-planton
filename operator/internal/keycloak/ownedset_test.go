@@ -146,6 +146,27 @@ func TestIdentityRealmImportAgreesWithOwnedSet(t *testing.T) {
 	}
 }
 
+// The credential posture is owned, not advisory: a realm whose people choose
+// their own passwords must always carry the password policy and brute-force
+// detection, so both are in the owned set (the reconciler reverts an admin
+// who relaxes them) with exactly the product's values.
+func TestOwnedRealmSettingsCarryTheCredentialPosture(t *testing.T) {
+	settings := OwnedRealmSettings(testInput())
+	if got := settings["passwordPolicy"]; got != "length(12) and notUsername and notEmail" {
+		t.Errorf("passwordPolicy: got %v", got)
+	}
+	if got := settings["bruteForceProtected"]; got != true {
+		t.Errorf("bruteForceProtected: got %v", got)
+	}
+	// Drift detection for both shapes the admin API can hand back.
+	if jsonEqual(settings["passwordPolicy"], "length(8)") {
+		t.Error("a relaxed policy must read as drift")
+	}
+	if jsonEqual(settings["bruteForceProtected"], nil) {
+		t.Error("a realm with no brute-force key must read as drift, so the first pass writes it")
+	}
+}
+
 // The whitelist property in miniature: the owned enumeration names exactly
 // the three Planton clients, and the redirect URIs derive from the CURRENT
 // front door (the property that heals a deliberate hostname change).

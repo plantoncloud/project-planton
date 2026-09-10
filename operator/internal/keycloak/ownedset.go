@@ -60,6 +60,12 @@ func OwnedRealmSettings(in OwnedRealmInput) map[string]any {
 		// The friction ladder's first step serves plain HTTP; the ingress
 		// owns transport security (see the realm import's comment).
 		"sslRequired": "none",
+		// People choose their own passwords on this realm, so the policy and
+		// the brute-force switch are load-bearing and self-healing: an admin
+		// who relaxes them in the console is reverted on the next pass (see
+		// the constants' comments in internal/resources).
+		"passwordPolicy":      resources.IdentityPasswordPolicy,
+		"bruteForceProtected": resources.IdentityBruteForceProtected,
 	}
 	if in.Email != nil {
 		// "Forgot password?" is offered exactly when an email can be sent:

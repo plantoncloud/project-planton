@@ -82,6 +82,25 @@ const (
 	// back to the login form after every coffee break.
 	IdentitySSOSessionIdleSeconds = 28800
 
+	// IdentityPasswordPolicy is the realm's password policy, in Keycloak's
+	// policy grammar. People choose their own passwords on this realm (an
+	// invited teammate sets one on the join page; the first admin replaces the
+	// generated one at first sign-in), and a realm with no policy accepts a
+	// one-character password on a door strangers can reach. Twelve
+	// characters, not the username, not the email address: the floor a
+	// self-hosted install's front door must hold, on every install, without
+	// an administrator remembering to set it. The control plane mirrors the
+	// length in its own field validation so the join page refuses before the
+	// password leaves it; this realm setting is the authority.
+	IdentityPasswordPolicy = "length(12) and notUsername and notEmail"
+
+	// IdentityBruteForceProtected turns on Keycloak's brute-force detection
+	// for the realm: a client hammering one account's password is locked
+	// out temporarily, with Keycloak's default thresholds (the failure
+	// count, the wait, the reset window) left admin-tunable. The switch is
+	// the posture; the numbers are not product decisions.
+	IdentityBruteForceProtected = true
+
 	// IdentityConsoleCallbackPath is the console sign-in stack's OAuth
 	// callback, appended to the front-door URL to form the console client's
 	// exact redirect URI.
@@ -596,6 +615,10 @@ type identityRealmImport struct {
 	RegistrationAllowed  bool   `json:"registrationAllowed"`
 	SSOSessionIdleTimout int    `json:"ssoSessionIdleTimeout"`
 	AccessTokenLifespan  int    `json:"accessTokenLifespan"`
+	// The credential posture for a realm whose people choose their own
+	// passwords (see the constants' comments); owned by the reconciler too.
+	PasswordPolicy      string `json:"passwordPolicy"`
+	BruteForceProtected bool   `json:"bruteForceProtected"`
 	// The email off-state, the only email posture the import ever bakes:
 	// "Forgot password?" off and no relay. The platform's email declaration
 	// itself is converged onto the live realm by the reconciler seconds after
@@ -726,6 +749,8 @@ func IdentityRealmImport(cfg IdentityRealmImportConfig) ([]byte, error) {
 		RegistrationAllowed:  false,
 		SSOSessionIdleTimout: IdentitySSOSessionIdleSeconds,
 		AccessTokenLifespan:  IdentityAccessTokenLifespanSeconds,
+		PasswordPolicy:       IdentityPasswordPolicy,
+		BruteForceProtected:  IdentityBruteForceProtected,
 		// Email off until the reconciler converges the platform's declaration
 		// (see the struct's comment); an empty map, never null, so the import
 		// and the owned set compare equal.
