@@ -58,10 +58,13 @@ message AzureAiFoundrySpec {
   ];
 
   // The Key Vault the hub stores its secrets in (connection
-  // credentials, project secrets), by ARM ID. Fixed at creation.
+  // credentials, project secrets), by ARM ID. Fixed at creation. The hub
+  // WRITES INTO the vault and lives in its own resource group, so the
+  // reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 4 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 
@@ -189,10 +192,13 @@ enum AzureAiFoundryIdentityType {
 // Customer-managed-key encryption for the hub's data at rest. The
 // whole block is fixed at creation.
 message AzureAiFoundryEncryption {
-  // The Key Vault holding the encryption key, by ARM ID.
+  // The Key Vault holding the encryption key, by ARM ID. The hub UNWRAPS
+  // its key through the vault and never lives in it, so the reference is
+  // access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 
