@@ -94,11 +94,14 @@ message AzureDiskSnapshotSpec {
 
   // The storage account holding source_uri (the read grant for
   // "Import"). Can be a literal ARM ID or a reference to an
-  // AzureStorageAccount output.
+  // AzureStorageAccount output. The snapshot READS the VHD out of the
+  // account and lives in its own resource group, so the reference is
+  // access, not placement, on a diagram.
   //
   // **ForceNew**: changing this destroys and recreates the snapshot.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 7 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 
@@ -175,10 +178,13 @@ message AzureDiskSnapshotDiskEncryptionKey {
   ];
 
   // The Key Vault holding the secret. Can be a literal ARM ID or a
-  // reference to an AzureKeyVault output.
+  // reference to an AzureKeyVault output. The snapshot reads its key out
+  // of the vault and lives in its own resource group, so the reference is
+  // access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef source_vault_id = 2 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 }
@@ -192,10 +198,12 @@ message AzureDiskSnapshotKeyEncryptionKey {
   ];
 
   // The Key Vault holding the key. Can be a literal ARM ID or a
-  // reference to an AzureKeyVault output.
+  // reference to an AzureKeyVault output. Access, not placement, on a
+  // diagram, for the same reason as the disk encryption key's vault.
   dev.planton.shared.foreignkey.v1.StringValueOrRef source_vault_id = 2 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 }

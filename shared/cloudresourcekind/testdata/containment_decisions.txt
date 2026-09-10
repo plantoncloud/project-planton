@@ -144,8 +144,8 @@ contained dev.planton.azure.azurecognitiveaccount.v1alpha1.AzureCognitiveAccount
 contained dev.planton.azure.azurecognitiveaccount.v1alpha1.AzureCognitiveAccountStorage.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azurecognitiveaccount.v1alpha1.AzureCognitiveAccountVirtualNetworkRule.subnet_id -> AzureSubnet
 contained dev.planton.azure.azurecomputegallery.v1alpha1.AzureComputeGallerySpec.resource_group -> AzureResourceGroup
+contained dev.planton.azure.azurecomputegalleryimage.v1alpha1.AzureComputeGalleryImageSpec.gallery_name -> AzureComputeGallery
 contained dev.planton.azure.azurecomputegalleryimage.v1alpha1.AzureComputeGalleryImageSpec.resource_group -> AzureResourceGroup
-contained dev.planton.azure.azurecomputegalleryimage.v1alpha1.AzureComputeGalleryImageVersion.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azurecontainerapp.v1alpha1.AzureContainerAppSpec.container_app_environment_id -> AzureContainerAppEnvironment
 contained dev.planton.azure.azurecontainerapp.v1alpha1.AzureContainerAppSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurecontainerappenvironment.v1alpha1.AzureContainerAppEnvironmentSpec.infrastructure_subnet_id -> AzureSubnet
@@ -186,10 +186,7 @@ contained dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureData
 contained dev.planton.azure.azuredataprotectionbackupvault.v1alpha1.AzureDataProtectionBackupVaultSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuredataprotectionresourceguard.v1alpha1.AzureDataProtectionResourceGuardSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurediskencryptionset.v1alpha1.AzureDiskEncryptionSetSpec.resource_group -> AzureResourceGroup
-contained dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotDiskEncryptionKey.source_vault_id -> AzureKeyVault
-contained dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotKeyEncryptionKey.source_vault_id -> AzureKeyVault
 contained dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotSpec.resource_group -> AzureResourceGroup
-contained dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotSpec.storage_account_id -> AzureStorageAccount
 contained dev.planton.azure.azurednsrecord.v1alpha1.AzureDnsRecordSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azurednsrecord.v1alpha1.AzureDnsRecordSpec.zone_name -> AzureDnsZone
 contained dev.planton.azure.azurednszone.v1alpha1.AzureDnsZoneSpec.resource_group -> AzureResourceGroup
@@ -685,9 +682,13 @@ exempt    dev.planton.aws.awsvpcendpoint.v1alpha1.AwsVpcEndpointSpec.route_table
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterServiceMeshCertificateAuthority.key_vault_id -> AzureKeyVault
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterSpec.private_dns_zone_id -> AzurePrivateDnsZone
 exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterWebAppRouting.dns_zone_ids -> AzureDnsZone
+exempt    dev.planton.azure.azurecomputegalleryimage.v1alpha1.AzureComputeGalleryImageVersion.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azurecontainerappenvironmentstorage.v1alpha1.AzureContainerAppEnvironmentStorageSpec.access_key -> AzureStorageAccount
 exempt    dev.planton.azure.azurecontainerappenvironmentstorage.v1alpha1.AzureContainerAppEnvironmentStorageSpec.account_name -> AzureStorageAccount
 exempt    dev.planton.azure.azurecosmosdbaccount.v1alpha1.AzureCosmosdbAccountVirtualNetworkRule.subnet_id -> AzureSubnet
+exempt    dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotDiskEncryptionKey.source_vault_id -> AzureKeyVault
+exempt    dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotKeyEncryptionKey.source_vault_id -> AzureKeyVault
+exempt    dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotSpec.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventhub.v1alpha1.AzureEventHubCaptureDestination.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventhubdisasterrecoveryconfig.v1alpha1.AzureEventHubDisasterRecoveryConfigSpec.partner_namespace_id -> AzureEventHubNamespace
 exempt    dev.planton.azure.azureeventhubnamespace.v1alpha1.AzureEventHubNamespaceVirtualNetworkRule.subnet_id -> AzureSubnet

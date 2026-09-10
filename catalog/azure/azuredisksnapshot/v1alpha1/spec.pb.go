@@ -82,7 +82,9 @@ type AzureDiskSnapshotSpec struct {
 	SourceUri string `protobuf:"bytes,6,opt,name=source_uri,json=sourceUri,proto3" json:"source_uri,omitempty"`
 	// The storage account holding source_uri (the read grant for
 	// "Import"). Can be a literal ARM ID or a reference to an
-	// AzureStorageAccount output.
+	// AzureStorageAccount output. The snapshot READS the VHD out of the
+	// account and lives in its own resource group, so the reference is
+	// access, not placement, on a diagram.
 	//
 	// **ForceNew**: changing this destroys and recreates the snapshot.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,7,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
@@ -319,7 +321,9 @@ type AzureDiskSnapshotDiskEncryptionKey struct {
 	// The secret's URL (the Key Vault secret identifier).
 	SecretUrl string `protobuf:"bytes,1,opt,name=secret_url,json=secretUrl,proto3" json:"secret_url,omitempty"`
 	// The Key Vault holding the secret. Can be a literal ARM ID or a
-	// reference to an AzureKeyVault output.
+	// reference to an AzureKeyVault output. The snapshot reads its key out
+	// of the vault and lives in its own resource group, so the reference is
+	// access, not placement, on a diagram.
 	SourceVaultId *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=source_vault_id,json=sourceVaultId,proto3" json:"source_vault_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -375,7 +379,8 @@ type AzureDiskSnapshotKeyEncryptionKey struct {
 	// The key's URL (the Key Vault key identifier).
 	KeyUrl string `protobuf:"bytes,1,opt,name=key_url,json=keyUrl,proto3" json:"key_url,omitempty"`
 	// The Key Vault holding the key. Can be a literal ARM ID or a
-	// reference to an AzureKeyVault output.
+	// reference to an AzureKeyVault output. Access, not placement, on a
+	// diagram, for the same reason as the disk encryption key's vault.
 	SourceVaultId *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=source_vault_id,json=sourceVaultId,proto3" json:"source_vault_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -429,7 +434,7 @@ var File_catalog_azure_azuredisksnapshot_v1alpha1_spec_proto protoreflect.FileDe
 
 const file_catalog_azure_azuredisksnapshot_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"3catalog/azure/azuredisksnapshot/v1alpha1/spec.proto\x12,dev.planton.azure.azuredisksnapshot.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\x9c\v\n" +
+	"3catalog/azure/azuredisksnapshot/v1alpha1/spec.proto\x12,dev.planton.azure.azuredisksnapshot.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xa0\v\n" +
 	"\x15AzureDiskSnapshotSpec\x12\x8c\x01\n" +
 	"\x0eresource_group\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_nameR\rresourceGroup\x12\xab\x01\n" +
 	"\x04name\x18\x02 \x01(\tB\x96\x01\xbaH\x92\x01\xba\x01\x8b\x01\n" +
@@ -439,8 +444,8 @@ const file_catalog_azure_azuredisksnapshot_v1alpha1_spec_proto_rawDesc = "" +
 	"\rcreate_option\x18\x04 \x01(\tB\x16\xbaH\x13\xc8\x01\x01r\x0eR\x04CopyR\x06ImportR\fcreateOption\x12\x81\x01\n" +
 	"\x12source_resource_id\x18\x05 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x1f\x88\xd4a\xe7\x0f\x92\xd4a\x16status.outputs.disk_idR\x10sourceResourceId\x12\x1d\n" +
 	"\n" +
-	"source_uri\x18\x06 \x01(\tR\tsourceUri\x12\x8c\x01\n" +
-	"\x12storage_account_id\x18\a \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12/\n" +
+	"source_uri\x18\x06 \x01(\tR\tsourceUri\x12\x90\x01\n" +
+	"\x12storage_account_id\x18\a \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12/\n" +
 	"\x13incremental_enabled\x18\b \x01(\bR\x12incrementalEnabled\x12.\n" +
 	"\fdisk_size_gb\x18\t \x01(\x05B\a\xbaH\x04\x1a\x02(\x01H\x00R\n" +
 	"diskSizeGb\x88\x01\x01\x12\\\n" +
@@ -457,16 +462,16 @@ const file_catalog_azure_azuredisksnapshot_v1alpha1_spec_proto_rawDesc = "" +
 	"\x1e_public_network_access_enabled\"\xaf\x02\n" +
 	"#AzureDiskSnapshotEncryptionSettings\x12\x88\x01\n" +
 	"\x13disk_encryption_key\x18\x01 \x01(\v2P.dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotDiskEncryptionKeyB\x06\xbaH\x03\xc8\x01\x01R\x11diskEncryptionKey\x12}\n" +
-	"\x12key_encryption_key\x18\x02 \x01(\v2O.dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotKeyEncryptionKeyR\x10keyEncryptionKey\"\xd8\x01\n" +
+	"\x12key_encryption_key\x18\x02 \x01(\v2O.dev.planton.azure.azuredisksnapshot.v1alpha1.AzureDiskSnapshotKeyEncryptionKeyR\x10keyEncryptionKey\"\xdc\x01\n" +
 	"\"AzureDiskSnapshotDiskEncryptionKey\x12)\n" +
 	"\n" +
 	"secret_url\x18\x01 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\tsecretUrl\x12\x86\x01\n" +
-	"\x0fsource_vault_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_idR\rsourceVaultId\"\xd1\x01\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\tsecretUrl\x12\x8a\x01\n" +
+	"\x0fsource_vault_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_id\x98\xd4a\x01R\rsourceVaultId\"\xd5\x01\n" +
 	"!AzureDiskSnapshotKeyEncryptionKey\x12#\n" +
 	"\akey_url\x18\x01 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x06keyUrl\x12\x86\x01\n" +
-	"\x0fsource_vault_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_idR\rsourceVaultIdB\xf3\x02\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x06keyUrl\x12\x8a\x01\n" +
+	"\x0fsource_vault_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_id\x98\xd4a\x01R\rsourceVaultIdB\xf3\x02\n" +
 	"0com.dev.planton.azure.azuredisksnapshot.v1alpha1B\tSpecProtoP\x01Z_github.com/plantonhq/planton/catalog/azure/azuredisksnapshot/v1alpha1;azuredisksnapshotv1alpha1\xa2\x02\x04DPAA\xaa\x02,Dev.Planton.Azure.Azuredisksnapshot.V1alpha1\xca\x02,Dev\\Planton\\Azure\\Azuredisksnapshot\\V1alpha1\xe2\x028Dev\\Planton\\Azure\\Azuredisksnapshot\\V1alpha1\\GPBMetadata\xea\x020Dev::Planton::Azure::Azuredisksnapshot::V1alpha1b\x06proto3"
 
 var (

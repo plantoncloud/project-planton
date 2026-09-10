@@ -1569,7 +1569,12 @@ const (
 	// The Azure Compute Gallery -- the shared library an organization
 	// keeps its approved VM images in. Image definitions
 	// (AzureComputeGalleryImage) live inside it; VMs and scale sets
-	// deploy from their published, region-replicated versions.
+	// deploy from their published, region-replicated versions. A container
+	// kind: every image definition is an ARM child of its gallery
+	// ({gallery_id}/images/{name}), so on a diagram the definitions stand
+	// inside the library that publishes them. The image ids a VM, a scale
+	// set, or a disk boots from are plain strings and never place anything
+	// inside the gallery.
 	CloudResourceKind_AzureComputeGallery CloudResourceKind = 2205
 	// A gallery image ({gallery_id}/images/{name}) -- one image
 	// definition inside a Compute Gallery (marketplace-style identity,
@@ -4196,7 +4201,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\x96\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\x98\xdb\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4622,8 +4627,8 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1dAzureDataFactoryLinkedService\x10\x99\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfls:\x02\x96\x11P\xd1\x01\x12=\n" +
 	"\x17AzureDataFactoryDataset\x10\x9a\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfds:\x02\x99\x11P\xd1\x01\x12A\n" +
 	"\x17AzureDataFactoryTrigger\x10\x9b\x11\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\bazdftrig:\x04\x96\x11\x97\x11P\xd1\x01\x12H\n" +
-	"\"AzureDataFactoryIntegrationRuntime\x10\x9c\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfir:\x02\x96\x11P\xd1\x01\x129\n" +
-	"\x13AzureComputeGallery\x10\x9d\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcgal:\x02\xd0\x0fP\xc8\x01\x12?\n" +
+	"\"AzureDataFactoryIntegrationRuntime\x10\x9c\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfir:\x02\x96\x11P\xd1\x01\x12;\n" +
+	"\x13AzureComputeGallery\x10\x9d\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azcgal0\x01:\x02\xd0\x0fP\xc8\x01\x12?\n" +
 	"\x18AzureComputeGalleryImage\x10\x9e\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazcgimg:\x02\x9d\x11P\xc8\x01\x12;\n" +
 	"\x14AzureAvailabilitySet\x10\x9f\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazavset:\x02\xd0\x0fP\xc8\x01\x128\n" +
 	"\x11AzureDiskSnapshot\x10\xa0\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazdsnap:\x02\xe7\x0fP\xc8\x01\x12;\n" +
