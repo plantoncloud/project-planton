@@ -20,17 +20,18 @@ Your infrastructure manifests, deployment history, secrets, and cloud credential
 
 ## Install
 
-Two commands install everything — the operator first, then the platform:
+Two commands install everything — the operator first, then the platform at the release you name:
 
 ```bash
 helm install planton-operator oci://ghcr.io/plantonhq/charts/planton-operator \
   --namespace planton --create-namespace
 
 helm install planton oci://ghcr.io/plantonhq/charts/planton \
-  --namespace planton
+  --namespace planton \
+  --set platform.spec.version=v0.0.59
 ```
 
-The first chart installs the Planton operator together with the `PlantonPlatform` definition it serves. The second creates one `PlantonPlatform` resource, and the operator reconciles the whole stack from that single resource: PostgreSQL, the workflow engine, the control plane, the console, the identity server, the secrets manager (OpenBAO, initialized and unsealed automatically), and the in-cluster runner. No license key, no admin account, no database, and no values file are required — a zero-values install works. The Planton CLI's self-hosted install runs both for you.
+The first chart installs the Planton operator together with the `PlantonPlatform` definition it serves. The second creates one `PlantonPlatform` resource, and the operator reconciles the whole stack from that single resource: PostgreSQL, the workflow engine, the control plane, the console, the identity server, the secrets manager (OpenBAO, initialized and unsealed automatically), and the in-cluster runner. No license key, no admin account, no database, and no values file are required — the one value is the platform release, because the chart pins none of its own. The published releases are the [control-plane image's tags](https://github.com/orgs/plantonhq/packages/container/package/planton%2Fcontrol-plane); an operator runs releases from a floor upward and refuses an older one on the resource with the floor named. The Planton desktop's guided install does the same two steps for you — operator chart, then the platform declared directly — preselecting the release the desktop shipped with, and hands you the manifest and commands to keep.
 
 Watch it converge (typically 7–11 minutes):
 
@@ -68,7 +69,7 @@ spec:
   namespace:
     value: planton
   create_namespace: true
-  version: v0.0.45
+  version: v0.0.59
 ```
 
 ```bash
