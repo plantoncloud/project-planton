@@ -63,9 +63,12 @@ import (
 // operator stops handing the control plane placeholder email credentials
 // (RESEND_API_KEY and the two SENDGRID names) and the invitation URL base
 // path, and renders PLANTON_EMAIL_PROVIDER=none instead; the control plane
-// composes every invitation link from PLANTON_CONSOLE_URL. An older control
-// plane requires the placeholder key and the base path to boot at all, so
-// under this operator it would never come up.
+// composes every invitation link from PLANTON_CONSOLE_URL. The same release
+// accepts invitations as one synchronous write, so the operator also stops
+// rendering the acceptance workflow's task queue
+// (TEMPORAL_TASK_QUEUE_USER_INVITATION). An older control plane requires the
+// placeholder key, the base path, and the queue name to boot at all, so under
+// this operator it would never come up.
 const MinimumSupported = "v0.0.60"
 
 // releaseForm is the only shape spec.version may take: a full semantic

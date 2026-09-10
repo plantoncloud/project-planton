@@ -813,7 +813,6 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		// stored-document migrations start automatically at boot when a release
 		// changes storage versions.
 		{Name: "PLANTON_INFRA_HUB_STORED_DOCUMENT_MIGRATION_AUTO_RUN", Value: "true"},
-		{Name: "TEMPORAL_TASK_QUEUE_USER_INVITATION", Value: "user-invitation"},
 		// Derived from the bootstrap org -- the SAME derivation the runner
 		// resources use for the worker's queue, so dispatcher and poller
 		// cannot drift apart on a renamed org.
