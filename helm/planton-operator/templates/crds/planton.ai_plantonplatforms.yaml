@@ -51,6 +51,12 @@ spec:
       jsonPath: .status.email
       name: Email
       type: string
+    - description: GitHub hosts as declared, with (App) where an install App is registered
+        (NotConfigured when spec.github is absent)
+      jsonPath: .status.github
+      name: GitHub
+      priority: 1
+      type: string
     - description: 'Whether the platform''s database is being saved: Healthy, Deploying,
         Failing, Unavailable, or NotConfigured'
       jsonPath: .status.backup.state
@@ -973,6 +979,122 @@ spec:
                     maximum: 65535
                     minimum: 1
                     type: integer
+                type: object
+              github:
+                description: |-
+                  github declares the GitHub hosts this install works with, the GitHub
+                  App registered for the whole install on each (so every organization
+                  connects in one click), and whether each host can deliver webhooks to
+                  the install. Absent, the install offers github.com with "bring your own
+                  App" and judges webhooks by the front door -- the right posture for an
+                  adopter on github.com who has declared nothing.
+                properties:
+                  hostLogin:
+                    description: |-
+                      hostLogin lets connections use a GitHub sign-in the control plane's own
+                      process carries (a GITHUB_TOKEN in its environment). Off by default on
+                      a shared install: the token would act for everyone. The desktop's local
+                      instance turns it on because the machine's own sign-in is the person's.
+                    type: boolean
+                  hosts:
+                    description: |-
+                      hosts lists the GitHub hosts this install works with, in the order the
+                      connection wizard offers them. Declare github.com to say it explicitly
+                      or to give it an App; declare a GitHub Enterprise Server to make it the
+                      first choice. A host that is not declared can still be typed by hand
+                      in a connection, without an install App.
+                    items:
+                      description: GithubHostSpec is one GitHub host and what the
+                        install offers on it.
+                      properties:
+                        app:
+                          description: |-
+                            app is a GitHub App registered on this host for the whole install.
+                            With it, every organization connects in one click and gets webhooks
+                            and check runs; without it, teams bring their own App. The App must be
+                            registered on THIS host: an App on github.com cannot sign for an
+                            enterprise server.
+                          properties:
+                            clientId:
+                              description: |-
+                                clientId is the App's client ID from its settings page -- the JWT
+                                issuer when the control plane mints installation tokens. Not a secret.
+                              minLength: 1
+                              type: string
+                            privateKeySecretRef:
+                              description: |-
+                                privateKeySecretRef names the Secret key holding the App's private key
+                                as GitHub generated it: the PEM text, unencoded.
+                              properties:
+                                key:
+                                  description: key within the Secret.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: name of the Secret.
+                                  minLength: 1
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              type: object
+                            webhookSecretRef:
+                              description: |-
+                                webhookSecretRef names the Secret key holding the webhook secret set
+                                on the App, so deliveries are verified as the App's own. Without it
+                                deliveries from this host are accepted unverified -- acceptable only
+                                on a host that cannot deliver at all.
+                              properties:
+                                key:
+                                  description: key within the Secret.
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: name of the Secret.
+                                  minLength: 1
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              type: object
+                          required:
+                          - clientId
+                          - privateKeySecretRef
+                          type: object
+                        host:
+                          description: |-
+                            host is the hostname as people type it in a browser: github.com, or a
+                            GitHub Enterprise Server such as github.example.com. A hostname, never
+                            a URL -- the control plane derives the API address (api.github.com for
+                            github.com, host/api/v3 for an enterprise server).
+                          maxLength: 253
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$
+                          type: string
+                        webhooks:
+                          default: auto
+                          description: |-
+                            webhooks is whether this host can deliver webhooks to the install.
+                            auto (the default) judges by the front door: reachable when the door
+                            is on the public internet. Declare reachable for a GitHub Enterprise
+                            Server that shares the install's private network -- it can deliver
+                            even when the internet cannot -- and unreachable when a public host
+                            cannot reach a door that is public only inside a corporate perimeter.
+                            Where webhooks cannot arrive, Planton polls GitHub for pushes and every
+                            team is told so.
+                          enum:
+                          - auto
+                          - reachable
+                          - unreachable
+                          type: string
+                      required:
+                      - host
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - host
+                    x-kubernetes-list-type: map
                 type: object
               identity:
                 description: |-
@@ -2329,6 +2451,14 @@ spec:
                   own answer, checked on demand from its settings page, never guessed
                   here: the operator has no channel to the relay and must not probe it.
                 type: string
+              github:
+                description: |-
+                  github echoes the declared GitHub hosts and which carry an install App,
+                  e.g. "github.example.com (App), github.com" -- configuration echo like
+                  email, feeding the kubectl column. NotConfigured when spec.github is
+                  absent. Whether GitHub accepts the App's credentials is the control
+                  plane's answer at connection time, never guessed here.
+                type: string
               license:
                 description: |-
                   license echoes how the license key is delivered to the control plane
@@ -2360,6 +2490,14 @@ spec:
                 - auto
                 - public
                 - private
+                type: string
+              requiredOperatorVersion:
+                description: |-
+                  requiredOperatorVersion is the oldest operator release the declared
+                  platform release says it needs, as its published image declares it;
+                  empty when the release declares nothing or the registry could not be
+                  read. When it names a release newer than the running operator, the
+                  VersionSupported condition says so and nothing is rendered.
                 type: string
               version:
                 description: version is the currently deployed Planton platform version.

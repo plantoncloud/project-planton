@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -55,6 +56,15 @@ type PlantonPlatformReconciler struct {
 	// one shows none. Optional: nil records nothing, which only tests that
 	// build a reconciler by hand rely on.
 	Recorder record.EventRecorder
+	// RequirementReader reads, from the registry, the oldest operator a
+	// declared platform release says it needs. Optional: nil skips the check
+	// (tests that build a reconciler by hand; a development build skips it
+	// regardless). Answers are remembered per version for the process's
+	// lifetime -- a release's requirement never changes once published.
+	RequirementReader platformversion.RequirementReader
+
+	requirementsMu sync.Mutex
+	requirements   map[string]string
 }
 
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -104,10 +114,18 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// deleted, a running platform left exactly as it is -- and the reason is
 	// written where the person will look. No requeue: there is nothing to
 	// watch until the spec changes, and a spec change re-enqueues on its own.
-	if verdict := platformversion.Check(planton.Spec.Version); !verdict.Supported {
+	verdict := platformversion.Check(planton.Spec.Version)
+	if verdict.Supported {
+		// The other direction of the contract: the platform release names
+		// the oldest operator it needs. Best-effort -- a registry the
+		// operator cannot reach means proceeding as before, said in the log.
+		verdict = r.checkOperatorRequirement(ctx, &planton)
+	}
+	if !verdict.Supported {
 		log.Info("Refusing to reconcile: platform version unsupported",
 			"version", planton.Spec.Version,
 			"minimumSupported", platformversion.MinimumSupported,
+			"operatorRelease", platformversion.OperatorRelease,
 			"reason", verdict.Reason,
 		)
 		if status.RefuseVersion(&planton, verdict.Reason, verdict.Message) {
@@ -180,6 +198,40 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		"interval", requeueInterval,
 	)
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+// checkOperatorRequirement judges this operator against the oldest operator
+// the declared platform release says it needs. The requirement is read from
+// the registry once per declared version and remembered; a read that fails
+// is logged and the platform proceeds -- the guard must never make an
+// air-gapped install worse than it was without it. A development build
+// judges nothing: it cannot place itself on the release line.
+func (r *PlantonPlatformReconciler) checkOperatorRequirement(ctx context.Context, planton *plantonaiv1.PlantonPlatform) platformversion.Verdict {
+	supported := platformversion.Verdict{Supported: true, Reason: platformversion.ReasonSupported}
+	if r.RequirementReader == nil || !platformversion.IsReleaseBuild() {
+		return supported
+	}
+	version := planton.Spec.Version
+	r.requirementsMu.Lock()
+	required, known := r.requirements[version]
+	r.requirementsMu.Unlock()
+	if !known {
+		read, err := r.RequirementReader.RequiredOperator(ctx, version)
+		if err != nil {
+			logf.FromContext(ctx).Info("Could not read the operator requirement the platform release declares; proceeding without the check",
+				"version", version, "error", err.Error())
+			return supported
+		}
+		required = read
+		r.requirementsMu.Lock()
+		if r.requirements == nil {
+			r.requirements = map[string]string{}
+		}
+		r.requirements[version] = required
+		r.requirementsMu.Unlock()
+	}
+	planton.Status.RequiredOperatorVersion = required
+	return platformversion.CheckOperatorRequirement(version, required)
 }
 
 // recordComponent writes a component's phase and state and, when the

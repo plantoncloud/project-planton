@@ -42,7 +42,9 @@ import (
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
 	"github.com/plantonhq/planton/operator/internal/controller"
 	"github.com/plantonhq/planton/operator/internal/janitor"
+	"github.com/plantonhq/planton/operator/internal/ociregistry"
 	"github.com/plantonhq/planton/operator/internal/platformversion"
+	"github.com/plantonhq/planton/operator/internal/resources"
 	"github.com/plantonhq/planton/operator/internal/singleton"
 	// +kubebuilder:scaffold:imports
 )
@@ -171,7 +173,8 @@ func main() {
 	// The oldest platform release this build runs. Logged once so a person
 	// reading the operator's log can pair it with the platform versions they
 	// declare without opening the source.
-	setupLog.Info("Platform version floor", "minimumSupported", platformversion.MinimumSupported)
+	setupLog.Info("Platform version floor", "minimumSupported", platformversion.MinimumSupported,
+		"operatorRelease", platformversion.OperatorRelease)
 
 	// One operator per cluster: leader election only arbitrates replicas
 	// within one namespace, so a second installation elsewhere would win its
@@ -250,6 +253,13 @@ func main() {
 		Scheme:   mgr.GetScheme(),
 		Janitor:  sweeper,
 		Recorder: mgr.GetEventRecorderFor("planton-operator"),
+		// The requirement a platform release declares is read off its
+		// published control-plane image; a development build never judges it
+		// (the reader is still wired so a stamped build does).
+		RequirementReader: &platformversion.RegistryRequirementReader{
+			ImageRepository: resources.ControlPlaneDefaultImageRepo,
+			Client:          ociregistry.NewClient(),
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "PlantonPlatform")
 		os.Exit(1)

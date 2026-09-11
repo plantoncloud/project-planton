@@ -156,8 +156,8 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: ## Build docker image with the manager. OPERATOR_VERSION=vX.Y.Z stamps a release build (the release workflow does); unset, the image is a development build that never judges a platform's operator requirement.
+	$(CONTAINER_TOOL) build -t ${IMG} $(if $(OPERATOR_VERSION),--build-arg OPERATOR_VERSION=$(OPERATOR_VERSION),) .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

@@ -378,20 +378,29 @@ func TestControlPlaneDeployment_FederationFactsMount(t *testing.T) {
 	deploy := ControlPlaneDeployment(testControlPlaneConfig())
 	podSpec := deploy.Spec.Template.Spec
 
-	if len(podSpec.Volumes) != 1 || podSpec.Volumes[0].ConfigMap == nil ||
-		podSpec.Volumes[0].ConfigMap.Name != IdentityFederationFactsConfigMapName("planton") {
-		t.Fatalf("expected the federation facts ConfigMap volume, got %+v", podSpec.Volumes)
+	// Two facts files ride this shape on every install: the identity
+	// federation's and the GitHub declaration's. Nothing else is mounted on a
+	// config that declares no credentials.
+	if len(podSpec.Volumes) != 2 || podSpec.Volumes[0].ConfigMap == nil ||
+		podSpec.Volumes[0].ConfigMap.Name != IdentityFederationFactsConfigMapName("planton") ||
+		podSpec.Volumes[1].ConfigMap == nil || podSpec.Volumes[1].ConfigMap.Name != GithubFactsConfigMapName("planton") {
+		t.Fatalf("expected the two facts ConfigMap volumes, got %+v", podSpec.Volumes)
 	}
-	if podSpec.Volumes[0].ConfigMap.Optional == nil || !*podSpec.Volumes[0].ConfigMap.Optional {
-		t.Error("the facts volume must be optional (belt-and-braces; the identity component ensures it exists)")
+	for _, volume := range podSpec.Volumes {
+		if volume.ConfigMap.Optional == nil || !*volume.ConfigMap.Optional {
+			t.Errorf("facts volume %s must be optional (belt-and-braces; the component ensures it exists)", volume.Name)
+		}
 	}
 
 	mounts := podSpec.Containers[0].VolumeMounts
-	if len(mounts) != 1 || mounts[0].MountPath != IdentityFederationFactsMountPath || !mounts[0].ReadOnly {
-		t.Fatalf("expected one read-only mount at %s, got %+v", IdentityFederationFactsMountPath, mounts)
+	if len(mounts) != 2 || mounts[0].MountPath != IdentityFederationFactsMountPath || !mounts[0].ReadOnly ||
+		mounts[1].MountPath != GithubFactsMountPath || !mounts[1].ReadOnly {
+		t.Fatalf("expected two read-only mounts at %s and %s, got %+v", IdentityFederationFactsMountPath, GithubFactsMountPath, mounts)
 	}
-	if mounts[0].SubPath != "" {
-		t.Error("the facts mount must never use subPath: subPath mounts freeze kubelet's in-place updates")
+	for _, mount := range mounts {
+		if mount.SubPath != "" {
+			t.Error("a facts mount must never use subPath: subPath mounts freeze kubelet's in-place updates")
+		}
 	}
 
 	envMap := envVarMap(podSpec.Containers[0].Env)

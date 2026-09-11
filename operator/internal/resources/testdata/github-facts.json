@@ -1,0 +1,30 @@
+{
+  "hosts": [
+    {
+      "host": "github.example.com",
+      "declared": true,
+      "app": {
+        "clientId": "Iv1.8a61f9b3a7aba766",
+        "privateKeyFile": "/etc/planton/github-credentials/github.example.com/private-key.pem",
+        "webhookSecretFile": "/etc/planton/github-credentials/github.example.com/webhook-secret"
+      },
+      "webhooks": {
+        "reachable": true,
+        "posture": "reachable",
+        "reason": "the install declares that github.example.com can deliver webhooks to it (they share a network); pushes trigger runs"
+      }
+    },
+    {
+      "host": "github.com",
+      "declared": true,
+      "app": null,
+      "appUnavailableReason": "This install has no GitHub App of its own. Connect your own GitHub App instead.",
+      "webhooks": {
+        "reachable": false,
+        "posture": "auto",
+        "reason": "the install's front door is not on the public internet, so this host cannot deliver webhooks to it; Planton checks GitHub for pushes instead, and runs start from Planton"
+      }
+    }
+  ],
+  "hostLogin": false
+}

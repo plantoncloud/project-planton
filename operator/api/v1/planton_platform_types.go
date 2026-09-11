@@ -427,6 +427,15 @@ type PlantonPlatformSpec struct {
 	// +optional
 	Email *EmailSpec `json:"email,omitempty"`
 
+	// github declares the GitHub hosts this install works with, the GitHub
+	// App registered for the whole install on each (so every organization
+	// connects in one click), and whether each host can deliver webhooks to
+	// the install. Absent, the install offers github.com with "bring your own
+	// App" and judges webhooks by the front door -- the right posture for an
+	// adopter on github.com who has declared nothing.
+	// +optional
+	Github *GithubSpec `json:"github,omitempty"`
+
 	// storage sets platform-wide storage defaults for every persistent
 	// volume the operator creates: the StorageClass volumes are provisioned
 	// from and one size applied across all of them. Component settings
@@ -1264,6 +1273,22 @@ type PlantonPlatformStatus struct {
 	// +optional
 	Email string `json:"email,omitempty"`
 
+	// github echoes the declared GitHub hosts and which carry an install App,
+	// e.g. "github.example.com (App), github.com" -- configuration echo like
+	// email, feeding the kubectl column. NotConfigured when spec.github is
+	// absent. Whether GitHub accepts the App's credentials is the control
+	// plane's answer at connection time, never guessed here.
+	// +optional
+	Github string `json:"github,omitempty"`
+
+	// requiredOperatorVersion is the oldest operator release the declared
+	// platform release says it needs, as its published image declares it;
+	// empty when the release declares nothing or the registry could not be
+	// read. When it names a release newer than the running operator, the
+	// VersionSupported condition says so and nothing is rendered.
+	// +optional
+	RequiredOperatorVersion string `json:"requiredOperatorVersion,omitempty"`
+
 	// backup is what the operator knows about the platform database's
 	// backup (see BackupStatus): the one-word state the Backup column prints,
 	// the server name a recovery copies, the recoverability point, and the
@@ -1371,6 +1396,7 @@ type ComponentObjectReference struct {
 // +kubebuilder:printcolumn:name="Reachability",type=string,JSONPath=`.status.reachability`,description="Whether the public internet reaches the front door, as the operator concluded"
 // +kubebuilder:printcolumn:name="License",type=string,JSONPath=`.status.license`,description="License delivery mode (Community when none configured)"
 // +kubebuilder:printcolumn:name="Email",type=string,JSONPath=`.status.email`,description="Email provider as declared (NotConfigured when spec.email is absent)"
+// +kubebuilder:printcolumn:name="GitHub",type=string,JSONPath=`.status.github`,description="GitHub hosts as declared, with (App) where an install App is registered (NotConfigured when spec.github is absent)",priority=1
 // +kubebuilder:printcolumn:name="Backup",type=string,JSONPath=`.status.backup.state`,description="Whether the platform's database is being saved: Healthy, Deploying, Failing, Unavailable, or NotConfigured"
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`,description="Why the platform is in its phase, in plain language"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`

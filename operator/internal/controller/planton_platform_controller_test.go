@@ -610,6 +610,63 @@ var _ = Describe("PlantonPlatform Controller", func() {
 		})
 	})
 
+	Context("When the platform release declares the operator it needs", func() {
+		// The other direction of the version contract: the release's own
+		// declaration (a label on its image, read through the reader) against
+		// this operator's stamped release. Best-effort by design: a reader
+		// that fails leaves the platform proceeding, and the answer is
+		// remembered per version.
+		It("refuses a release that needs a newer operator, in words, and proceeds when the registry cannot be read", func() {
+			previous := platformversion.OperatorRelease
+			platformversion.OperatorRelease = "v0.14.0"
+			defer func() { platformversion.OperatorRelease = previous }()
+
+			nn := types.NamespacedName{Name: "needs-newer-operator", Namespace: namespace}
+			resource := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), resource) }()
+
+			reader := &fakeRequirementReader{required: "v0.16.0"}
+			reconciler := &PlantonPlatformReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), RequirementReader: reader}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+
+			var updated plantonaiv1.PlantonPlatform
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			Expect(updated.Status.Phase).To(Equal(plantonaiv1.PhaseError))
+			supported := findCondition(updated.Status.Conditions, plantonaiv1.ConditionVersionSupported)
+			Expect(supported).NotTo(BeNil())
+			Expect(supported.Status).To(Equal(metav1.ConditionFalse))
+			Expect(supported.Reason).To(Equal(platformversion.ReasonRequiresNewerOperator))
+			Expect(supported.Message).To(ContainSubstring("needs operator v0.16.0 or newer"))
+			Expect(supported.Message).To(ContainSubstring("this operator is v0.14.0"))
+			Expect(supported.Message).To(ContainSubstring("helm upgrade planton-operator"))
+			Expect(updated.Status.RequiredOperatorVersion).To(Equal("v0.16.0"))
+			Expect(updated.Status.Components.PostgreSQL.Phase).To(Equal(plantonaiv1.ComponentPhasePending),
+				"nothing was rendered for a refused release")
+
+			// Remembered per version: a third reconcile reads nothing more.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(reader.calls).To(Equal(1), "the requirement is read once per version")
+
+			// A registry the operator cannot reach: the platform proceeds and
+			// VersionSupported stays True.
+			failing := &fakeRequirementReader{err: errors.NewServiceUnavailable("registry unreachable")}
+			offline := &PlantonPlatformReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), RequirementReader: failing}
+			_, err = offline.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			supported = findCondition(updated.Status.Conditions, plantonaiv1.ConditionVersionSupported)
+			Expect(supported.Status).To(Equal(metav1.ConditionTrue), "an unreadable registry never refuses: %s", supported.Message)
+		})
+	})
+
 	Context("When a component's pod cannot start", func() {
 		// The front-door gateway has no dependencies, so it is the one
 		// component the second reconcile actually runs on a minimal spec --
@@ -698,6 +755,19 @@ var _ = Describe("PlantonPlatform Controller", func() {
 	})
 
 })
+
+// fakeRequirementReader answers the operator requirement a release declares
+// without a registry, and counts its calls.
+type fakeRequirementReader struct {
+	required string
+	err      error
+	calls    int
+}
+
+func (f *fakeRequirementReader) RequiredOperator(_ context.Context, _ string) (string, error) {
+	f.calls++
+	return f.required, f.err
+}
 
 func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
 	for i := range conditions {

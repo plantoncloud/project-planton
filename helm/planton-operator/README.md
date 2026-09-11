@@ -130,6 +130,35 @@ ingress component's status explains any misconfiguration in plain language
 (missing class, missing TLS secret, cert-manager not installed, a Gateway that
 does not admit the hostname or the namespace).
 
+### Connecting your GitHub
+
+An install works with github.com out of the box: teams connect with their own GitHub
+App (the wizard prints the callback, setup, and webhook addresses to paste into GitHub),
+and whether GitHub can deliver webhooks is judged by whether the install's front door is
+on the public internet. Declare `spec.github` on the platform resource when your company
+runs a GitHub Enterprise Server, when you want one GitHub App for the whole install so
+every organization connects in one click, or when the internet rule is wrong for your
+network:
+
+```yaml
+spec:
+  github:
+    hosts:
+      - host: github.example.com          # offered first in every team's wizard
+        app:                              # one App, registered on THIS host, for the whole install
+          clientId: Iv1.8a61f9b3a7aba766
+          privateKeySecretRef: {name: planton-github-example, key: private-key.pem}
+          webhookSecretRef:    {name: planton-github-example, key: webhook-secret}
+        webhooks: reachable               # it shares the install's network; pushes trigger runs
+      - host: github.com                  # offered second; no install App, teams bring their own
+```
+
+The App's private key is the PEM file GitHub generated, stored in a Secret you own and
+mounted as a file; nothing is encoded by hand, and a rotated key is live on the next
+token mint. A Secret or key that does not exist is refused on the resource in words that
+name the host and the field, and that host is offered without the install App until it
+does. `kubectl get plantonplatform -o wide` shows the declaration in the `GITHUB` column.
+
 ## Configuration
 
 | Parameter | Description | Default |

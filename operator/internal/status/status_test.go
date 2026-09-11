@@ -498,6 +498,26 @@ func TestUpdateReadyCondition_ErrorNamesTheComponent(t *testing.T) {
 	}
 }
 
+// status.github echoes the declared hosts in order, marking the ones with an
+// install App; NotConfigured when nothing is declared.
+func TestInitialize_GithubEcho(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	if p.Status.Github != v1.GithubModeNotConfigured {
+		t.Errorf("undeclared echoes NotConfigured, got %q", p.Status.Github)
+	}
+	p.Spec.Github = &v1.GithubSpec{Hosts: []v1.GithubHostSpec{
+		{Host: "github.example.com", App: &v1.GithubAppSpec{ClientID: "x"}},
+		{Host: "github.com"},
+	}}
+	if !Initialize(p) {
+		t.Error("a changed declaration is a status change")
+	}
+	if p.Status.Github != "github.example.com (App), github.com" {
+		t.Errorf("echo = %q", p.Status.Github)
+	}
+}
+
 // Every reason the operator can write is either a failure or an in-progress
 // state, and the list the troubleshooting reference is indexed by covers all
 // of them -- adding a constant without classifying and listing it fails here.

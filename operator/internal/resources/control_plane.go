@@ -147,6 +147,14 @@ type ControlPlaneConfig struct {
 	// resolves it purely and preflights every Secret it names first.
 	Email *EmailBinding
 
+	// Github is the resolved spec.github (control_plane_github.go): the
+	// hosts, their install Apps, their webhook verdicts. Nil is the undeclared
+	// install -- github.com, no install App, webhooks judged by the door --
+	// which the facts file states out loud. The component resolves it,
+	// preflights every App Secret, and writes the facts ConfigMap itself; the
+	// Deployment only mounts.
+	Github *GithubBinding
+
 	// ServiceAccountAnnotations land on the control plane's dedicated
 	// ServiceAccount -- the workload-identity seam for the platform's own
 	// cloud calls (ambient secret backends + KMS KEKs).
@@ -576,6 +584,17 @@ func ControlPlaneDeployment(cfg ControlPlaneConfig) *appsv1.Deployment {
 		volumeMounts = append(volumeMounts, *mount)
 	}
 
+	// The GitHub facts file rides the identity-federation shape (mounted on
+	// every install, updated in place); the App credentials ride the email
+	// shape (projected files, present only when an App is declared).
+	factsVolume, factsMount := githubFactsVolume(cfg.CRName)
+	volumes = append(volumes, factsVolume)
+	volumeMounts = append(volumeMounts, factsMount)
+	if volume, mount := githubCredentialsVolume(cfg.Github); volume != nil {
+		volumes = append(volumes, *volume)
+		volumeMounts = append(volumeMounts, *mount)
+	}
+
 	deploy := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "Deployment"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -838,12 +857,19 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 		// never read for meaning; the posture is declared beside them, with the
 		// sentence a server's person can act on (the catalog's generic copy
 		// offers "the sign-in on this machine", which a server does not have).
+		// The platform release the floor admits still reads its GitHub
+		// posture through these one-host variables. They are fed from the
+		// facts' github.com entry where the declaration can be honored
+		// through env (the webhook verdict, host login) and stay at their
+		// no-App values where it cannot (an App key is a mounted PEM file,
+		// which this env contract has no shape for). When the platform reads
+		// the facts file, these variables and githubLegacyEnvVars leave
+		// together with the floor.
 		{Name: "GITHUB_APP_CLIENT_ID", Value: "local"},
 		{Name: "GITHUB_APP_PRIVATE_KEY_BASE64", Value: "ZHVtbXk="},
 		{Name: "PLANTON_CONNECT_METHODAVAILABILITY_PLATFORMAPP_AVAILABILITY", Value: "unavailable"},
 		{Name: "PLANTON_CONNECT_METHODAVAILABILITY_PLATFORMAPP_REASON", Value: PlatformAppUnavailableReason},
 		{Name: "GITHUB_BUILD_STAGE_CHECK_NAME", Value: "build"},
-		{Name: "GITHUB_CHECKS_DETAILS_URL_FORMAT", Value: ""},
 		{Name: "GITHUB_WEBHOOKS_SECRET_TOKEN", Value: "local"},
 
 		// ── cloud oauth (connect): no self-hosted install carries Planton's apps ──
@@ -936,7 +962,9 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 	envs = append(envs, fgaEnvVars(cfg.OpenFGA)...)
 	envs = append(envs, storageEnvVars(cfg.Storage)...)
 	envs = append(envs, webIdentityEnvVars(cfg.WebIdentity)...)
-	envs = append(envs, githubWebhooksEnvVars(cfg.GithubWebhooks)...)
+	envs = append(envs, githubWebhooksEnvVars(cfg.GithubWebhooks, cfg.Github)...)
+	envs = append(envs, githubFactsEnvVars()...)
+	envs = append(envs, githubLegacyEnvVars(cfg.Github)...)
 	envs = append(envs, consoleEnvVars(cfg.Console)...)
 	envs = append(envs, vaultEnvVars(cfg.Vault)...)
 	envs = append(envs, secretBackendEnvVars(cfg.SecretBackend)...)
@@ -1146,14 +1174,34 @@ func webIdentityEnvVars(binding *WebIdentityBinding) []corev1.EnvVar {
 
 // githubWebhooksEnvVars renders GitHub webhook delivery posture: the receiver
 // URL (true on every install) and whether GitHub can reach it.
-func githubWebhooksEnvVars(binding *GithubWebhooksBinding) []corev1.EnvVar {
+func githubWebhooksEnvVars(binding *GithubWebhooksBinding, github *GithubBinding) []corev1.EnvVar {
 	if binding == nil {
 		return nil
+	}
+	// The one-host variable follows github.com's declared verdict when the
+	// install declared one (a private door whose github.com posture is
+	// declared reachable through a perimeter, or the reverse); the door's
+	// own reachability otherwise.
+	reachable := binding.Reachable
+	if h := githubDefaultHostBinding(github); h != nil {
+		reachable = h.WebhooksReachable
 	}
 	return []corev1.EnvVar{
 		// ── GitHub webhook delivery: the front door's webhook namespace ──
 		{Name: "GITHUB_WEBHOOKS_RECEIVER_URL", Value: binding.ReceiverURL},
-		{Name: "GITHUB_WEBHOOKS_REACHABLE", Value: fmt.Sprintf("%t", binding.Reachable)},
+		{Name: "GITHUB_WEBHOOKS_REACHABLE", Value: fmt.Sprintf("%t", reachable)},
+	}
+}
+
+// githubLegacyEnvVars renders the parts of the declaration the one-host env
+// contract can carry: host login. Absent (never "unavailable") when the
+// declaration does not turn it on -- the platform's own default is off.
+func githubLegacyEnvVars(github *GithubBinding) []corev1.EnvVar {
+	if github == nil || !github.HostLogin {
+		return nil
+	}
+	return []corev1.EnvVar{
+		{Name: "PLANTON_CONNECT_METHODAVAILABILITY_HOSTLOGIN_AVAILABILITY", Value: "available"},
 	}
 }
 

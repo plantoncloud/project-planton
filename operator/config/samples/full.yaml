@@ -40,6 +40,28 @@ spec:
   #   # resend:
   #   #   apiKeySecretRef: {name: planton-email, key: api-key}
 
+  # GitHub -- omit entirely and the install offers github.com with "bring
+  # your own GitHub App" (and host login on a desktop instance), judging
+  # whether GitHub can deliver webhooks by whether the front door is on the
+  # public internet. Declare the hosts your company uses, in the order teams
+  # should see them; give a host an App registered for the whole install and
+  # every organization connects in one click with webhooks and check runs.
+  # The App's private key is the PEM file GitHub generated, in a Secret,
+  # mounted as a file -- nobody encodes it by hand. `webhooks: reachable` is
+  # for a GitHub Enterprise Server that shares the install's network: it can
+  # deliver even when the internet cannot. kubectl's GITHUB column (-o wide)
+  # echoes the declaration.
+  # github:
+  #   hosts:
+  #     - host: github.example.com               # a GitHub Enterprise Server
+  #       app:
+  #         clientId: Iv1.8a61f9b3a7aba766
+  #         privateKeySecretRef: {name: planton-github-example, key: private-key.pem}
+  #         webhookSecretRef:    {name: planton-github-example, key: webhook-secret}
+  #       webhooks: reachable                     # auto (default) | reachable | unreachable
+  #     - host: github.com                        # offered second; teams bring their own App
+  #   hostLogin: false                            # a GITHUB_TOKEN in the control plane's environment acts for everyone; off on a shared install
+
   database:
     postgresql:
       storageSize: 10Gi

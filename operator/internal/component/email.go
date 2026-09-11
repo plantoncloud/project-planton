@@ -87,26 +87,26 @@ func preflightEmailSecrets(ctx context.Context, c client.Client, planton *v1.Pla
 
 	if smtp := e.SMTP; smtp != nil {
 		if name := smtp.CredentialsSecretName; name != "" {
-			msg, err := preflightSecretKeys(ctx, c, ns, name, "spec.email.smtp.credentialsSecretName", "type kubernetes.io/basic-auth", resources.BasicAuthUsernameKey, resources.BasicAuthPasswordKey)
+			msg, err := preflightSecretKeys(ctx, c, ns, name, emailSecretPreflight("spec.email.smtp.credentialsSecretName", "type kubernetes.io/basic-auth", resources.BasicAuthUsernameKey, resources.BasicAuthPasswordKey))
 			if msg != "" || err != nil {
 				return msg, err
 			}
 		}
 		if o := smtp.OAuth2; o != nil {
-			msg, err := preflightSecretKeys(ctx, c, ns, o.ClientSecretRef.Name, "spec.email.smtp.oauth2", "the OAuth2 client secret", o.ClientSecretRef.Key)
+			msg, err := preflightSecretKeys(ctx, c, ns, o.ClientSecretRef.Name, emailSecretPreflight("spec.email.smtp.oauth2", "the OAuth2 client secret", o.ClientSecretRef.Key))
 			if msg != "" || err != nil {
 				return msg, err
 			}
 		}
 		if ca := smtp.CABundleSecretRef; ca != nil {
-			msg, err := preflightSecretKeys(ctx, c, ns, ca.Name, "spec.email.smtp.caBundleSecretRef", "the relay's PEM CA bundle", ca.Key)
+			msg, err := preflightSecretKeys(ctx, c, ns, ca.Name, emailSecretPreflight("spec.email.smtp.caBundleSecretRef", "the relay's PEM CA bundle", ca.Key))
 			if msg != "" || err != nil {
 				return msg, err
 			}
 		}
 	}
 	if r := e.Resend; r != nil {
-		msg, err := preflightSecretKeys(ctx, c, ns, r.APIKeySecretRef.Name, "spec.email.resend", "the Resend API key", r.APIKeySecretRef.Key)
+		msg, err := preflightSecretKeys(ctx, c, ns, r.APIKeySecretRef.Name, emailSecretPreflight("spec.email.resend", "the Resend API key", r.APIKeySecretRef.Key))
 		if msg != "" || err != nil {
 			return msg, err
 		}
@@ -114,26 +114,52 @@ func preflightEmailSecrets(ctx context.Context, c client.Client, planton *v1.Pla
 	return "", nil
 }
 
+// secretPreflight names one referenced Secret in the words a refusal uses:
+// what the Secret is (the noun a person recognises), the spec field that
+// references it, what it must hold, and what the platform does until it
+// exists. One shape for every credential-by-reference on the resource --
+// email relays and GitHub Apps today -- so a missing Secret reads the same
+// wherever it is missing.
+type secretPreflight struct {
+	// Noun is what the Secret is called in the sentence ("email credentials
+	// Secret", "GitHub App Secret").
+	Noun string
+	// Field is the spec path that references the Secret.
+	Field string
+	// Contents describes what the Secret must hold, in the words the fix uses.
+	Contents string
+	// Consequence is what the platform does until the Secret exists.
+	Consequence string
+	// Keys are the data keys the volume will project.
+	Keys []string
+}
+
+// emailSecretPreflight is the email relay's shape of the sentence.
+func emailSecretPreflight(field, contents string, keys ...string) secretPreflight {
+	return secretPreflight{
+		Noun: "email credentials Secret", Field: field, Contents: contents,
+		Consequence: "the platform runs as if no email were declared", Keys: keys,
+	}
+}
+
 // preflightSecretKeys reports, in one sentence, a referenced Secret that is
-// absent or that lacks a key the volume will project. field names the spec
-// path that references it; contents describes what the Secret is expected to
-// hold, in the words the fix will use.
-func preflightSecretKeys(ctx context.Context, c client.Client, namespace, name, field, contents string, keys ...string) (string, error) {
+// absent or that lacks a key the volume will project.
+func preflightSecretKeys(ctx context.Context, c client.Client, namespace, name string, want secretPreflight) (string, error) {
 	var secret corev1.Secret
 	err := c.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &secret)
 	if apierrors.IsNotFound(err) {
 		return fmt.Sprintf(
-			"email credentials Secret %q not found in namespace %q; create it (%s) or remove %s -- until then the platform runs as if no email were declared",
-			name, namespace, contents, field), nil
+			"%s %q not found in namespace %q; create it (%s) or remove %s -- until then %s",
+			want.Noun, name, namespace, want.Contents, want.Field, want.Consequence), nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("checking email Secret %s: %w", name, err)
+		return "", fmt.Errorf("checking %s %s: %w", want.Noun, name, err)
 	}
-	for _, key := range keys {
+	for _, key := range want.Keys {
 		if _, ok := secret.Data[key]; !ok {
 			return fmt.Sprintf(
-				"email credentials Secret %q in namespace %q has no %q key; add it (%s) or remove %s -- until then the platform runs as if no email were declared",
-				name, namespace, key, contents, field), nil
+				"%s %q in namespace %q has no %q key; add it (%s) or remove %s -- until then %s",
+				want.Noun, name, namespace, key, want.Contents, want.Field, want.Consequence), nil
 		}
 	}
 	return "", nil

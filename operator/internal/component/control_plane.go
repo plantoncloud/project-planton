@@ -70,6 +70,29 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 		cfg.Email = nil
 	}
 
+	// The GitHub declaration follows the same discipline: every App Secret
+	// is preflighted, a host whose App cannot be honored keeps its place with
+	// the reason beside it, and the facts ConfigMap the control plane mounts
+	// is written every pass so a corrected declaration is live without a
+	// pod roll.
+	doorPublic := false
+	if posture, resolved := frontDoorPosture(planton); resolved {
+		doorPublic = posture.Public()
+	}
+	githubBinding, githubRefusal, err := resolveGithub(ctx, c, planton, doorPublic)
+	if err != nil {
+		return Result{}, fmt.Errorf("preflighting GitHub App Secrets: %w", err)
+	}
+	cfg.Github = githubBinding
+	facts, err := resources.GithubFactsConfigMap(planton.Name, planton.Namespace,
+		resources.GithubFactsFrom(githubBinding, doorPublic), ownerRef)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := cp.ApplyTypedObject(ctx, c, facts); err != nil {
+		return Result{}, fmt.Errorf("applying GitHub facts ConfigMap: %w", err)
+	}
+
 	if cfg.Identity == nil {
 		// Unreachable in a healthy pass (the identity dependency implies a
 		// resolved front-door URL), but a Deployment without the identity arm
@@ -135,6 +158,10 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 	if emailPreflight != "" {
 		log.Info("ControlPlane running without the declared email", "reason", emailPreflight)
 		return Refused(emailPreflight), nil
+	}
+	if githubRefusal != "" {
+		log.Info("ControlPlane running without a declared GitHub App", "reason", githubRefusal)
+		return Refused(githubRefusal), nil
 	}
 
 	log.Info("ControlPlane ready")

@@ -43,6 +43,13 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		planton.Status.Email = mode
 		changed = true
 	}
+	// And for GitHub: WHICH hosts are declared and which carry an install
+	// App, never whether GitHub accepts the App (the control plane learns
+	// that at connection time and says so in the wizard).
+	if echo := githubEcho(planton); planton.Status.Github != echo {
+		planton.Status.Github = echo
+		changed = true
+	}
 
 	if planton.Status.Components.PostgreSQL == nil {
 		statuses := v1.ComponentStatuses{
@@ -166,6 +173,25 @@ func emailMode(planton *v1.PlantonPlatform) string {
 	default:
 		return v1.EmailModeNotConfigured
 	}
+}
+
+// githubEcho renders the declared GitHub hosts in declaration order, marking
+// the ones that carry an install App: "github.example.com (App), github.com".
+// NotConfigured when nothing is declared (the github.com defaults apply).
+func githubEcho(planton *v1.PlantonPlatform) string {
+	g := planton.Spec.Github
+	if g == nil || len(g.Hosts) == 0 {
+		return v1.GithubModeNotConfigured
+	}
+	parts := make([]string, 0, len(g.Hosts))
+	for _, h := range g.Hosts {
+		if h.App != nil {
+			parts = append(parts, h.Host+" (App)")
+		} else {
+			parts = append(parts, h.Host)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // syncToggledSlot makes a component's status slot follow its toggle in both
