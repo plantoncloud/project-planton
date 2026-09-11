@@ -253,22 +253,6 @@ locals {
   }
 
   # ---- components ------------------------------------------------------------
-  components_zookeeper = {
-    for k, v in {
-      replicas         = try(var.spec.components.search.zookeeper.replicas, null)
-      storageSize      = try(var.spec.components.search.zookeeper.storage_size, "") != "" ? var.spec.components.search.zookeeper.storage_size : null
-      storageClassName = try(var.spec.components.search.zookeeper.storage_class_name, "") != "" ? var.spec.components.search.zookeeper.storage_class_name : null
-    } : k => v if v != null
-  }
-  components_search = {
-    for k, v in {
-      enabled          = try(var.spec.components.search.enabled, false) ? true : null
-      mode             = try(var.spec.components.search.mode, "") != "" ? var.spec.components.search.mode : null
-      storageSize      = try(var.spec.components.search.storage_size, "") != "" ? var.spec.components.search.storage_size : null
-      storageClassName = try(var.spec.components.search.storage_class_name, "") != "" ? var.spec.components.search.storage_class_name : null
-      zookeeper        = length(local.components_zookeeper) > 0 ? local.components_zookeeper : null
-    } : k => v if v != null
-  }
   components_graph = {
     for k, v in {
       enabled          = try(var.spec.components.graph.enabled, false) ? true : null
@@ -278,8 +262,7 @@ locals {
   }
   components_body = {
     for k, v in {
-      search        = length(local.components_search) > 0 ? local.components_search : null
-      graph         = length(local.components_graph) > 0 ? local.components_graph : null
+      graph = length(local.components_graph) > 0 ? local.components_graph : null
     } : k => v if v != null
   }
 
@@ -287,7 +270,6 @@ locals {
   prerequisites_body = {
     for k, v in {
       postgresOperator = try(var.spec.prerequisites.postgres_operator, "") != "" ? var.spec.prerequisites.postgres_operator : null
-      solrOperator     = try(var.spec.prerequisites.solr_operator, "") != "" ? var.spec.prerequisites.solr_operator : null
       tektonPipelines  = try(var.spec.prerequisites.tekton_pipelines, "") != "" ? var.spec.prerequisites.tekton_pipelines : null
     } : k => v if v != null
   }

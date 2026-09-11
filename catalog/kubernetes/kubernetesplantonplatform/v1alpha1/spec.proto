@@ -91,8 +91,8 @@ message KubernetesPlantonPlatformSpec {
 
   /**
    * Platform-wide storage defaults: every persistent volume the platform
-   * creates (databases, cache, workflow engine, search, secrets manager,
-   * runner state) uses these unless its component overrides them.
+   * creates (databases, cache, workflow engine, secrets manager, runner
+   * state) uses these unless its component overrides them.
    * Unset means the cluster's default StorageClass and each component's
    * built-in size.
    */
@@ -166,16 +166,16 @@ message KubernetesPlantonPlatformSpec {
   KubernetesPlantonPlatformVault vault = 13;
 
   /**
-   * Opt-in platform components, all off by default: search (Solr) and
-   * the graph explorer (Neo4j).
+   * Opt-in platform components, off by default: the graph explorer
+   * (Neo4j).
    */
   KubernetesPlantonPlatformComponents components = 14;
 
   /**
    * Cluster-shared sub-operators the platform rides (CloudNativePG,
-   * Tekton Pipelines, the Solr operator). "auto" (the default) installs
-   * each one only when no installation exists on the cluster; "skip"
-   * declares that something else manages it.
+   * Tekton Pipelines). "auto" (the default) installs each one only when
+   * no installation exists on the cluster; "skip" declares that something
+   * else manages it.
    */
   KubernetesPlantonPlatformPrerequisites prerequisites = 15;
 
@@ -1053,94 +1053,9 @@ message KubernetesPlantonPlatformVault {
  */
 message KubernetesPlantonPlatformComponents {
   /**
-   * Search (Solr).
-   */
-  KubernetesPlantonPlatformSearch search = 2;
-
-  /**
    * The graph explorer (Neo4j).
    */
   KubernetesPlantonPlatformGraph graph = 3;
-}
-
-/**
- * Search (Solr).
- */
-message KubernetesPlantonPlatformSearch {
-  /**
-   * Enable search.
-   */
-  bool enabled = 1;
-
-  /**
-   * Deployment mode: "standalone" (a single Solr with its ZooKeeper) or
-   * "operator" (SolrCloud via the Solr operator — see
-   * prerequisites.solr_operator).
-   */
-  optional string mode = 2 [
-    (dev.planton.shared.options.default) = "standalone",
-    (buf.validate.field).string = {
-      in: [
-        "",
-        "standalone",
-        "operator"
-      ]
-    }
-  ];
-
-  /**
-   * Volume size (e.g. "10Gi"). Falls back to spec.storage.size, then the
-   * platform default.
-   */
-  string storage_size = 3 [
-    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
-    (buf.validate.field).cel = {
-      id: "search.storage_size_quantity"
-      message: "storage_size must be a Kubernetes quantity like \"10Gi\""
-      expression: "this.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')"
-    }
-  ];
-
-  /**
-   * StorageClass override for the search volumes.
-   */
-  string storage_class_name = 4;
-
-  /**
-   * ZooKeeper for standalone-mode Solr.
-   */
-  KubernetesPlantonPlatformZookeeper zookeeper = 5;
-}
-
-/**
- * ZooKeeper (standalone-mode search only).
- */
-message KubernetesPlantonPlatformZookeeper {
-  /**
-   * ZooKeeper replicas.
-   */
-  optional int32 replicas = 1 [
-    (dev.planton.shared.options.default) = "1",
-    (buf.validate.field).int32.gte = 1
-  ];
-
-  /**
-   * Volume size (e.g. "5Gi"). Falls back to spec.storage.size, then the
-   * platform default.
-   */
-  string storage_size = 2 [
-    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
-    (buf.validate.field).cel = {
-      id: "zookeeper.storage_size_quantity"
-      message: "storage_size must be a Kubernetes quantity like \"5Gi\""
-      expression: "this.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')"
-    }
-  ];
-
-  /**
-   * StorageClass override for the ZooKeeper volumes.
-   */
-  string storage_class_name = 3;
 }
 
 /**
@@ -1181,21 +1096,6 @@ message KubernetesPlantonPlatformPrerequisites {
    * automatically either way).
    */
   optional string postgres_operator = 1 [
-    (dev.planton.shared.options.default) = "auto",
-    (buf.validate.field).string = {
-      in: [
-        "",
-        "auto",
-        "skip"
-      ]
-    }
-  ];
-
-  /**
-   * The Solr operator (only relevant when components.search.mode is
-   * "operator").
-   */
-  optional string solr_operator = 2 [
     (dev.planton.shared.options.default) = "auto",
     (buf.validate.field).string = {
       in: [

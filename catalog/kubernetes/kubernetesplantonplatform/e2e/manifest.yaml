@@ -82,19 +82,11 @@ spec:
     init_mode: auto
     storage_size: 2Gi
   components:
-    search:
-      enabled: true
-      mode: standalone
-      storage_size: 10Gi
-      zookeeper:
-        replicas: 1
-        storage_size: 5Gi
     graph:
       enabled: true
       storage_size: 10Gi
   prerequisites:
     postgres_operator: auto
-    solr_operator: auto
     tekton_pipelines: auto
   control_plane:
     replicas: 1

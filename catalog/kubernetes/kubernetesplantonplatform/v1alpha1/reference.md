@@ -142,19 +142,11 @@ spec:
     init_mode: auto
     storage_size: 2Gi
   components:
-    search:
-      enabled: true
-      mode: standalone
-      storage_size: 10Gi
-      zookeeper:
-        replicas: 1
-        storage_size: 5Gi
     graph:
       enabled: true
       storage_size: 10Gi
   prerequisites:
     postgres_operator: auto
-    solr_operator: auto
     tekton_pipelines: auto
   control_plane:
     replicas: 1
@@ -233,22 +225,12 @@ spec:
 | `spec.vault.storageSize` | `string` |  |  |  |
 | `spec.vault.storageClassName` | `string` |  |  |  |
 | `spec.components` | `KubernetesPlantonPlatformComponents` |  |  |  |
-| `spec.components.search` | `KubernetesPlantonPlatformSearch` |  |  |  |
-| `spec.components.search.enabled` | `bool` |  |  |  |
-| `spec.components.search.mode` | `string` |  | `standalone` |  |
-| `spec.components.search.storageSize` | `string` |  |  |  |
-| `spec.components.search.storageClassName` | `string` |  |  |  |
-| `spec.components.search.zookeeper` | `KubernetesPlantonPlatformZookeeper` |  |  |  |
-| `spec.components.search.zookeeper.replicas` | `int32` |  | `1` |  |
-| `spec.components.search.zookeeper.storageSize` | `string` |  |  |  |
-| `spec.components.search.zookeeper.storageClassName` | `string` |  |  |  |
 | `spec.components.graph` | `KubernetesPlantonPlatformGraph` |  |  |  |
 | `spec.components.graph.enabled` | `bool` |  |  |  |
 | `spec.components.graph.storageSize` | `string` |  |  |  |
 | `spec.components.graph.storageClassName` | `string` |  |  |  |
 | `spec.prerequisites` | `KubernetesPlantonPlatformPrerequisites` |  |  |  |
 | `spec.prerequisites.postgresOperator` | `string` |  | `auto` |  |
-| `spec.prerequisites.solrOperator` | `string` |  | `auto` |  |
 | `spec.prerequisites.tektonPipelines` | `string` |  | `auto` |  |
 | `spec.controlPlane` | `KubernetesPlantonPlatformControlPlane` |  |  |  |
 | `spec.controlPlane.image` | `KubernetesPlantonPlatformImage` |  |  |  |
@@ -370,8 +352,8 @@ Key within the Secret holding the value.
 `KubernetesPlantonPlatformStorage`
 
 Platform-wide storage defaults: every persistent volume the platform
-creates (databases, cache, workflow engine, search, secrets manager,
-runner state) uses these unless its component overrides them.
+creates (databases, cache, workflow engine, secrets manager, runner
+state) uses these unless its component overrides them.
 Unset means the cluster's default StorageClass and each component's
 built-in size.
 
@@ -900,78 +882,8 @@ StorageClass override for the secrets-manager volume.
 
 `KubernetesPlantonPlatformComponents`
 
-Opt-in platform components, all off by default: search (Solr) and
-the graph explorer (Neo4j).
-
-### spec.components.search
-
-`KubernetesPlantonPlatformSearch`
-
-Search (Solr).
-
-### spec.components.search.enabled
-
-`bool`
-
-Enable search.
-
-### spec.components.search.mode
-
-`string` · optional (explicit presence)
-
-Deployment mode: "standalone" (a single Solr with its ZooKeeper) or
-"operator" (SolrCloud via the Solr operator — see
-prerequisites.solr_operator).
-
-- default: `standalone`
-- rule: {"string":{"in":["","standalone","operator"]}}
-
-### spec.components.search.storageSize
-
-`string`
-
-Volume size (e.g. "10Gi"). Falls back to spec.storage.size, then the
-platform default.
-
-- rule: storage_size must be a Kubernetes quantity like "10Gi"
-- rule: {"ignore":"IGNORE_IF_ZERO_VALUE"}
-
-### spec.components.search.storageClassName
-
-`string`
-
-StorageClass override for the search volumes.
-
-### spec.components.search.zookeeper
-
-`KubernetesPlantonPlatformZookeeper`
-
-ZooKeeper for standalone-mode Solr.
-
-### spec.components.search.zookeeper.replicas
-
-`int32` · optional (explicit presence)
-
-ZooKeeper replicas.
-
-- default: `1`
-- rule: {"int32":{"gte":1}}
-
-### spec.components.search.zookeeper.storageSize
-
-`string`
-
-Volume size (e.g. "5Gi"). Falls back to spec.storage.size, then the
-platform default.
-
-- rule: storage_size must be a Kubernetes quantity like "5Gi"
-- rule: {"ignore":"IGNORE_IF_ZERO_VALUE"}
-
-### spec.components.search.zookeeper.storageClassName
-
-`string`
-
-StorageClass override for the ZooKeeper volumes.
+Opt-in platform components, off by default: the graph explorer
+(Neo4j).
 
 ### spec.components.graph
 
@@ -1006,9 +918,9 @@ StorageClass override for the graph volume.
 `KubernetesPlantonPlatformPrerequisites`
 
 Cluster-shared sub-operators the platform rides (CloudNativePG,
-Tekton Pipelines, the Solr operator). "auto" (the default) installs
-each one only when no installation exists on the cluster; "skip"
-declares that something else manages it.
+Tekton Pipelines). "auto" (the default) installs each one only when
+no installation exists on the cluster; "skip" declares that something
+else manages it.
 
 ### spec.prerequisites.postgresOperator
 
@@ -1017,16 +929,6 @@ declares that something else manages it.
 CloudNativePG: "auto" installs it only when absent; "skip" declares
 it externally managed (a helm/GitOps CloudNativePG is respected
 automatically either way).
-
-- default: `auto`
-- rule: {"string":{"in":["","auto","skip"]}}
-
-### spec.prerequisites.solrOperator
-
-`string` · optional (explicit presence)
-
-The Solr operator (only relevant when components.search.mode is
-"operator").
 
 - default: `auto`
 - rule: {"string":{"in":["","auto","skip"]}}

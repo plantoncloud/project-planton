@@ -97,8 +97,8 @@ type KubernetesPlantonPlatformSpec struct {
 	License *KubernetesPlantonPlatformLicense `protobuf:"bytes,4,opt,name=license,proto3" json:"license,omitempty"`
 	// *
 	// Platform-wide storage defaults: every persistent volume the platform
-	// creates (databases, cache, workflow engine, search, secrets manager,
-	// runner state) uses these unless its component overrides them.
+	// creates (databases, cache, workflow engine, secrets manager, runner
+	// state) uses these unless its component overrides them.
 	// Unset means the cluster's default StorageClass and each component's
 	// built-in size.
 	Storage *KubernetesPlantonPlatformStorage `protobuf:"bytes,5,opt,name=storage,proto3" json:"storage,omitempty"`
@@ -154,14 +154,14 @@ type KubernetesPlantonPlatformSpec struct {
 	// instead).
 	Vault *KubernetesPlantonPlatformVault `protobuf:"bytes,13,opt,name=vault,proto3" json:"vault,omitempty"`
 	// *
-	// Opt-in platform components, all off by default: search (Solr) and
-	// the graph explorer (Neo4j).
+	// Opt-in platform components, off by default: the graph explorer
+	// (Neo4j).
 	Components *KubernetesPlantonPlatformComponents `protobuf:"bytes,14,opt,name=components,proto3" json:"components,omitempty"`
 	// *
 	// Cluster-shared sub-operators the platform rides (CloudNativePG,
-	// Tekton Pipelines, the Solr operator). "auto" (the default) installs
-	// each one only when no installation exists on the cluster; "skip"
-	// declares that something else manages it.
+	// Tekton Pipelines). "auto" (the default) installs each one only when
+	// no installation exists on the cluster; "skip" declares that something
+	// else manages it.
 	Prerequisites *KubernetesPlantonPlatformPrerequisites `protobuf:"bytes,15,opt,name=prerequisites,proto3" json:"prerequisites,omitempty"`
 	// *
 	// The platform's control-plane deployment (the API monolith). Sizing,
@@ -2230,9 +2230,6 @@ func (x *KubernetesPlantonPlatformVault) GetStorageClassName() string {
 type KubernetesPlantonPlatformComponents struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// *
-	// Search (Solr).
-	Search *KubernetesPlantonPlatformSearch `protobuf:"bytes,2,opt,name=search,proto3" json:"search,omitempty"`
-	// *
 	// The graph explorer (Neo4j).
 	Graph         *KubernetesPlantonPlatformGraph `protobuf:"bytes,3,opt,name=graph,proto3" json:"graph,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2269,178 +2266,11 @@ func (*KubernetesPlantonPlatformComponents) Descriptor() ([]byte, []int) {
 	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{27}
 }
 
-func (x *KubernetesPlantonPlatformComponents) GetSearch() *KubernetesPlantonPlatformSearch {
-	if x != nil {
-		return x.Search
-	}
-	return nil
-}
-
 func (x *KubernetesPlantonPlatformComponents) GetGraph() *KubernetesPlantonPlatformGraph {
 	if x != nil {
 		return x.Graph
 	}
 	return nil
-}
-
-// *
-// Search (Solr).
-type KubernetesPlantonPlatformSearch struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// *
-	// Enable search.
-	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// *
-	// Deployment mode: "standalone" (a single Solr with its ZooKeeper) or
-	// "operator" (SolrCloud via the Solr operator — see
-	// prerequisites.solr_operator).
-	Mode *string `protobuf:"bytes,2,opt,name=mode,proto3,oneof" json:"mode,omitempty"`
-	// *
-	// Volume size (e.g. "10Gi"). Falls back to spec.storage.size, then the
-	// platform default.
-	StorageSize string `protobuf:"bytes,3,opt,name=storage_size,json=storageSize,proto3" json:"storage_size,omitempty"`
-	// *
-	// StorageClass override for the search volumes.
-	StorageClassName string `protobuf:"bytes,4,opt,name=storage_class_name,json=storageClassName,proto3" json:"storage_class_name,omitempty"`
-	// *
-	// ZooKeeper for standalone-mode Solr.
-	Zookeeper     *KubernetesPlantonPlatformZookeeper `protobuf:"bytes,5,opt,name=zookeeper,proto3" json:"zookeeper,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *KubernetesPlantonPlatformSearch) Reset() {
-	*x = KubernetesPlantonPlatformSearch{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[28]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KubernetesPlantonPlatformSearch) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KubernetesPlantonPlatformSearch) ProtoMessage() {}
-
-func (x *KubernetesPlantonPlatformSearch) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[28]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KubernetesPlantonPlatformSearch.ProtoReflect.Descriptor instead.
-func (*KubernetesPlantonPlatformSearch) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{28}
-}
-
-func (x *KubernetesPlantonPlatformSearch) GetEnabled() bool {
-	if x != nil {
-		return x.Enabled
-	}
-	return false
-}
-
-func (x *KubernetesPlantonPlatformSearch) GetMode() string {
-	if x != nil && x.Mode != nil {
-		return *x.Mode
-	}
-	return ""
-}
-
-func (x *KubernetesPlantonPlatformSearch) GetStorageSize() string {
-	if x != nil {
-		return x.StorageSize
-	}
-	return ""
-}
-
-func (x *KubernetesPlantonPlatformSearch) GetStorageClassName() string {
-	if x != nil {
-		return x.StorageClassName
-	}
-	return ""
-}
-
-func (x *KubernetesPlantonPlatformSearch) GetZookeeper() *KubernetesPlantonPlatformZookeeper {
-	if x != nil {
-		return x.Zookeeper
-	}
-	return nil
-}
-
-// *
-// ZooKeeper (standalone-mode search only).
-type KubernetesPlantonPlatformZookeeper struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// *
-	// ZooKeeper replicas.
-	Replicas *int32 `protobuf:"varint,1,opt,name=replicas,proto3,oneof" json:"replicas,omitempty"`
-	// *
-	// Volume size (e.g. "5Gi"). Falls back to spec.storage.size, then the
-	// platform default.
-	StorageSize string `protobuf:"bytes,2,opt,name=storage_size,json=storageSize,proto3" json:"storage_size,omitempty"`
-	// *
-	// StorageClass override for the ZooKeeper volumes.
-	StorageClassName string `protobuf:"bytes,3,opt,name=storage_class_name,json=storageClassName,proto3" json:"storage_class_name,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *KubernetesPlantonPlatformZookeeper) Reset() {
-	*x = KubernetesPlantonPlatformZookeeper{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[29]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *KubernetesPlantonPlatformZookeeper) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*KubernetesPlantonPlatformZookeeper) ProtoMessage() {}
-
-func (x *KubernetesPlantonPlatformZookeeper) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[29]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use KubernetesPlantonPlatformZookeeper.ProtoReflect.Descriptor instead.
-func (*KubernetesPlantonPlatformZookeeper) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{29}
-}
-
-func (x *KubernetesPlantonPlatformZookeeper) GetReplicas() int32 {
-	if x != nil && x.Replicas != nil {
-		return *x.Replicas
-	}
-	return 0
-}
-
-func (x *KubernetesPlantonPlatformZookeeper) GetStorageSize() string {
-	if x != nil {
-		return x.StorageSize
-	}
-	return ""
-}
-
-func (x *KubernetesPlantonPlatformZookeeper) GetStorageClassName() string {
-	if x != nil {
-		return x.StorageClassName
-	}
-	return ""
 }
 
 // *
@@ -2463,7 +2293,7 @@ type KubernetesPlantonPlatformGraph struct {
 
 func (x *KubernetesPlantonPlatformGraph) Reset() {
 	*x = KubernetesPlantonPlatformGraph{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[30]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2475,7 +2305,7 @@ func (x *KubernetesPlantonPlatformGraph) String() string {
 func (*KubernetesPlantonPlatformGraph) ProtoMessage() {}
 
 func (x *KubernetesPlantonPlatformGraph) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[30]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2488,7 +2318,7 @@ func (x *KubernetesPlantonPlatformGraph) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPlantonPlatformGraph.ProtoReflect.Descriptor instead.
 func (*KubernetesPlantonPlatformGraph) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{30}
+	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *KubernetesPlantonPlatformGraph) GetEnabled() bool {
@@ -2522,10 +2352,6 @@ type KubernetesPlantonPlatformPrerequisites struct {
 	// automatically either way).
 	PostgresOperator *string `protobuf:"bytes,1,opt,name=postgres_operator,json=postgresOperator,proto3,oneof" json:"postgres_operator,omitempty"`
 	// *
-	// The Solr operator (only relevant when components.search.mode is
-	// "operator").
-	SolrOperator *string `protobuf:"bytes,2,opt,name=solr_operator,json=solrOperator,proto3,oneof" json:"solr_operator,omitempty"`
-	// *
 	// Tekton Pipelines (build pipelines). The build-events sink is wired
 	// even on "skip".
 	TektonPipelines *string `protobuf:"bytes,3,opt,name=tekton_pipelines,json=tektonPipelines,proto3,oneof" json:"tekton_pipelines,omitempty"`
@@ -2535,7 +2361,7 @@ type KubernetesPlantonPlatformPrerequisites struct {
 
 func (x *KubernetesPlantonPlatformPrerequisites) Reset() {
 	*x = KubernetesPlantonPlatformPrerequisites{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[31]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2547,7 +2373,7 @@ func (x *KubernetesPlantonPlatformPrerequisites) String() string {
 func (*KubernetesPlantonPlatformPrerequisites) ProtoMessage() {}
 
 func (x *KubernetesPlantonPlatformPrerequisites) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[31]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2560,19 +2386,12 @@ func (x *KubernetesPlantonPlatformPrerequisites) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use KubernetesPlantonPlatformPrerequisites.ProtoReflect.Descriptor instead.
 func (*KubernetesPlantonPlatformPrerequisites) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{31}
+	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *KubernetesPlantonPlatformPrerequisites) GetPostgresOperator() string {
 	if x != nil && x.PostgresOperator != nil {
 		return *x.PostgresOperator
-	}
-	return ""
-}
-
-func (x *KubernetesPlantonPlatformPrerequisites) GetSolrOperator() string {
-	if x != nil && x.SolrOperator != nil {
-		return *x.SolrOperator
 	}
 	return ""
 }
@@ -2611,7 +2430,7 @@ type KubernetesPlantonPlatformControlPlane struct {
 
 func (x *KubernetesPlantonPlatformControlPlane) Reset() {
 	*x = KubernetesPlantonPlatformControlPlane{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[32]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2623,7 +2442,7 @@ func (x *KubernetesPlantonPlatformControlPlane) String() string {
 func (*KubernetesPlantonPlatformControlPlane) ProtoMessage() {}
 
 func (x *KubernetesPlantonPlatformControlPlane) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[32]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2636,7 +2455,7 @@ func (x *KubernetesPlantonPlatformControlPlane) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use KubernetesPlantonPlatformControlPlane.ProtoReflect.Descriptor instead.
 func (*KubernetesPlantonPlatformControlPlane) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{32}
+	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *KubernetesPlantonPlatformControlPlane) GetImage() *KubernetesPlantonPlatformImage {
@@ -2687,7 +2506,7 @@ type KubernetesPlantonPlatformConsole struct {
 
 func (x *KubernetesPlantonPlatformConsole) Reset() {
 	*x = KubernetesPlantonPlatformConsole{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[33]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2699,7 +2518,7 @@ func (x *KubernetesPlantonPlatformConsole) String() string {
 func (*KubernetesPlantonPlatformConsole) ProtoMessage() {}
 
 func (x *KubernetesPlantonPlatformConsole) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[33]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2712,7 +2531,7 @@ func (x *KubernetesPlantonPlatformConsole) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPlantonPlatformConsole.ProtoReflect.Descriptor instead.
 func (*KubernetesPlantonPlatformConsole) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{33}
+	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *KubernetesPlantonPlatformConsole) GetImage() *KubernetesPlantonPlatformImage {
@@ -2753,7 +2572,7 @@ type KubernetesPlantonPlatformImage struct {
 
 func (x *KubernetesPlantonPlatformImage) Reset() {
 	*x = KubernetesPlantonPlatformImage{}
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[34]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2765,7 +2584,7 @@ func (x *KubernetesPlantonPlatformImage) String() string {
 func (*KubernetesPlantonPlatformImage) ProtoMessage() {}
 
 func (x *KubernetesPlantonPlatformImage) ProtoReflect() protoreflect.Message {
-	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[34]
+	mi := &file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2778,7 +2597,7 @@ func (x *KubernetesPlantonPlatformImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPlantonPlatformImage.ProtoReflect.Descriptor instead.
 func (*KubernetesPlantonPlatformImage) Descriptor() ([]byte, []int) {
-	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{34}
+	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *KubernetesPlantonPlatformImage) GetRepository() string {
@@ -2970,37 +2789,18 @@ const file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawD
 	"\n" +
 	"\b_enabledB\f\n" +
 	"\n" +
-	"_init_mode\"\x8a\x02\n" +
-	"#KubernetesPlantonPlatformComponents\x12r\n" +
-	"\x06search\x18\x02 \x01(\v2Z.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSearchR\x06search\x12o\n" +
-	"\x05graph\x18\x03 \x01(\v2Y.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGraphR\x05graph\"\x83\x04\n" +
-	"\x1fKubernetesPlantonPlatformSearch\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\x12D\n" +
-	"\x04mode\x18\x02 \x01(\tB+\xbaH\x1ar\x18R\x00R\n" +
-	"standaloneR\boperator\x8a\xa6\x1d\n" +
-	"standaloneH\x00R\x04mode\x88\x01\x01\x12\xcb\x01\n" +
-	"\fstorage_size\x18\x03 \x01(\tB\xa7\x01\xbaH\xa3\x01\xba\x01\x9c\x01\n" +
-	"\x1csearch.storage_size_quantity\x126storage_size must be a Kubernetes quantity like \"10Gi\"\x1aDthis.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')\xd8\x01\x01R\vstorageSize\x12,\n" +
-	"\x12storage_class_name\x18\x04 \x01(\tR\x10storageClassName\x12{\n" +
-	"\tzookeeper\x18\x05 \x01(\v2].dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformZookeeperR\tzookeeperB\a\n" +
-	"\x05_mode\"\xde\x02\n" +
-	"\"KubernetesPlantonPlatformZookeeper\x12-\n" +
-	"\breplicas\x18\x01 \x01(\x05B\f\xbaH\x04\x1a\x02(\x01\x8a\xa6\x1d\x011H\x00R\breplicas\x88\x01\x01\x12\xcd\x01\n" +
-	"\fstorage_size\x18\x02 \x01(\tB\xa9\x01\xbaH\xa5\x01\xba\x01\x9e\x01\n" +
-	"\x1fzookeeper.storage_size_quantity\x125storage_size must be a Kubernetes quantity like \"5Gi\"\x1aDthis.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')\xd8\x01\x01R\vstorageSize\x12,\n" +
-	"\x12storage_class_name\x18\x03 \x01(\tR\x10storageClassNameB\v\n" +
-	"\t_replicas\"\xb5\x02\n" +
+	"_init_mode\"\x96\x01\n" +
+	"#KubernetesPlantonPlatformComponents\x12o\n" +
+	"\x05graph\x18\x03 \x01(\v2Y.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGraphR\x05graph\"\xb5\x02\n" +
 	"\x1eKubernetesPlantonPlatformGraph\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\xca\x01\n" +
 	"\fstorage_size\x18\x02 \x01(\tB\xa6\x01\xbaH\xa2\x01\xba\x01\x9b\x01\n" +
 	"\x1bgraph.storage_size_quantity\x126storage_size must be a Kubernetes quantity like \"10Gi\"\x1aDthis.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')\xd8\x01\x01R\vstorageSize\x12,\n" +
-	"\x12storage_class_name\x18\x03 \x01(\tR\x10storageClassName\"\xc8\x02\n" +
+	"\x12storage_class_name\x18\x03 \x01(\tR\x10storageClassName\"\xef\x01\n" +
 	"&KubernetesPlantonPlatformPrerequisites\x12M\n" +
-	"\x11postgres_operator\x18\x01 \x01(\tB\x1b\xbaH\x10r\x0eR\x00R\x04autoR\x04skip\x8a\xa6\x1d\x04autoH\x00R\x10postgresOperator\x88\x01\x01\x12E\n" +
-	"\rsolr_operator\x18\x02 \x01(\tB\x1b\xbaH\x10r\x0eR\x00R\x04autoR\x04skip\x8a\xa6\x1d\x04autoH\x01R\fsolrOperator\x88\x01\x01\x12K\n" +
-	"\x10tekton_pipelines\x18\x03 \x01(\tB\x1b\xbaH\x10r\x0eR\x00R\x04autoR\x04skip\x8a\xa6\x1d\x04autoH\x02R\x0ftektonPipelines\x88\x01\x01B\x14\n" +
-	"\x12_postgres_operatorB\x10\n" +
-	"\x0e_solr_operatorB\x13\n" +
+	"\x11postgres_operator\x18\x01 \x01(\tB\x1b\xbaH\x10r\x0eR\x00R\x04autoR\x04skip\x8a\xa6\x1d\x04autoH\x00R\x10postgresOperator\x88\x01\x01\x12K\n" +
+	"\x10tekton_pipelines\x18\x03 \x01(\tB\x1b\xbaH\x10r\x0eR\x00R\x04autoR\x04skip\x8a\xa6\x1d\x04autoH\x01R\x0ftektonPipelines\x88\x01\x01B\x14\n" +
+	"\x12_postgres_operatorB\x13\n" +
 	"\x11_tekton_pipelines\"\xa3\x04\n" +
 	"%KubernetesPlantonPlatformControlPlane\x12o\n" +
 	"\x05image\x18\x01 \x01(\v2Y.dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImageR\x05image\x12-\n" +
@@ -3035,7 +2835,7 @@ func file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDe
 	return file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDescData
 }
 
-var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_goTypes = []any{
 	(*KubernetesPlantonPlatformSpec)(nil),              // 0: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec
 	(*KubernetesPlantonPlatformEmail)(nil),             // 1: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformEmail
@@ -3065,20 +2865,18 @@ var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_goType
 	(*KubernetesPlantonPlatformBuild)(nil),             // 25: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBuild
 	(*KubernetesPlantonPlatformVault)(nil),             // 26: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformVault
 	(*KubernetesPlantonPlatformComponents)(nil),        // 27: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformComponents
-	(*KubernetesPlantonPlatformSearch)(nil),            // 28: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSearch
-	(*KubernetesPlantonPlatformZookeeper)(nil),         // 29: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformZookeeper
-	(*KubernetesPlantonPlatformGraph)(nil),             // 30: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGraph
-	(*KubernetesPlantonPlatformPrerequisites)(nil),     // 31: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformPrerequisites
-	(*KubernetesPlantonPlatformControlPlane)(nil),      // 32: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane
-	(*KubernetesPlantonPlatformConsole)(nil),           // 33: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformConsole
-	(*KubernetesPlantonPlatformImage)(nil),             // 34: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImage
-	nil,                                                // 35: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.AnnotationsEntry
-	nil,                                                // 36: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRunner.ServiceAccountAnnotationsEntry
-	nil,                                                // 37: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.ServiceAccountAnnotationsEntry
-	(*v1.StringValueOrRef)(nil),                        // 38: dev.planton.shared.foreignkey.v1.StringValueOrRef
+	(*KubernetesPlantonPlatformGraph)(nil),             // 28: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGraph
+	(*KubernetesPlantonPlatformPrerequisites)(nil),     // 29: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformPrerequisites
+	(*KubernetesPlantonPlatformControlPlane)(nil),      // 30: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane
+	(*KubernetesPlantonPlatformConsole)(nil),           // 31: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformConsole
+	(*KubernetesPlantonPlatformImage)(nil),             // 32: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImage
+	nil,                                                // 33: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.AnnotationsEntry
+	nil,                                                // 34: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRunner.ServiceAccountAnnotationsEntry
+	nil,                                                // 35: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.ServiceAccountAnnotationsEntry
+	(*v1.StringValueOrRef)(nil),                        // 36: dev.planton.shared.foreignkey.v1.StringValueOrRef
 }
 var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_depIdxs = []int32{
-	38, // 0: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	36, // 0: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
 	7,  // 1: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.license:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformLicense
 	9,  // 2: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.storage:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformStorage
 	10, // 3: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.database:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformDatabase
@@ -3090,9 +2888,9 @@ var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_depIdx
 	25, // 9: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.build:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBuild
 	26, // 10: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.vault:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformVault
 	27, // 11: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.components:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformComponents
-	31, // 12: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.prerequisites:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformPrerequisites
-	32, // 13: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.control_plane:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane
-	33, // 14: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.console:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformConsole
+	29, // 12: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.prerequisites:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformPrerequisites
+	30, // 13: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.control_plane:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane
+	31, // 14: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.console:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformConsole
 	6,  // 15: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.remote_runners:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRemoteRunners
 	1,  // 16: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSpec.email:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformEmail
 	2,  // 17: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformEmail.from:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformEmailFrom
@@ -3105,28 +2903,26 @@ var file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_depIdx
 	8,  // 24: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformLicense.secret_key_ref:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSecretKeyRef
 	11, // 25: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformDatabase.postgresql:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformPostgresql
 	12, // 26: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformDatabase.redis:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRedis
-	35, // 27: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.annotations:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.AnnotationsEntry
+	33, // 27: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.annotations:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.AnnotationsEntry
 	15, // 28: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.tls:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngressTls
 	14, // 29: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngress.gateway_ref:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGatewayRef
-	38, // 30: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGatewayRef.name:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
-	38, // 31: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGatewayRef.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	36, // 30: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGatewayRef.name:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
+	36, // 31: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGatewayRef.namespace:type_name -> dev.planton.shared.foreignkey.v1.StringValueOrRef
 	16, // 32: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformIngressTls.issuer:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformCertManagerIssuer
 	20, // 33: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBootstrap.organization:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBootstrapOrg
 	21, // 34: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBootstrap.environment:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBootstrapEnv
 	22, // 35: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformBootstrap.secret_backend:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSecretBackend
 	23, // 36: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSecretBackend.aws_secrets_manager:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformAwsSecretsManager
-	36, // 37: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRunner.service_account_annotations:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRunner.ServiceAccountAnnotationsEntry
-	28, // 38: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformComponents.search:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSearch
-	30, // 39: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformComponents.graph:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGraph
-	29, // 40: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformSearch.zookeeper:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformZookeeper
-	34, // 41: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.image:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImage
-	37, // 42: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.service_account_annotations:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.ServiceAccountAnnotationsEntry
-	34, // 43: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformConsole.image:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImage
-	44, // [44:44] is the sub-list for method output_type
-	44, // [44:44] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	34, // 37: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRunner.service_account_annotations:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformRunner.ServiceAccountAnnotationsEntry
+	28, // 38: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformComponents.graph:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformGraph
+	32, // 39: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.image:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImage
+	35, // 40: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.service_account_annotations:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformControlPlane.ServiceAccountAnnotationsEntry
+	32, // 41: dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformConsole.image:type_name -> dev.planton.kubernetes.kubernetesplantonplatform.v1alpha1.KubernetesPlantonPlatformImage
+	42, // [42:42] is the sub-list for method output_type
+	42, // [42:42] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_init() }
@@ -3148,18 +2944,16 @@ func file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_init(
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[24].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[25].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[26].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[28].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[29].OneofWrappers = []any{}
+	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[30].OneofWrappers = []any{}
 	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[31].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[32].OneofWrappers = []any{}
-	file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_msgTypes[33].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDesc), len(file_catalog_kubernetes_kubernetesplantonplatform_v1alpha1_spec_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   38,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

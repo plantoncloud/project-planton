@@ -145,17 +145,6 @@ variable "spec" {
       storage_class_name = optional(string, "")
     }))
     components = optional(object({
-      search = optional(object({
-        enabled            = optional(bool, false)
-        mode               = optional(string)
-        storage_size       = optional(string, "")
-        storage_class_name = optional(string, "")
-        zookeeper = optional(object({
-          replicas           = optional(number)
-          storage_size       = optional(string, "")
-          storage_class_name = optional(string, "")
-        }))
-      }))
       graph = optional(object({
         enabled            = optional(bool, false)
         storage_size       = optional(string, "")
@@ -164,7 +153,6 @@ variable "spec" {
     }))
     prerequisites = optional(object({
       postgres_operator = optional(string)
-      solr_operator     = optional(string)
       tekton_pipelines  = optional(string)
     }))
     control_plane = optional(object({

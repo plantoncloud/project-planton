@@ -90,7 +90,7 @@ These are the most important decisions when configuring a Planton Platform. Expl
 
 **Storage is one dial with per-component overrides** — `storage.storageClassName` and `storage.size` govern every platform volume unless a component overrides them; one `size` value lifts every volume above a backend's minimum-size floor. On EKS, `storage.storageClassName: gp3` moves the whole platform off the legacy gp2 class in one line.
 
-**Cluster-shared sub-operators are shared on purpose** — `prerequisites` defaults every sub-operator (CloudNativePG, Tekton Pipelines, the Solr operator) to `auto`: installed only when absent, respected when something else manages them, and deliberately left behind on destroy because sibling platforms may ride them.
+**Cluster-shared sub-operators are shared on purpose** — `prerequisites` defaults every sub-operator (CloudNativePG, Tekton Pipelines) to `auto`: installed only when absent, respected when something else manages them, and deliberately left behind on destroy because sibling platforms may ride them.
 
 **Destroy takes the databases with it** — deleting the resource tears the whole platform down; every operator-created object is owner-referenced to the declaration, so garbage collection completes the teardown even when the operator is already gone, and the database layer removes its volumes and credentials together. Build caches and workflow volumes can survive in the namespace; when this resource owned the namespace (`createNamespace: true`), its deletion sweeps them.
 

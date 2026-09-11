@@ -351,39 +351,6 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 	// ---- components ------------------------------------------------------------
 	if c := spec.GetComponents(); c != nil {
 		components := map[string]interface{}{}
-		if s := c.GetSearch(); s != nil {
-			search := map[string]interface{}{}
-			if s.GetEnabled() {
-				search["enabled"] = true
-			}
-			if s.Mode != nil && s.GetMode() != "" {
-				search["mode"] = s.GetMode()
-			}
-			if s.GetStorageSize() != "" {
-				search["storageSize"] = s.GetStorageSize()
-			}
-			if s.GetStorageClassName() != "" {
-				search["storageClassName"] = s.GetStorageClassName()
-			}
-			if z := s.GetZookeeper(); z != nil {
-				zookeeper := map[string]interface{}{}
-				if z.Replicas != nil {
-					zookeeper["replicas"] = int(z.GetReplicas())
-				}
-				if z.GetStorageSize() != "" {
-					zookeeper["storageSize"] = z.GetStorageSize()
-				}
-				if z.GetStorageClassName() != "" {
-					zookeeper["storageClassName"] = z.GetStorageClassName()
-				}
-				if len(zookeeper) > 0 {
-					search["zookeeper"] = zookeeper
-				}
-			}
-			if len(search) > 0 {
-				components["search"] = search
-			}
-		}
 		if g := c.GetGraph(); g != nil {
 			graph := map[string]interface{}{}
 			if g.GetEnabled() {
@@ -409,9 +376,6 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 		prerequisites := map[string]interface{}{}
 		if p.PostgresOperator != nil && p.GetPostgresOperator() != "" {
 			prerequisites["postgresOperator"] = p.GetPostgresOperator()
-		}
-		if p.SolrOperator != nil && p.GetSolrOperator() != "" {
-			prerequisites["solrOperator"] = p.GetSolrOperator()
 		}
 		if p.TektonPipelines != nil && p.GetTektonPipelines() != "" {
 			prerequisites["tektonPipelines"] = p.GetTektonPipelines()
