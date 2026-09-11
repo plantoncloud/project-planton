@@ -278,7 +278,6 @@ locals {
   }
   components_body = {
     for k, v in {
-      authorization = try(var.spec.components.authorization.enabled, false) ? { enabled = true } : null
       search        = length(local.components_search) > 0 ? local.components_search : null
       graph         = length(local.components_graph) > 0 ? local.components_graph : null
     } : k => v if v != null

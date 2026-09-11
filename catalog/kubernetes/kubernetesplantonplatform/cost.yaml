@@ -16,7 +16,7 @@ spec:
       impact: Each PostgreSQL instance is a full copy — compute AND a volume of storage_size. 2+ buys automatic failover at roughly double the database footprint.
     - field_path: components
       sku_meter: cluster CPU, memory, and volume capacity
-      impact: The opt-in drawer (authorization/OpenFGA, search/Solr with ZooKeeper, graph/Neo4j) — each enabled component adds its own workloads and volumes; search is the heaviest.
+      impact: The opt-in drawer (search/Solr with ZooKeeper, graph/Neo4j) — each enabled component adds its own workloads and volumes; search is the heaviest.
     - field_path: control_plane.replicas
       sku_meter: cluster CPU and memory reservations
       impact: Control-plane copies. The single-replica default fits most installs; replicas add availability, not required capacity.

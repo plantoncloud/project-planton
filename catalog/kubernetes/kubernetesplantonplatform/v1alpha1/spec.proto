@@ -166,9 +166,8 @@ message KubernetesPlantonPlatformSpec {
   KubernetesPlantonPlatformVault vault = 13;
 
   /**
-   * Opt-in platform components, all off by default: fine-grained
-   * authorization (OpenFGA), search (Solr), and the graph explorer
-   * (Neo4j).
+   * Opt-in platform components, all off by default: search (Solr) and
+   * the graph explorer (Neo4j).
    */
   KubernetesPlantonPlatformComponents components = 14;
 
@@ -1054,12 +1053,6 @@ message KubernetesPlantonPlatformVault {
  */
 message KubernetesPlantonPlatformComponents {
   /**
-   * Fine-grained authorization (OpenFGA). Off = the platform's
-   * allow-authenticated authorization arm.
-   */
-  KubernetesPlantonPlatformToggle authorization = 1;
-
-  /**
    * Search (Solr).
    */
   KubernetesPlantonPlatformSearch search = 2;
@@ -1068,16 +1061,6 @@ message KubernetesPlantonPlatformComponents {
    * The graph explorer (Neo4j).
    */
   KubernetesPlantonPlatformGraph graph = 3;
-}
-
-/**
- * A plain component toggle.
- */
-message KubernetesPlantonPlatformToggle {
-  /**
-   * Enable the component.
-   */
-  bool enabled = 1;
 }
 
 /**

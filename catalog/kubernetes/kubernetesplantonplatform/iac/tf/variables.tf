@@ -145,9 +145,6 @@ variable "spec" {
       storage_class_name = optional(string, "")
     }))
     components = optional(object({
-      authorization = optional(object({
-        enabled = optional(bool, false)
-      }))
       search = optional(object({
         enabled            = optional(bool, false)
         mode               = optional(string)

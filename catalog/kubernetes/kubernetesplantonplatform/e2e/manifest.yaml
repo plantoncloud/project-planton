@@ -82,8 +82,6 @@ spec:
     init_mode: auto
     storage_size: 2Gi
   components:
-    authorization:
-      enabled: true
     search:
       enabled: true
       mode: standalone

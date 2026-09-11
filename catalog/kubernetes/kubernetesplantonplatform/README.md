@@ -65,7 +65,7 @@ resource's outputs.
 | `email` | no | no email | Outbound email through your own provider — `smtp` (any relay; `security` `starttls`/`tls`/`none`; a basic-auth Secret, OAuth2, or no credential; an optional private-CA bundle) XOR `resend`; `from.address` is the sending identity both the control plane and the identity server use; credentials are Secret names and references, never values. Absent, invitations are shared as links and the sign-in page has no "Forgot password?" |
 | `bootstrap` | no | sane seeds | First org/env, extra admins, IaC provisioner (`tofu`/`terraform`), secret backend (`platform`/`awsSecretsManager`) |
 | `runner`, `build`, `vault` | no | ON | The default-on arms; explicit `enabled: false` is the deliberate opt-out |
-| `components` | no | off | Opt-ins: authorization (OpenFGA), search (Solr), graph (Neo4j) |
+| `components` | no | off | Opt-ins: search (Solr), graph (Neo4j) |
 | `control_plane`, `console` | no | — | Sizing, image mirrors, extra env via Secret, the platform's own cloud identity |
 
 ## Example

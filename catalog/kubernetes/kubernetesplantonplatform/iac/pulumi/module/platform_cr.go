@@ -351,11 +351,6 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 	// ---- components ------------------------------------------------------------
 	if c := spec.GetComponents(); c != nil {
 		components := map[string]interface{}{}
-		if a := c.GetAuthorization(); a != nil && a.GetEnabled() {
-			components["authorization"] = map[string]interface{}{
-				"enabled": true,
-			}
-		}
 		if s := c.GetSearch(); s != nil {
 			search := map[string]interface{}{}
 			if s.GetEnabled() {

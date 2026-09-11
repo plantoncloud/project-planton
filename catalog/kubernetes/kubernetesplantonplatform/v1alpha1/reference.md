@@ -142,8 +142,6 @@ spec:
     init_mode: auto
     storage_size: 2Gi
   components:
-    authorization:
-      enabled: true
     search:
       enabled: true
       mode: standalone
@@ -235,8 +233,6 @@ spec:
 | `spec.vault.storageSize` | `string` |  |  |  |
 | `spec.vault.storageClassName` | `string` |  |  |  |
 | `spec.components` | `KubernetesPlantonPlatformComponents` |  |  |  |
-| `spec.components.authorization` | `KubernetesPlantonPlatformToggle` |  |  |  |
-| `spec.components.authorization.enabled` | `bool` |  |  |  |
 | `spec.components.search` | `KubernetesPlantonPlatformSearch` |  |  |  |
 | `spec.components.search.enabled` | `bool` |  |  |  |
 | `spec.components.search.mode` | `string` |  | `standalone` |  |
@@ -904,22 +900,8 @@ StorageClass override for the secrets-manager volume.
 
 `KubernetesPlantonPlatformComponents`
 
-Opt-in platform components, all off by default: fine-grained
-authorization (OpenFGA), search (Solr), and the graph explorer
-(Neo4j).
-
-### spec.components.authorization
-
-`KubernetesPlantonPlatformToggle`
-
-Fine-grained authorization (OpenFGA). Off = the platform's
-allow-authenticated authorization arm.
-
-### spec.components.authorization.enabled
-
-`bool`
-
-Enable the component.
+Opt-in platform components, all off by default: search (Solr) and
+the graph explorer (Neo4j).
 
 ### spec.components.search
 
