@@ -168,7 +168,6 @@ contained dev.planton.azure.azurecosmosdbsqlcontainer.v1alpha1.AzureCosmosdbSqlC
 contained dev.planton.azure.azurecosmosdbsqldatabase.v1alpha1.AzureCosmosdbSqlDatabaseSpec.cosmosdb_account_id -> AzureCosmosdbAccount
 contained dev.planton.azure.azurecosmosdbsqlroleassignment.v1alpha1.AzureCosmosdbSqlRoleAssignmentSpec.cosmosdb_account_id -> AzureCosmosdbAccount
 contained dev.planton.azure.azurecosmosdbsqlroleassignment.v1alpha1.AzureCosmosdbSqlRoleAssignmentSpec.scope -> AzureCosmosdbAccount
-contained dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1.AzureCosmosdbSqlRoleDefinitionSpec.assignable_scopes -> AzureCosmosdbAccount
 contained dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1.AzureCosmosdbSqlRoleDefinitionSpec.cosmosdb_account_id -> AzureCosmosdbAccount
 contained dev.planton.azure.azuredatafactory.v1alpha1.AzureDataFactorySpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuredatafactoryintegrationruntime.v1alpha1.AzureDataFactoryIntegrationRuntimeSsisExpressVnetIntegration.subnet_id -> AzureSubnet
@@ -263,7 +262,6 @@ contained dev.planton.azure.azuremonitormetricalert.v1alpha1.AzureMonitorMetricA
 contained dev.planton.azure.azuremonitorscheduledqueryalert.v1alpha1.AzureMonitorScheduledQueryAlertSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuremssqldatabase.v1alpha1.AzureMssqlDatabaseSpec.server_id -> AzureMssqlServer
 contained dev.planton.azure.azuremssqlelasticpool.v1alpha1.AzureMssqlElasticPoolSpec.server_id -> AzureMssqlServer
-contained dev.planton.azure.azuremssqlfailovergroup.v1alpha1.AzureMssqlFailoverGroupPartnerServer.server_id -> AzureMssqlServer
 contained dev.planton.azure.azuremssqlfailovergroup.v1alpha1.AzureMssqlFailoverGroupSpec.server_id -> AzureMssqlServer
 contained dev.planton.azure.azuremssqlserver.v1alpha1.AzureMssqlServerSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuremysqlflexibleserver.v1alpha1.AzureMysqlFlexibleServerSpec.delegated_subnet_id -> AzureSubnet
@@ -688,6 +686,7 @@ exempt    dev.planton.azure.azureakscluster.v1alpha1.AzureAksClusterWebAppRoutin
 exempt    dev.planton.azure.azurecontainerappenvironmentstorage.v1alpha1.AzureContainerAppEnvironmentStorageSpec.access_key -> AzureStorageAccount
 exempt    dev.planton.azure.azurecontainerappenvironmentstorage.v1alpha1.AzureContainerAppEnvironmentStorageSpec.account_name -> AzureStorageAccount
 exempt    dev.planton.azure.azurecosmosdbaccount.v1alpha1.AzureCosmosdbAccountVirtualNetworkRule.subnet_id -> AzureSubnet
+exempt    dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1.AzureCosmosdbSqlRoleDefinitionSpec.assignable_scopes -> AzureCosmosdbAccount
 exempt    dev.planton.azure.azureeventhub.v1alpha1.AzureEventHubCaptureDestination.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventhubdisasterrecoveryconfig.v1alpha1.AzureEventHubDisasterRecoveryConfigSpec.partner_namespace_id -> AzureEventHubNamespace
 exempt    dev.planton.azure.azureeventhubnamespace.v1alpha1.AzureEventHubNamespaceVirtualNetworkRule.subnet_id -> AzureSubnet
@@ -714,6 +713,7 @@ exempt    dev.planton.azure.azuremonitoractiongroup.v1alpha1.AzureMonitorActionG
 exempt    dev.planton.azure.azuremonitoractivitylogalert.v1alpha1.AzureMonitorActivityLogAlertSpec.scopes -> AzureResourceGroup
 exempt    dev.planton.azure.azuremonitordiagnosticsetting.v1alpha1.AzureMonitorDiagnosticSettingSpec.eventhub_name -> AzureEventHub
 exempt    dev.planton.azure.azuremonitordiagnosticsetting.v1alpha1.AzureMonitorDiagnosticSettingSpec.storage_account_id -> AzureStorageAccount
+exempt    dev.planton.azure.azuremssqlfailovergroup.v1alpha1.AzureMssqlFailoverGroupPartnerServer.server_id -> AzureMssqlServer
 exempt    dev.planton.azure.azuremssqlserver.v1alpha1.AzureMssqlServerVirtualNetworkRule.subnet_id -> AzureSubnet
 exempt    dev.planton.azure.azuremysqlflexibleserver.v1alpha1.AzureMysqlFlexibleServerSpec.private_dns_zone_id -> AzurePrivateDnsZone
 exempt    dev.planton.azure.azurepostgresqlflexibleserver.v1alpha1.AzurePostgresqlFlexibleServerSpec.private_dns_zone_id -> AzurePrivateDnsZone
