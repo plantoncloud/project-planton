@@ -1522,7 +1522,9 @@ const (
 	// The Azure Data Factory -- the workspace every other Data Factory
 	// resource lives inside: pipelines, data flows, linked services,
 	// datasets, triggers, and integration runtimes are all created
-	// against a factory's ARM ID.
+	// against a factory's ARM ID. A container kind for exactly that
+	// reason: those six kinds are ARM children of the factory, so on a
+	// diagram the factory is the room they stand in.
 	CloudResourceKind_AzureDataFactory CloudResourceKind = 2198
 	// One unit of work inside an Azure Data Factory
 	// ({factory_id}/pipelines/{name}) -- an ordered set of activities
@@ -4205,7 +4207,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\xdf\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\xe1\xdb\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4624,8 +4626,8 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x14AzureEventgridDomain\x10\x92\x11\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azegd:\x02\xd0\x0fP\xd2\x01\x12A\n" +
 	"\x19AzureEventgridSystemTopic\x10\x93\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azegst:\x04\xd0\x0f\xd9\x0fP\xd2\x01\x12E\n" +
 	"\x1fAzureEventgridEventSubscription\x10\x94\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azeges:\x02\x91\x11P\xd2\x01\x12=\n" +
-	"\x17AzureEventgridNamespace\x10\x95\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azegns:\x02\xd0\x0fP\xd2\x01\x124\n" +
-	"\x10AzureDataFactory\x10\x96\x11\x1a\x1d\xa2\xf7\x04\x19\b\r\x12\bv1alpha1\"\x04azdf:\x02\xd0\x0fP\xd1\x01\x12@\n" +
+	"\x17AzureEventgridNamespace\x10\x95\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azegns:\x02\xd0\x0fP\xd2\x01\x126\n" +
+	"\x10AzureDataFactory\x10\x96\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x04azdf0\x01:\x02\xd0\x0fP\xd1\x01\x12@\n" +
 	"\x18AzureDataFactoryPipeline\x10\x97\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\bazdfpipe:\x02\x96\x11P\xd1\x01\x12@\n" +
 	"\x18AzureDataFactoryDataFlow\x10\x98\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\bazdfflow:\x02\x96\x11P\xd1\x01\x12C\n" +
 	"\x1dAzureDataFactoryLinkedService\x10\x99\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfls:\x02\x96\x11P\xd1\x01\x12=\n" +

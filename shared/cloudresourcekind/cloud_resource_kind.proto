@@ -4135,12 +4135,15 @@ enum CloudResourceKind {
   // The Azure Data Factory -- the workspace every other Data Factory
   // resource lives inside: pipelines, data flows, linked services,
   // datasets, triggers, and integration runtimes are all created
-  // against a factory's ARM ID.
+  // against a factory's ARM ID. A container kind for exactly that
+  // reason: those six kinds are ARM children of the factory, so on a
+  // diagram the factory is the room they stand in.
   AzureDataFactory = 2198 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azdf"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_analytics
   }];
   // One unit of work inside an Azure Data Factory
