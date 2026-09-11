@@ -1619,6 +1619,10 @@ type AzureMonitorDataCollectionRuleEventHubDestination struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The destination Event Hub, by ARM resource ID. Can be a literal
 	// ARM ID or a reference to an AzureEventHub output.
+	//
+	// Collected data is DELIVERED into the hub; the rule lives in its own
+	// resource group, so on a diagram the reference is access, not
+	// placement -- the diagnostic setting's rule.
 	EventHubId    *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=event_hub_id,json=eventHubId,proto3" json:"event_hub_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2192,11 +2196,11 @@ const file_catalog_azure_azuremonitordatacollectionrule_v1alpha1_spec_proto_rawD
 	"\x15workspace_resource_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\x82\x10\x92\xd4a\x1bstatus.outputs.workspace_idR\x13workspaceResourceId\"S\n" +
 	"1AzureMonitorDataCollectionRuleAzureMonitorMetrics\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\"\xd6\x01\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\"\xda\x01\n" +
 	"1AzureMonitorDataCollectionRuleEventHubDestination\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x12\x80\x01\n" +
-	"\fevent_hub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\x9d\x10\x92\xd4a\x1bstatus.outputs.event_hub_idR\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x12\x84\x01\n" +
+	"\fevent_hub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\x9d\x10\x92\xd4a\x1bstatus.outputs.event_hub_id\x98\xd4a\x01R\n" +
 	"eventHubId\"\xb8\x01\n" +
 	",AzureMonitorDataCollectionRuleMonitorAccount\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +

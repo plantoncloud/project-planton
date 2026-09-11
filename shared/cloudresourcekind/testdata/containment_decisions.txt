@@ -188,8 +188,6 @@ contained dev.planton.azure.azurednsrecord.v1alpha1.AzureDnsRecordSpec.resource_
 contained dev.planton.azure.azurednsrecord.v1alpha1.AzureDnsRecordSpec.zone_name -> AzureDnsZone
 contained dev.planton.azure.azurednszone.v1alpha1.AzureDnsZoneSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azureeventgriddomain.v1alpha1.AzureEventgridDomainSpec.resource_group -> AzureResourceGroup
-contained dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionDestination.eventhub_id -> AzureEventHub
-contained dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionDestination.service_bus_topic_id -> AzureServiceBusTopic
 contained dev.planton.azure.azureeventgridnamespace.v1alpha1.AzureEventgridNamespaceSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azureeventgridsystemtopic.v1alpha1.AzureEventgridSystemTopicSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azureeventgridtopic.v1alpha1.AzureEventgridTopicSpec.resource_group -> AzureResourceGroup
@@ -246,7 +244,6 @@ contained dev.planton.azure.azuremongocluster.v1alpha1.AzureMongoClusterSpec.res
 contained dev.planton.azure.azuremonitoractiongroup.v1alpha1.AzureMonitorActionGroupSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuremonitoractivitylogalert.v1alpha1.AzureMonitorActivityLogAlertSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuremonitorautoscalesetting.v1alpha1.AzureMonitorAutoscaleSettingSpec.resource_group -> AzureResourceGroup
-contained dev.planton.azure.azuremonitordatacollectionrule.v1alpha1.AzureMonitorDataCollectionRuleEventHubDestination.event_hub_id -> AzureEventHub
 contained dev.planton.azure.azuremonitordatacollectionrule.v1alpha1.AzureMonitorDataCollectionRuleSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuremonitormetricalert.v1alpha1.AzureMonitorMetricAlertSpec.resource_group -> AzureResourceGroup
 contained dev.planton.azure.azuremonitorscheduledqueryalert.v1alpha1.AzureMonitorScheduledQueryAlertSpec.resource_group -> AzureResourceGroup
@@ -684,6 +681,8 @@ exempt    dev.planton.azure.azuredatafactorylinkedservice.v1alpha1.AzureDataFact
 exempt    dev.planton.azure.azuredatafactorylinkedservice.v1alpha1.AzureDataFactoryLinkedServiceDataLakeStorageGen2.url -> AzureStorageAccount
 exempt    dev.planton.azure.azuredatafactorytrigger.v1alpha1.AzureDataFactoryTriggerBlobEvent.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionDeadLetter.storage_account_id -> AzureStorageAccount
+exempt    dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionDestination.eventhub_id -> AzureEventHub
+exempt    dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionDestination.service_bus_topic_id -> AzureServiceBusTopic
 exempt    dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionStorageQueueDestination.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventhub.v1alpha1.AzureEventHubCaptureDestination.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azureeventhubdisasterrecoveryconfig.v1alpha1.AzureEventHubDisasterRecoveryConfigSpec.partner_namespace_id -> AzureEventHubNamespace
@@ -710,6 +709,7 @@ exempt    dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineL
 exempt    dev.planton.azure.azuremonitoractiongroup.v1alpha1.AzureMonitorActionGroupEventHubReceiver.event_hub_name -> AzureEventHub
 exempt    dev.planton.azure.azuremonitoractiongroup.v1alpha1.AzureMonitorActionGroupEventHubReceiver.event_hub_namespace -> AzureEventHubNamespace
 exempt    dev.planton.azure.azuremonitoractivitylogalert.v1alpha1.AzureMonitorActivityLogAlertSpec.scopes -> AzureResourceGroup
+exempt    dev.planton.azure.azuremonitordatacollectionrule.v1alpha1.AzureMonitorDataCollectionRuleEventHubDestination.event_hub_id -> AzureEventHub
 exempt    dev.planton.azure.azuremonitordatacollectionrule.v1alpha1.AzureMonitorDataCollectionRuleStorageBlobDestination.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azuremonitordatacollectionrule.v1alpha1.AzureMonitorDataCollectionRuleStorageTableDirect.storage_account_id -> AzureStorageAccount
 exempt    dev.planton.azure.azuremonitordiagnosticsetting.v1alpha1.AzureMonitorDiagnosticSettingSpec.eventhub_name -> AzureEventHub

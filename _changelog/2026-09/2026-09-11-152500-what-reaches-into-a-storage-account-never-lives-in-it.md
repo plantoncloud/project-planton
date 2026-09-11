@@ -1,9 +1,10 @@
-# What reaches into a storage account never lives in it
+# What reaches into a storage account, an event hub, or a Service Bus topic never lives in it
 
 ## What changed
 
+- **Three delivery destinations are containment-exempt.** An Event Grid subscription delivers events into an event hub or a Service Bus topic (`AzureEventgridEventSubscriptionDestination.eventhub_id`, `.service_bus_topic_id`), and a data collection rule delivers collected data into an event hub (`AzureMonitorDataCollectionRuleEventHubDestination.event_hub_id`). Each of those resources lives somewhere else -- the subscription with the Event Grid topic it subscribes to, the rule in its own resource group -- and the hub and the topic are container kinds (consumer groups and subscriptions are created into them), so without the exemption a subscription or a rule was drawn INSIDE the stream it delivers into. Same file, same rule as the storage-account lines below; the Event Grid subscription's and the rule's storage destinations already carried it.
 - **Eleven storage-account references are containment-exempt.** An AI Foundry hub and a Machine Learning workspace use a storage account as their default workspace storage (`AzureAiFoundrySpec.storage_account_id`, `AzureMachineLearningWorkspaceSpec.storage_account_id`); a Cognitive Services account reads training data from one (`AzureCognitiveAccountStorage.storage_account_id`); a Data Factory linked service is the factory's connection to a blob or Data Lake store (`AzureDataFactoryLinkedServiceAzureBlobStorage.service_endpoint`, `AzureDataFactoryLinkedServiceDataLakeStorageGen2.url`) and a blob-event trigger listens to one (`AzureDataFactoryTriggerBlobEvent.storage_account_id`); an Event Grid subscription dead-letters into one and delivers into a queue in one (`AzureEventgridEventSubscriptionDeadLetter.storage_account_id`, `AzureEventgridEventSubscriptionStorageQueueDestination.storage_account_id`); a data collection rule delivers collected data into one (`AzureMonitorDataCollectionRuleStorageBlobDestination.storage_account_id`, `AzureMonitorDataCollectionRuleStorageTableDirect.storage_account_id`); and a Recovery Services backup container registers one with a vault (`AzureBackupContainerStorageAccountSpec.storage_account_id`). Every one of those resources READS, WRITES, LISTENS TO, or REGISTERS the account and lives somewhere else -- in its own resource group, its factory, its topic, or its vault -- so on a diagram each reference is access, not placement. Each field's comment now says so.
-- The containment-decision registry (`shared/cloudresourcekind/testdata/containment_decisions.txt`) moves exactly eleven lines from `contained` to `exempt`. Nothing else moved.
+- The containment-decision registry (`shared/cloudresourcekind/testdata/containment_decisions.txt`) moves exactly fourteen lines from `contained` to `exempt`. Nothing else moved.
 
 ## Why
 
@@ -12,6 +13,6 @@
 ## How to check
 
 ```bash
-go test ./shared/cloudresourcekind/... -run TestContainmentDecisions   # green; the golden carries the eleven exemptions
+go test ./shared/cloudresourcekind/... -run TestContainmentDecisions   # green; the golden carries the fourteen exemptions
 grep -rn containment_exempt catalog/azure/azureaifoundry catalog/azure/azurecognitiveaccount catalog/azure/azuredatafactorylinkedservice catalog/azure/azuredatafactorytrigger catalog/azure/azureeventgrideventsubscription catalog/azure/azuremachinelearningworkspace catalog/azure/azuremonitordatacollectionrule catalog/azure/azurebackupcontainerstorageaccount --include=spec.proto
 ```

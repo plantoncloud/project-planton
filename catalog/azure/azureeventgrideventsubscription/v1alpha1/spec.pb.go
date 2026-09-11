@@ -352,6 +352,10 @@ type AzureEventgridEventSubscriptionDestination struct {
 	// Deliver to an Event Hub, by ARM ID -- defaults to referencing an
 	// AzureEventHub's event_hub_id output. Set exactly one arm on this
 	// block.
+	//
+	// Events are DELIVERED into the hub; the subscription belongs to the
+	// topic it subscribes to, so on a diagram the reference is access, not
+	// placement.
 	EventhubId *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=eventhub_id,json=eventhubId,proto3" json:"eventhub_id,omitempty"`
 	// Deliver to an Azure Relay hybrid connection, by ARM ID (Relay is
 	// not yet a catalog kind -- pass the ID as a literal or an explicit
@@ -364,6 +368,10 @@ type AzureEventgridEventSubscriptionDestination struct {
 	// Deliver to a Service Bus topic, by ARM ID -- defaults to
 	// referencing an AzureServiceBusTopic's topic_id output. Set
 	// exactly one arm on this block.
+	//
+	// Events are DELIVERED into the topic; the subscription belongs to the
+	// Event Grid topic it subscribes to, so on a diagram the reference is
+	// access, not placement.
 	ServiceBusTopicId *v1.StringValueOrRef `protobuf:"bytes,5,opt,name=service_bus_topic_id,json=serviceBusTopicId,proto3" json:"service_bus_topic_id,omitempty"`
 	// Deliver to an Azure Storage queue. Set exactly one arm on this
 	// block.
@@ -1656,14 +1664,14 @@ const file_catalog_azure_azureeventgrideventsubscription_v1alpha1_spec_proto_raw
 	"<event_subscription_dead_letter_identity_requires_dead_letter\x12:dead_letter_identity requires dead_letter to be configured\x1a8!has(this.dead_letter_identity) || has(this.dead_letter)B\x18\n" +
 	"\x16_event_delivery_schemaB'\n" +
 	"%_advanced_filtering_on_arrays_enabledB\x16\n" +
-	"\x14_expiration_time_utc\"\xc1\v\n" +
+	"\x14_expiration_time_utc\"\xc9\v\n" +
 	"*AzureEventgridEventSubscriptionDestination\x12\x9a\x01\n" +
-	"\x0eazure_function\x18\x01 \x01(\v2s.dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionAzureFunctionDestinationR\razureFunction\x12y\n" +
-	"\veventhub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB$\x88\xd4a\x9d\x10\x92\xd4a\x1bstatus.outputs.event_hub_idR\n" +
+	"\x0eazure_function\x18\x01 \x01(\v2s.dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionAzureFunctionDestinationR\razureFunction\x12}\n" +
+	"\veventhub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\x88\xd4a\x9d\x10\x92\xd4a\x1bstatus.outputs.event_hub_id\x98\xd4a\x01R\n" +
 	"eventhubId\x12d\n" +
 	"\x14hybrid_connection_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefR\x12hybridConnectionId\x12\x85\x01\n" +
-	"\x14service_bus_queue_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB \x88\xd4a\x98\x10\x92\xd4a\x17status.outputs.queue_idR\x11serviceBusQueueId\x12\x85\x01\n" +
-	"\x14service_bus_topic_id\x18\x05 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB \x88\xd4a\x99\x10\x92\xd4a\x17status.outputs.topic_idR\x11serviceBusTopicId\x12\x97\x01\n" +
+	"\x14service_bus_queue_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB \x88\xd4a\x98\x10\x92\xd4a\x17status.outputs.queue_idR\x11serviceBusQueueId\x12\x89\x01\n" +
+	"\x14service_bus_topic_id\x18\x05 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB$\x88\xd4a\x99\x10\x92\xd4a\x17status.outputs.topic_id\x98\xd4a\x01R\x11serviceBusTopicId\x12\x97\x01\n" +
 	"\rstorage_queue\x18\x06 \x01(\v2r.dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionStorageQueueDestinationR\fstorageQueue\x12\x87\x01\n" +
 	"\awebhook\x18\a \x01(\v2m.dev.planton.azure.azureeventgrideventsubscription.v1alpha1.AzureEventgridEventSubscriptionWebhookDestinationR\awebhook:\xe0\x03\xbaH\xdc\x03\x1a\xd9\x03\n" +
 	"*event_subscription_destination_exactly_one\x12\x9b\x01Set exactly one destination arm -- azure_function, eventhub_id, hybrid_connection_id, service_bus_queue_id, service_bus_topic_id, storage_queue, or webhook\x1a\x8c\x02(has(this.azure_function) ? 1 : 0) + (has(this.eventhub_id) ? 1 : 0) + (has(this.hybrid_connection_id) ? 1 : 0) + (has(this.service_bus_queue_id) ? 1 : 0) + (has(this.service_bus_topic_id) ? 1 : 0) + (has(this.storage_queue) ? 1 : 0) + (has(this.webhook) ? 1 : 0) == 1\"\xec\x02\n" +
