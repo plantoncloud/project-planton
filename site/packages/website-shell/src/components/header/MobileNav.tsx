@@ -12,6 +12,7 @@ import {
   Psychology as AgentFleetIcon,
   Terminal as CliIcon,
   Code as OpenSourceIcon,
+  Laptop as DesktopAppIcon,
   Assignment as CatalogIcon,
   MenuBook as DocsIcon,
   School as TutorialsIcon,
@@ -25,6 +26,7 @@ import { ShellDrawer } from './styled';
 import { MenuAccordion } from './MenuAccordion';
 import { MegaMenuItem } from './MegaMenuItem';
 import { MobileAuthButtons } from './AuthButtons';
+import { MobileDownloadLink } from './DownloadLink';
 import { DiscordButton } from '../shared/DiscordButton';
 import {
   menuProduct,
@@ -45,6 +47,7 @@ const productIcons: Record<string, React.ReactNode> = {
   Security: <SecurityIcon sx={iconSx} />,
   'Agent Fleet': <AgentFleetIcon sx={iconSx} />,
   CLI: <CliIcon sx={iconSx} />,
+  'Desktop App': <DesktopAppIcon sx={iconSx} />,
   'Open Source': <OpenSourceIcon sx={iconSx} />,
 };
 
@@ -171,6 +174,7 @@ export function MobileNav() {
             {/* Discord + Auth */}
             <Stack sx={{ gap: 1.5 }}>
               <DiscordButton sx={{ color: 'text.secondary', width: '100%', justifyContent: 'center' }} />
+              <MobileDownloadLink />
               <MobileAuthButtons />
             </Stack>
           </Stack>

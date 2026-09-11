@@ -119,11 +119,16 @@ function buildStructure(dirPath: string, relativePath: string = ''): DocItem[] {
 
     if (stat.isDirectory()) {
       const children = buildStructure(fullPath, itemRelativePath);
-      if (children.length > 0) {
+      const indexFiles = ['index.md', 'README.md'];
+      // A section is a directory with pages under it OR a directory whose
+      // only page is its index: a one-page section (a topic that has not
+      // grown children yet) is still a page a reader can open and a route
+      // the export must emit. Dropping it here made such a page unreachable.
+      const hasIndex = indexFiles.some((indexFile) => fs.existsSync(path.join(/* turbopackIgnore: true */ fullPath, indexFile)));
+      if (children.length > 0 || hasIndex) {
         // Try to get metadata (and content for excerpt) from index/README (.md only)
         let metadata: MarkdownContent['data'] = {};
         let indexContent = '';
-        const indexFiles = ['index.md', 'README.md'];
 
         for (const indexFile of indexFiles) {
           const indexPath = path.join(/* turbopackIgnore: true */ fullPath, indexFile);
@@ -140,9 +145,6 @@ function buildStructure(dirPath: string, relativePath: string = ''): DocItem[] {
         }
 
         const category = relativePath.split('/')[0] || item;
-
-        // Check if this directory has an index file
-        const hasIndex = indexFiles.some((indexFile) => fs.existsSync(path.join(/* turbopackIgnore: true */ fullPath, indexFile)));
 
         structure.push({
           name: item,

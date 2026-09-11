@@ -10,6 +10,7 @@ import {
   Psychology as AgentFleetIcon,
   Terminal as CliIcon,
   Code as OpenSourceIcon,
+  Laptop as DesktopAppIcon,
   Assignment as CatalogIcon,
   MenuBook as DocsIcon,
   School as TutorialsIcon,
@@ -39,6 +40,7 @@ const productIcons: Record<string, React.ReactNode> = {
   Security: <SecurityIcon sx={iconSx} />,
   'Agent Fleet': <AgentFleetIcon sx={iconSx} />,
   CLI: <CliIcon sx={iconSx} />,
+  'Desktop App': <DesktopAppIcon sx={iconSx} />,
   'Open Source': <OpenSourceIcon sx={iconSx} />,
 };
 

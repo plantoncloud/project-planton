@@ -8,15 +8,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 export interface CodeTab {
   label: string;
   code: string;
+  /**
+   * One or two sentences about what the code does, rendered under the block
+   * in prose. Keeps teaching out of the code itself, so what a person copies
+   * is only what they type.
+   */
+  description?: string;
 }
 
 interface CodeTabsProps {
   tabs: CodeTab[];
   title?: string;
   className?: string;
+  /** For tabs that hold one or two lines; the block sizes to its content instead of reserving a screen of code. */
+  compact?: boolean;
 }
 
-export const CodeTabs: FC<CodeTabsProps> = ({ tabs, title, className = '' }) => {
+export const CodeTabs: FC<CodeTabsProps> = ({ tabs, title, className = '', compact = false }) => {
   const [active, setActive] = useState(0);
   const [copied, setCopied] = useState(false);
 
@@ -36,14 +44,14 @@ export const CodeTabs: FC<CodeTabsProps> = ({ tabs, title, className = '' }) => 
               {title}
             </Typography>
           )}
-          <Box className="flex">
+          <Box className="flex overflow-x-auto">
             {tabs.map((tab, i) => (
               <button
                 key={tab.label}
                 onClick={() => setActive(i)}
                 className={`
                   px-4 py-2.5 text-xs font-medium transition-colors duration-200
-                  border-b-2 -mb-px
+                  border-b-2 -mb-px whitespace-nowrap
                   ${
                     active === i
                       ? 'text-white border-white bg-white/5'
@@ -65,7 +73,7 @@ export const CodeTabs: FC<CodeTabsProps> = ({ tabs, title, className = '' }) => 
         </IconButton>
       </Box>
 
-      <Box className="p-4 font-mono text-[13px] leading-relaxed relative min-h-[200px]">
+      <Box className={`p-4 font-mono text-[13px] leading-relaxed relative ${compact ? 'min-h-[72px]' : 'min-h-[200px]'}`}>
         <AnimatePresence mode="wait">
           <motion.pre
             key={active}
@@ -79,6 +87,11 @@ export const CodeTabs: FC<CodeTabsProps> = ({ tabs, title, className = '' }) => 
           </motion.pre>
         </AnimatePresence>
       </Box>
+      {tabs[active].description && (
+        <Typography className="px-4 py-3 border-t border-[#2a2a2a] text-sm text-[#a0a0a0] leading-relaxed">
+          {tabs[active].description}
+        </Typography>
+      )}
     </Box>
   );
 };

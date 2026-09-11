@@ -4,6 +4,7 @@ import { Box, Stack } from '@mui/material';
 import { DesktopNav } from './header/DesktopNav';
 import { MobileNav } from './header/MobileNav';
 import { DesktopAuthButtons } from './header/AuthButtons';
+import { DesktopDownloadLink } from './header/DownloadLink';
 import { DiscordButton } from './shared/DiscordButton';
 import { WebsiteLogo } from './WebsiteLogo';
 
@@ -48,6 +49,7 @@ export function WebsiteHeader() {
         {/* Desktop: right-side actions */}
         <Stack direction="row" sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1.5, fontSize: '0.875rem' }}>
           <DiscordButton compact />
+          <DesktopDownloadLink />
           <DesktopAuthButtons />
         </Stack>
 

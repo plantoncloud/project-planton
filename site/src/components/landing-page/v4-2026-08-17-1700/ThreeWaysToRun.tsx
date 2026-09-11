@@ -19,17 +19,19 @@ import { COMMUNITY_SEAT_LIMIT, FREE_TIER_SEATS, MARKETS, SELF_SERVE_SEAT_CEILING
 /**
  * The distribution strip. Numbers read from src/data/pricing.ts — a
  * sentence that names a price references a constant, never a literal.
- * The desktop tile is copy-only by decision (2026-08-17): no download
- * link until the desktop release hold lifts.
+ * The desktop tile links to the install page: the app is public, signed,
+ * and on Homebrew, and this strip is where a visitor learns it exists.
  */
 
 export const ThreeWaysToRun: FC = () => {
-  const ways = [
+  const ways: { badge: string; title: string; description: string; href?: string; cta?: string }[] = [
     {
       badge: 'Free Forever',
       title: 'Desktop App',
       description:
         'Runs on your laptop, deploys with the cloud logins already on your machine. Free forever, including commercial use — no account required.',
+      href: '/download',
+      cta: 'Download',
     },
     {
       badge: `Free for ${FREE_TIER_SEATS} Seats`,
@@ -61,6 +63,14 @@ export const ThreeWaysToRun: FC = () => {
             </Box>
             <FeatureTitle className="mb-2">{way.title}</FeatureTitle>
             <BodyText>{way.description}</BodyText>
+            {way.href && way.cta && (
+              <Link
+                href={way.href}
+                className="inline-block mt-4 text-sm font-medium text-[#ededed] underline decoration-[#3a3a3a] underline-offset-4 hover:decoration-[#ededed]"
+              >
+                {way.cta} →
+              </Link>
+            )}
           </Card>
         ))}
       </Grid>
