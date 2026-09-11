@@ -77,6 +77,11 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 	if !strings.Contains(config, "proxy_buffer_size 32k;") {
 		t.Error("the identity and console routes must raise proxy_buffer_size so the sign-in callback's session cookie fits")
 	}
+	// nginx checks the three buffer directives against each other at parse
+	// time; a raised proxy_buffer_size alone refuses to start (observed live).
+	if !strings.Contains(config, "proxy_buffers 4 32k;") || !strings.Contains(config, "proxy_busy_buffers_size 64k;") {
+		t.Error("proxy_buffers and proxy_busy_buffers_size must be set consistently with proxy_buffer_size or nginx refuses to start")
+	}
 	if !strings.Contains(config, "large_client_header_buffers 4 32k;") {
 		t.Error("the server must accept the session cookie the browser sends back (large_client_header_buffers)")
 	}

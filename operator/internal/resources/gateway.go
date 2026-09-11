@@ -116,8 +116,12 @@ func GatewayPortForwardCommand(crName, namespace string, localPort int32) string
 //     buffering off; without it the callback is a 502 "upstream sent too
 //     big header" and the CLI's browser sign-in never completes), and the
 //     browser then sends that cookie back on every request
-//     (large_client_header_buffers). The Ingress door sets the same
-//     response-side fact as an annotation (ingress.go).
+//     (large_client_header_buffers). proxy_buffers and
+//     proxy_busy_buffers_size ride along not because buffering is on but
+//     because nginx checks the three against each other at parse time:
+//     raising proxy_buffer_size alone doubles the default busy size past
+//     "all buffers minus one" and nginx refuses to start. The Ingress door
+//     sets the same response-side fact as an annotation (ingress.go).
 func GatewayNginxConfig(crName, namespace string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;\n\nserver {\n    listen %d;\n    large_client_header_buffers 4 32k;\n\n", gatewayContainerPort)
@@ -170,7 +174,9 @@ func GatewayNginxConfig(crName, namespace string) string {
 				"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
 				"        proxy_set_header X-Forwarded-Host $http_host;\n" +
 				"        proxy_buffering off;\n" +
-				"        proxy_buffer_size 32k;\n")
+				"        proxy_buffer_size 32k;\n" +
+				"        proxy_buffers 4 32k;\n" +
+				"        proxy_busy_buffers_size 64k;\n")
 		}
 		b.WriteString("    }\n")
 	}
