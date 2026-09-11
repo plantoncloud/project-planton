@@ -117,6 +117,28 @@ rules:
   - update
   - watch
 - apiGroups:
+  - barmancloud.cnpg.io
+  resources:
+  - objectstores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - barmancloud.cnpg.io
+  - postgresql.cnpg.io
+  - resolution.tekton.dev
+  - tekton.dev
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+- apiGroups:
   - batch
   resources:
   - cronjobs
@@ -147,6 +169,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - issuers
+  verbs:
+  - delete
+  - get
+  - list
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
@@ -248,7 +278,16 @@ rules:
 - apiGroups:
   - postgresql.cnpg.io
   resources:
+  - backups
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - postgresql.cnpg.io
+  resources:
   - clusters
+  - scheduledbackups
   verbs:
   - create
   - delete
@@ -263,15 +302,6 @@ rules:
   - clusters/status
   verbs:
   - get
-- apiGroups:
-  - postgresql.cnpg.io
-  - resolution.tekton.dev
-  - tekton.dev
-  resources:
-  - '*'
-  verbs:
-  - get
-  - list
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:

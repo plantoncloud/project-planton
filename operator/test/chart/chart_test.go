@@ -73,7 +73,7 @@ type document struct {
 func documents(t *testing.T, manifest string) []document {
 	t.Helper()
 	var docs []document
-	for _, raw := range strings.Split(manifest, "\n---\n") {
+	for raw := range strings.SplitSeq(manifest, "\n---\n") {
 		raw = strings.TrimSpace(raw)
 		raw = strings.TrimPrefix(raw, "---\n")
 		if raw == "" {
@@ -81,9 +81,9 @@ func documents(t *testing.T, manifest string) []document {
 		}
 		var source string
 		var body []string
-		for _, line := range strings.Split(raw, "\n") {
-			if strings.HasPrefix(line, "# Source: ") {
-				source = strings.TrimPrefix(line, "# Source: ")
+		for line := range strings.SplitSeq(raw, "\n") {
+			if after, ok := strings.CutPrefix(line, "# Source: "); ok {
+				source = after
 				continue
 			}
 			body = append(body, line)

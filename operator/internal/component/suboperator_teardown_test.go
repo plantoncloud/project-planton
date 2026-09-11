@@ -13,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/plantonhq/planton/operator/internal/resources"
 )
 
 // The teardown's decisions are what these tests pin -- foreign is untouched,
@@ -260,13 +262,18 @@ func TestRemoveSubOperator_ForeignObjectInReleaseNamespace_KeepsTheNamespace(t *
 
 func TestSharedSubOperators_AreTheInstallGatesDefinitions(t *testing.T) {
 	shared := SharedSubOperators()
-	if len(shared) != 2 {
-		t.Fatalf("expected the two vendored sub-operators, got %d", len(shared))
+	if len(shared) != 3 {
+		t.Fatalf("expected the three vendored sub-operators, got %d", len(shared))
 	}
-	if shared[0].CRDName != cnpgClusterCRDName || shared[0].Namespace != cnpgOperatorNamespace {
-		t.Errorf("CloudNativePG definition drifted: %+v", shared[0])
+	// The plugin precedes CloudNativePG on purpose: the two share a namespace
+	// and the sweep would otherwise delete it from under the plugin.
+	if shared[0].CRDName != resources.BarmanCloudObjectStoreCRDName || shared[0].Namespace != cnpgOperatorNamespace || shared[0].Loader == nil {
+		t.Errorf("Barman Cloud plugin definition drifted or is not first: %+v", shared[0])
 	}
-	if shared[1].LogName != "tekton-pipelines" || shared[1].Loader == nil {
-		t.Errorf("Tekton definition drifted: %+v", shared[1])
+	if shared[1].CRDName != cnpgClusterCRDName || shared[1].Namespace != cnpgOperatorNamespace {
+		t.Errorf("CloudNativePG definition drifted: %+v", shared[1])
+	}
+	if shared[2].LogName != "tekton-pipelines" || shared[2].Loader == nil {
+		t.Errorf("Tekton definition drifted: %+v", shared[2])
 	}
 }

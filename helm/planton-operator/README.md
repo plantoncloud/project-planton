@@ -19,6 +19,9 @@ refuses to start and its log explains why.
 
 - Kubernetes 1.24+
 - Helm 3.x
+- cert-manager, only for backups of the platform's database: the backup plugin mints
+  its TLS through it. Without cert-manager the platform installs and runs; the
+  `Backup` column says `Unavailable` and why until cert-manager arrives.
 
 ## Installation
 
@@ -160,6 +163,17 @@ in any namespace. When a resource is created, the operator:
 2. Deploys supporting services (OpenFGA with authorization model, Temporal with schema)
 3. Deploys the application layer (control plane monolith, web console)
 
+The platform's own PostgreSQL can back itself up to an object store you own
+(`spec.database.postgresql.backup`: an S3, GCS, Azure Blob, or Cloudflare R2 bucket,
+keyless cloud identity preferred, a schedule, a retention policy). The operator
+installs CloudNativePG's backup engine -- the Barman Cloud plugin -- beside
+CloudNativePG whenever cert-manager is on the cluster, so every PostgreSQL deployed
+through Planton can back itself up too; a `Backup` column on `kubectl get
+plantonplatform` reads `Healthy`, `Deploying`, `Failing` (in the plugin's own words),
+`Unavailable`, or `NotConfigured`, and a platform declared with
+`spec.database.postgresql.recoverFrom` restores its database from another platform's
+archive. A failing backup never takes a working platform out of `Ready`.
+
 Each component is reconciled independently with explicit dependency tracking.
 The operator reports per-component status, an aggregate `Ready` condition whose
 message is the `MESSAGE` column, and a `VersionSupported` condition:
@@ -169,6 +183,28 @@ $ kubectl get plantonplatform
 NAME      PHASE   VERSION   URL                          LICENSE     MESSAGE                              AGE
 planton   Ready   v0.0.45   https://planton.example.com  Community   All enabled components are healthy   5m
 ```
+
+### When something is stuck
+
+A platform that is not Ready names the component, what is wrong, and what to do in
+that same `MESSAGE` column -- for example
+`console: image ghcr.io/plantonhq/console:v0.0.61 for container "console" of pod planton-console-7d9f-x1 cannot be pulled (ImagePullBackOff: manifest unknown) -- check that the tag exists ...`.
+The full detail is on the resource:
+
+```bash
+kubectl get plantonplatform planton -n planton -o yaml   # every component: phase, reason, object, message, lastTransitionTime
+kubectl describe plantonplatform planton -n planton      # one Warning Event per failure the platform entered, a Normal one when it recovered
+```
+
+Each component's `reason` is a stable word (`ImagePullFailed`, `CrashLooping`,
+`OutOfMemory`, `Unschedulable`, `VolumeUnprovisionable`, `ContainerConfigInvalid`,
+`ConfigurationRefused`, ...) and its `object` is the Pod, PersistentVolumeClaim, or Job to
+`kubectl describe` next. Reasons that describe a boot still in progress (`StartingUp`,
+`WaitingForSchema`, `VolumeProvisioning`, `WaitingForDependency`) are not failures and
+raise no Event; a fresh install's control plane takes about two minutes to answer its
+health check and Temporal's pods restart until its schema job finishes -- both read as
+the wait they are. When the message prints a `kubectl logs` command, that log is the
+component's own account.
 
 ## CRD Management
 
@@ -207,18 +243,22 @@ kubectl annotate crd plantonplatforms.planton.ai \
 
 ## Uninstallation
 
-The operator installs two things beyond the platforms it runs: for every platform,
-a cluster-wide grant its control plane needs (a ClusterRole and ClusterRoleBinding),
-and for the cluster, the shared database operator (CloudNativePG) and build engine
-(Tekton Pipelines) the first platform needs and every later platform reuses. Both are
+The operator installs two kinds of things beyond the platforms it runs: for every
+platform, a cluster-wide grant its control plane needs (a ClusterRole and
+ClusterRoleBinding), and for the cluster, the shared database operator (CloudNativePG),
+its backup plugin (Barman Cloud, when cert-manager is present), and the build engine
+(Tekton Pipelines) the first platform needs and every later platform reuses. All are
 taken back by the operator itself, so a full uninstall leaves nothing behind:
 
-- Deleting a platform removes its own grant right away.
-- Deleting the LAST platform on the cluster removes CloudNativePG and Tekton -- their
-  definitions, admission webhooks, cluster RBAC, and namespaces -- unless something
-  else still uses them (a database of your own on that CloudNativePG, a pipeline run).
-  Then they stay, and `kubectl describe crd clusters.postgresql.cnpg.io` (or
-  `pipelineruns.tekton.dev`) carries an Event naming exactly what is using them and
+- Deleting a platform removes its own grant right away, and its own backup store and
+  schedule with it (the archive in your bucket is yours and stays).
+- Deleting the LAST platform on the cluster removes the backup plugin, CloudNativePG,
+  and Tekton -- their definitions, admission webhooks, cluster RBAC, and namespaces --
+  unless something else still uses them (a database of your own on that CloudNativePG,
+  an object store of your own on the plugin, a pipeline run). Then they stay, and
+  `kubectl describe crd clusters.postgresql.cnpg.io` (or
+  `objectstores.barmancloud.cnpg.io`, `pipelineruns.tekton.dev`) carries an Event
+  naming exactly what is using them and
   the two ways out: delete those objects and the operator finishes on its next pass,
   or keep the engine as your own. A CloudNativePG or Tekton this operator did not
   install is never touched.

@@ -246,9 +246,10 @@ func main() {
 	}
 
 	if err := (&controller.PlantonPlatformReconciler{
-		Client:  mgr.GetClient(),
-		Scheme:  mgr.GetScheme(),
-		Janitor: sweeper,
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Janitor:  sweeper,
+		Recorder: mgr.GetEventRecorderFor("planton-operator"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "PlantonPlatform")
 		os.Exit(1)

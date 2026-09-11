@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -47,8 +48,16 @@ type PlantonPlatformReconciler struct {
 	// shared sub-operators). Optional: nil skips the sweep, which only tests
 	// that build a reconciler by hand rely on.
 	Janitor *janitor.Janitor
+	// Recorder writes an Event on the platform when a component's condition
+	// changes: a Warning the moment a component enters a failure, a Normal
+	// when it recovers -- once per change, never once per reconcile, so a
+	// stuck install shows one line under `kubectl describe` and a healthy
+	// one shows none. Optional: nil records nothing, which only tests that
+	// build a reconciler by hand rely on.
+	Recorder record.EventRecorder
 }
 
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms/finalizers,verbs=update
@@ -125,29 +134,42 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		ready, unreadyDep := component.DependenciesReady(&planton.Status.Components, comp.Dependencies(&planton))
 		if !ready {
-			status.SetComponentPhase(cs,
-				plantonaiv1.ComponentPhasePending,
-				"Waiting for dependency: "+unreadyDep)
+			r.recordComponent(&planton, comp.Name(), cs, plantonaiv1.ComponentPhasePending, status.ComponentState{
+				Reason:  plantonaiv1.ComponentReasonWaitingForDependency,
+				Message: "Waiting for dependency: " + unreadyDep,
+			})
 			continue
 		}
 
 		result, err := comp.Reconcile(ctx, r.Client, r.Scheme, &planton)
 		if err != nil {
 			log.Error(err, "Component reconciliation failed", "component", comp.Name())
-			status.SetComponentPhase(cs, plantonaiv1.ComponentPhaseError, err.Error())
+			// The error already names the object it failed on (every apply
+			// wraps kind and name); the reason says whose fault it is -- the
+			// operator's own read or apply, not the workload's.
+			r.recordComponent(&planton, comp.Name(), cs, plantonaiv1.ComponentPhaseError, status.ComponentState{
+				Reason:  plantonaiv1.ComponentReasonReconcileFailed,
+				Message: "the operator could not reconcile this component: " + err.Error(),
+			})
 			continue
 		}
 
+		phase := plantonaiv1.ComponentPhaseDeploying
 		if result.Ready {
-			status.SetComponentPhase(cs, plantonaiv1.ComponentPhaseReady, result.Message)
-		} else {
-			status.SetComponentPhase(cs, plantonaiv1.ComponentPhaseDeploying, result.Message)
+			phase = plantonaiv1.ComponentPhaseReady
 		}
+		r.recordComponent(&planton, comp.Name(), cs, phase, status.ComponentState{
+			Reason: result.Reason, Object: result.Object, Message: result.Message,
+		})
 	}
 
 	overallPhase := status.ComputeOverallPhase(&planton)
 	planton.Status.Phase = overallPhase
 	status.UpdateReadyCondition(&planton)
+	// The backup condition follows status.backup, which the PostgreSQL
+	// component wrote from the database operator's own signals; it is not an
+	// input to Ready (a failing backup never turns a working platform red).
+	status.SyncBackupCondition(&planton)
 
 	if err := r.Status().Update(ctx, &planton); err != nil {
 		return ctrl.Result{}, err
@@ -158,6 +180,24 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		"interval", requeueInterval,
 	)
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+// recordComponent writes a component's phase and state and, when the
+// condition actually changed, tells the platform's Event stream about it: a
+// Warning when the component entered a failure, a Normal when it left one
+// for Ready. Changes between two in-progress conditions (Deploying to
+// StartingUp) are status-only -- they are the boot happening, not news.
+func (r *PlantonPlatformReconciler) recordComponent(planton *plantonaiv1.PlantonPlatform, name string, cs *plantonaiv1.ComponentStatus, phase plantonaiv1.ComponentPhase, state status.ComponentState) {
+	wasFailing := cs.Reason.IsFailure() || cs.Phase == plantonaiv1.ComponentPhaseError
+	if !status.SetComponentPhase(cs, phase, state) || r.Recorder == nil {
+		return
+	}
+	switch {
+	case cs.Reason.IsFailure():
+		r.Recorder.Eventf(planton, "Warning", string(cs.Reason), "%s: %s", name, cs.Message)
+	case wasFailing && cs.Phase == plantonaiv1.ComponentPhaseReady:
+		r.Recorder.Eventf(planton, "Normal", "ComponentRecovered", "%s: %s", name, cs.Message)
+	}
 }
 
 // sweepAfterDeletion runs the janitor for a platform that no longer exists

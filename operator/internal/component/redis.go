@@ -70,11 +70,8 @@ func (r *Redis) Reconcile(ctx context.Context, c client.Client, _ *runtime.Schem
 		return Result{}, fmt.Errorf("checking Redis readiness: %w", err)
 	}
 	if !ready {
-		if msg, ok := r.ExplainPendingStorage(ctx, c, planton.Namespace, stsName); ok {
-			return Result{Ready: false, Message: msg}, nil
-		}
 		log.Info("Redis not ready")
-		return Result{Ready: false, Message: "Waiting for Redis"}, nil
+		return r.NotReady(ctx, c, planton.Namespace, StatefulSetRef(stsName), "Waiting for Redis"), nil
 	}
 
 	log.Info("Redis ready")

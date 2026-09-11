@@ -63,11 +63,8 @@ func (n *Neo4j) Reconcile(ctx context.Context, c client.Client, _ *runtime.Schem
 		return Result{}, fmt.Errorf("checking Neo4j readiness: %w", err)
 	}
 	if !ready {
-		if msg, ok := n.ExplainPendingStorage(ctx, c, planton.Namespace, stsName); ok {
-			return Result{Ready: false, Message: msg}, nil
-		}
 		log.Info("Neo4j not ready")
-		return Result{Ready: false, Message: "Waiting for Neo4j"}, nil
+		return n.NotReady(ctx, c, planton.Namespace, StatefulSetRef(stsName), "Waiting for Neo4j"), nil
 	}
 
 	log.Info("Neo4j ready")

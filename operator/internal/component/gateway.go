@@ -79,7 +79,8 @@ func (g *Gateway) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sch
 	}
 	if !ready {
 		log.Info("Gateway not ready")
-		return Result{Ready: false, Message: "Waiting for the front-door gateway Deployment"}, nil
+		return g.NotReady(ctx, c, planton.Namespace, DeploymentRef(resources.GatewayDeploymentName(planton.Name)),
+			"Waiting for the front-door gateway Deployment"), nil
 	}
 
 	log.Info("Gateway ready")

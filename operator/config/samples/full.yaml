@@ -43,6 +43,29 @@ spec:
   database:
     postgresql:
       storageSize: 10Gi
+      # Where the platform's own database is backed up. Declaring it turns on
+      # continuous WAL archiving to the store, a daily base backup (the first
+      # one immediately), and 30 days of retention; the Backup column of
+      # `kubectl get plantonplatform` reports Healthy, Failing, or why not.
+      # Keyless first: annotate the database's ServiceAccount with your
+      # cloud's binding and name no Secret. One backend per store: s3, gcs,
+      # azureBlob, or r2.
+      # backup:
+      #   objectStore:
+      #     destinationPath: s3://acme-planton-backups/platform
+      #     s3:
+      #       region: us-east-1
+      #       # credentialsSecretName: planton-backup-keys   # keys ACCESS_KEY_ID + SECRET_ACCESS_KEY; omit for IRSA / Pod Identity
+      #   retentionPolicy: 30d
+      #   schedule: "0 0 2 * * *"
+      #   serviceAccountAnnotations:
+      #     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/planton-backups
+      # To restore a platform from another's archive, declare it fresh with
+      # recoverFrom naming that platform's store and the serverName its status
+      # printed. Honored only when the database is first created.
+      # recoverFrom:
+      #   objectStore: { destinationPath: s3://acme-planton-backups/platform, s3: { region: us-east-1 } }
+      #   serverName: planton-postgres-1a2b3c4d
     redis:
       storageSize: 1Gi
 

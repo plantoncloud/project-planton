@@ -44,6 +44,99 @@ const (
 	ComponentPhaseError     ComponentPhase = "Error"
 )
 
+// ComponentReason is the one-word, machine-readable cause behind a
+// component's phase. The message beside it says the same thing in a sentence
+// a person can act on; the reason is what tooling keys on and what the
+// troubleshooting reference is indexed by.
+//
+// Deliberately NOT an enum on the definition: the adopter upgrades the
+// operator before the platform, and an operator writing a reason the
+// installed definition's enum lacked would have its status write refused.
+// Open strings with documented constants, as the Kubernetes API conventions
+// recommend for condition reasons.
+type ComponentReason string
+
+const (
+	// ComponentReasonHealthy: the component is Ready.
+	ComponentReasonHealthy ComponentReason = "Healthy"
+
+	// ComponentReasonWaitingForDependency: a component this one depends on is
+	// not Ready yet; the message names it.
+	ComponentReasonWaitingForDependency ComponentReason = "WaitingForDependency"
+
+	// ComponentReasonDeploying: objects are applied and nothing has gone
+	// wrong yet -- the workload has not reported, or has no pods yet.
+	ComponentReasonDeploying ComponentReason = "Deploying"
+
+	// ComponentReasonStartingUp: the workload runs and is not yet answering
+	// its health check, with no restarts. Normal in the first minutes of a
+	// boot; the message says how long since start and when to worry.
+	ComponentReasonStartingUp ComponentReason = "StartingUp"
+
+	// ComponentReasonWaitingForSchema: a one-time schema or migration Job
+	// the workload depends on is still running; server pods restarting until
+	// it finishes is expected.
+	ComponentReasonWaitingForSchema ComponentReason = "WaitingForSchema"
+
+	// ComponentReasonVolumeProvisioning: a volume claim is Pending and
+	// nothing says it will not be provisioned -- the provisioner is still
+	// working.
+	ComponentReasonVolumeProvisioning ComponentReason = "VolumeProvisioning"
+
+	// ComponentReasonVolumeUnprovisionable: a volume claim cannot be
+	// provisioned on this cluster (no default StorageClass, a class whose
+	// driver is not installed, or the backend's own rejection); the message
+	// names the claim and the fix.
+	ComponentReasonVolumeUnprovisionable ComponentReason = "VolumeUnprovisionable"
+
+	// ComponentReasonImagePullFailed: a container image cannot be pulled;
+	// the message names the image and the registry's own words.
+	ComponentReasonImagePullFailed ComponentReason = "ImagePullFailed"
+
+	// ComponentReasonContainerConfigInvalid: a container cannot be created
+	// because something it references (a Secret or ConfigMap key) is missing;
+	// the message names it.
+	ComponentReasonContainerConfigInvalid ComponentReason = "ContainerConfigInvalid"
+
+	// ComponentReasonOutOfMemory: a container was killed for exceeding its
+	// memory limit; the message names the limit.
+	ComponentReasonOutOfMemory ComponentReason = "OutOfMemory"
+
+	// ComponentReasonCrashLooping: a container keeps exiting; the message
+	// carries the restart count, the last exit code, and the log command.
+	ComponentReasonCrashLooping ComponentReason = "CrashLooping"
+
+	// ComponentReasonVolumeMountFailed: a pod's volume cannot be attached or
+	// mounted; the message relays the kubelet's own words.
+	ComponentReasonVolumeMountFailed ComponentReason = "VolumeMountFailed"
+
+	// ComponentReasonUnschedulable: no node can take the pod; the message
+	// relays the scheduler's own words (insufficient memory, a taint).
+	ComponentReasonUnschedulable ComponentReason = "Unschedulable"
+
+	// ComponentReasonRolloutStalled: the Deployment controller gave up on
+	// the rollout (its progress deadline passed).
+	ComponentReasonRolloutStalled ComponentReason = "RolloutStalled"
+
+	// ComponentReasonCreateRefused: the API server refused to create the
+	// workload's pods (a quota, an admission policy); the message relays
+	// the refusal.
+	ComponentReasonCreateRefused ComponentReason = "CreateRefused"
+
+	// ComponentReasonJobFailed: a one-time Job the component owns failed;
+	// the message relays the Job's own condition.
+	ComponentReasonJobFailed ComponentReason = "JobFailed"
+
+	// ComponentReasonConfigurationRefused: the declared configuration cannot
+	// be honored as written (a missing referenced Secret, a front door that
+	// does not exist); the message names the spec field.
+	ComponentReasonConfigurationRefused ComponentReason = "ConfigurationRefused"
+
+	// ComponentReasonReconcileFailed: the operator itself could not apply or
+	// read something for this component; the message carries the error.
+	ComponentReasonReconcileFailed ComponentReason = "ReconcileFailed"
+)
+
 // Condition types for PlantonPlatform.
 const (
 	// ConditionReady is True when all enabled components are in Ready phase.
@@ -54,6 +147,15 @@ const (
 	// is created: the message says which release is the oldest this operator
 	// supports and how to move (the version, or an operator built for it).
 	ConditionVersionSupported = "VersionSupported"
+
+	// ConditionBackupHealthy is True when the platform database's WAL
+	// archiving is continuous and a base backup exists, False when a
+	// declared backup is failing or cannot be set up, Unknown while nothing
+	// is declared or the first backup is still on its way. Deliberately not
+	// an input to Ready: a platform whose backup fails is doing its job and
+	// its safety net is not, and the Backup column says so where a person
+	// reads first.
+	ConditionBackupHealthy = "BackupHealthy"
 )
 
 // License delivery modes reported in status.license -- how the key reaches
@@ -451,6 +553,22 @@ type PrerequisitesSpec struct {
 	// +kubebuilder:validation:Enum=auto;skip
 	// +optional
 	TektonPipelines string `json:"tektonPipelines,omitempty"`
+
+	// postgresBackupPlugin controls deployment of the Barman Cloud plugin,
+	// CloudNativePG's backup engine, which serves every PostgreSQL on the
+	// cluster -- the platform's own database and any database deployed
+	// through Planton.
+	// "auto" (default): the operator installs the plugin whenever it
+	// installed CloudNativePG itself and cert-manager is on the cluster (the
+	// plugin needs it for the TLS between operator and plugin), or whenever
+	// spec.database.postgresql.backup is declared. A cluster that cannot run
+	// the plugin pays nothing for it; a plugin installed by any other means
+	// is detected and respected.
+	// "skip": assume already installed (or unwanted), do not deploy.
+	// +kubebuilder:default="auto"
+	// +kubebuilder:validation:Enum=auto;skip
+	// +optional
+	PostgresBackupPlugin string `json:"postgresBackupPlugin,omitempty"`
 }
 
 // LicenseSpec delivers the deployment's Planton license key. Without one,
@@ -693,6 +811,19 @@ type PostgreSQLSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
+
+	// backup declares where the platform's own database is backed up and
+	// how (see PostgreSQLBackupSpec). Absent means no backup: the database
+	// lives on one volume in this cluster and nothing copies it anywhere.
+	// The Backup column of `kubectl get plantonplatform` says which.
+	// +optional
+	Backup *PostgreSQLBackupSpec `json:"backup,omitempty"`
+
+	// recoverFrom restores this platform's database from another platform's
+	// archive instead of creating it empty (see PostgreSQLRecoverFromSpec).
+	// Honored only when the database is first created.
+	// +optional
+	RecoverFrom *PostgreSQLRecoverFromSpec `json:"recoverFrom,omitempty"`
 }
 
 // RedisSpec configures storage for the redis-protocol cache (served by Valkey).
@@ -1133,6 +1264,13 @@ type PlantonPlatformStatus struct {
 	// +optional
 	Email string `json:"email,omitempty"`
 
+	// backup is what the operator knows about the platform database's
+	// backup (see BackupStatus): the one-word state the Backup column prints,
+	// the server name a recovery copies, the recoverability point, and the
+	// last base backup. Read from the database operator's own conditions.
+	// +optional
+	Backup *BackupStatus `json:"backup,omitempty"`
+
 	// components reports the status of each individual component.
 	// +optional
 	Components ComponentStatuses `json:"components,omitempty"`
@@ -1176,14 +1314,53 @@ type ComponentStatuses struct {
 	Tekton *ComponentStatus `json:"tekton,omitempty"`
 }
 
-// ComponentStatus describes the observed state of an individual component.
+// ComponentStatus describes the observed state of an individual component:
+// its phase, the one-word reason behind it, the object the reason is about,
+// and the sentence a person acts on. A component that is stuck never says
+// only "waiting" -- the reason and message name what is wrong and what to do.
 type ComponentStatus struct {
 	// phase is the lifecycle phase of this component.
 	Phase ComponentPhase `json:"phase"`
 
-	// message provides human-readable detail about the component's current state.
+	// reason is the one-word, machine-readable cause behind the phase (for
+	// example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+	// Each reason has a row in the troubleshooting reference.
+	// +optional
+	Reason ComponentReason `json:"reason,omitempty"`
+
+	// object names the Kubernetes object the reason is about -- the Pod whose
+	// image cannot be pulled, the PersistentVolumeClaim that will not
+	// provision -- so `kubectl describe` on it is the next step. Absent when
+	// the reason is about the component as a whole.
+	// +optional
+	Object *ComponentObjectReference `json:"object,omitempty"`
+
+	// message provides human-readable detail about the component's current
+	// state: what was observed, what it most likely means, and the exact
+	// next step.
 	// +optional
 	Message string `json:"message,omitempty"`
+
+	// lastTransitionTime is when the phase, reason, or object last changed.
+	// It does not move while the same condition persists.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// ComponentObjectReference names one Kubernetes object in the platform's own
+// namespace (or a sub-operator's) by kind and name. A deliberately small
+// shape: the kind and name are what a person types after `kubectl describe`.
+type ComponentObjectReference struct {
+	// kind is the object's kind (Pod, PersistentVolumeClaim, Deployment, Job).
+	Kind string `json:"kind"`
+
+	// name is the object's name.
+	Name string `json:"name"`
+
+	// namespace is set only when the object lives outside the platform's own
+	// namespace (a sub-operator's controller, for example).
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -1194,6 +1371,7 @@ type ComponentStatus struct {
 // +kubebuilder:printcolumn:name="Reachability",type=string,JSONPath=`.status.reachability`,description="Whether the public internet reaches the front door, as the operator concluded"
 // +kubebuilder:printcolumn:name="License",type=string,JSONPath=`.status.license`,description="License delivery mode (Community when none configured)"
 // +kubebuilder:printcolumn:name="Email",type=string,JSONPath=`.status.email`,description="Email provider as declared (NotConfigured when spec.email is absent)"
+// +kubebuilder:printcolumn:name="Backup",type=string,JSONPath=`.status.backup.state`,description="Whether the platform's database is being saved: Healthy, Deploying, Failing, Unavailable, or NotConfigured"
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`,description="Why the platform is in its phase, in plain language"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 

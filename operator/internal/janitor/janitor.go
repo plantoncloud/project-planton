@@ -83,7 +83,10 @@ type Outcome struct {
 // release installs; reading the instances of every kind a release defines (to
 // know whether anything still uses it); and deleting exactly the namespaces
 // the releases create -- pinned by name, because deleting an arbitrary
-// namespace is a different blast radius from patching one.
+// namespace is a different blast radius from patching one. The backup plugin's
+// release adds two kinds the others do not carry: its own ObjectStore
+// definition (read for in-use stores) and the cert-manager Issuer and
+// Certificates that mint its TLS pair (deleted with the release).
 //
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=delete
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations;validatingwebhookconfigurations,verbs=delete
@@ -93,6 +96,8 @@ type Outcome struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=delete
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=delete
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=*,verbs=get;list
+// +kubebuilder:rbac:groups=barmancloud.cnpg.io,resources=*,verbs=get;list
+// +kubebuilder:rbac:groups=cert-manager.io,resources=issuers;certificates,verbs=get;list;delete
 // +kubebuilder:rbac:groups=tekton.dev,resources=*,verbs=get;list
 // +kubebuilder:rbac:groups=resolution.tekton.dev,resources=*,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch

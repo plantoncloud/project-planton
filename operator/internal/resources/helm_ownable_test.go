@@ -8,6 +8,11 @@ import "testing"
 // a ClusterRoleBinding (an upstream default flipping, a values key drifting)
 // would stop the platform from booting -- and this test is where that shows up
 // first, on the operator's own values, before any cluster sees it.
+//
+// The Barman Cloud plugin chart is deliberately NOT in this list: it is a
+// shared sub-operator release (cluster RBAC, CloudNativePG's namespace), applied
+// by the sub-operator gate and removed by the janitor, never owned by a
+// platform. Its own contract is held by TestLoadBarmanCloudPluginManifests_*.
 func TestEveryShippedChartRendersOnlyOwnableObjects(t *testing.T) {
 	const crName, namespace = "planton", "planton"
 	charts := []struct {

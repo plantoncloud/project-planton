@@ -55,10 +55,26 @@ type Component interface {
 	Reconcile(ctx context.Context, c client.Client, scheme *runtime.Scheme, planton *v1.PlantonPlatform) (Result, error)
 }
 
-// Result describes the outcome of a single component reconciliation.
+// Result describes the outcome of a single component reconciliation: whether
+// the component is Ready, the one-word reason behind the answer, the object
+// the reason is about (when there is one), and the sentence a person reads.
+// A not-ready Result built through Base.NotReady always carries the most
+// specific reason the cluster can support; a bare {Ready: false, Message}
+// is the generic "still deploying" answer and the controller records it as
+// such.
 type Result struct {
 	Ready   bool
+	Reason  v1.ComponentReason
+	Object  *v1.ComponentObjectReference
 	Message string
+}
+
+// Refused is the not-ready Result for a declaration that cannot be honored as
+// written -- a front door that does not exist, a referenced Secret that is
+// missing, a listener no hostname matches. Nothing is deploying and nothing
+// will until the spec changes; the message names the field and the way out.
+func Refused(message string) Result {
+	return Result{Ready: false, Reason: v1.ComponentReasonConfigurationRefused, Message: message}
 }
 
 // All returns every component the operator knows about, in a stable order.

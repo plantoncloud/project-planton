@@ -53,8 +53,14 @@ func TektonPipelinesSubOperator() SubOperatorOptions {
 // SharedSubOperators lists every vendored sub-operator the janitor may take
 // back off the cluster once no platform remains -- the same definitions the
 // install gate deploys, so nothing can be installed that cannot be removed.
+//
+// Order is load-bearing: the backup plugin and CloudNativePG share a
+// namespace, and the sweep keeps a namespace only for objects it did NOT
+// mark. Swept first, CloudNativePG would take the namespace out from under a
+// plugin still marked as ours; so the plugin leaves first, then the operator
+// it extends.
 func SharedSubOperators() []SubOperatorOptions {
-	return []SubOperatorOptions{CloudNativePGSubOperator(), TektonPipelinesSubOperator()}
+	return []SubOperatorOptions{BarmanCloudPluginSubOperator(), CloudNativePGSubOperator(), TektonPipelinesSubOperator()}
 }
 
 func (t *Tekton) Name() string { return "tekton" }
@@ -117,7 +123,7 @@ func (t *Tekton) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sche
 	}
 
 	if !ready {
-		return Result{Ready: false, Message: "Deploying Tekton Pipelines"}, nil
+		return t.SubOperatorNotReady(ctx, c, planton.Namespace, subOperator, "Deploying Tekton Pipelines"), nil
 	}
 
 	log.Info("Tekton ready")

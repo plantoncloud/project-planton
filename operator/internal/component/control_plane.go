@@ -127,14 +127,14 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 	}
 	if !ready {
 		log.Info("ControlPlane not ready")
-		return Result{Ready: false, Message: "Waiting for ControlPlane Deployment"}, nil
+		return cp.NotReady(ctx, c, planton.Namespace, DeploymentRef(deployName), "Waiting for ControlPlane Deployment"), nil
 	}
 
 	// A healthy pod under a declaration that could not be honored is not
 	// Ready: "Ready" means what the manifest declared is what runs.
 	if emailPreflight != "" {
 		log.Info("ControlPlane running without the declared email", "reason", emailPreflight)
-		return Result{Ready: false, Message: emailPreflight}, nil
+		return Refused(emailPreflight), nil
 	}
 
 	log.Info("ControlPlane ready")

@@ -89,7 +89,7 @@ func (co *Console) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sc
 	}
 	if !ready {
 		log.Info("Console not ready")
-		return Result{Ready: false, Message: "Waiting for Console Deployment"}, nil
+		return co.NotReady(ctx, c, planton.Namespace, DeploymentRef(deployName), "Waiting for Console Deployment"), nil
 	}
 
 	log.Info("Console ready")

@@ -40,6 +40,11 @@ spec:
       jsonPath: .status.email
       name: Email
       type: string
+    - description: 'Whether the platform''s database is being saved: Healthy, Deploying,
+        Failing, Unavailable, or NotConfigured'
+      jsonPath: .status.backup.state
+      name: Backup
+      type: string
     - description: Why the platform is in its phase, in plain language
       jsonPath: .status.conditions[?(@.type=="Ready")].message
       name: Message
@@ -347,6 +352,338 @@ spec:
                   postgresql:
                     description: postgresql configures the platform's PostgreSQL cluster.
                     properties:
+                      backup:
+                        description: |-
+                          backup declares where the platform's own database is backed up and
+                          how (see PostgreSQLBackupSpec). Absent means no backup: the database
+                          lives on one volume in this cluster and nothing copies it anywhere.
+                          The Backup column of `kubectl get plantonplatform` says which.
+                        properties:
+                          objectStore:
+                            description: |-
+                              objectStore is the bucket the backups go to and how the database's pods
+                              authenticate to it.
+                            properties:
+                              azureBlob:
+                                description: 'AzureBlobObjectStoreSpec: Azure Blob
+                                  Storage.'
+                                properties:
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      key AZURE_STORAGE_CONNECTION_STRING. Empty means Azure AD workload
+                                      identity on the database's ServiceAccount -- the preferred posture; see
+                                      serviceAccountAnnotations.
+                                    type: string
+                                  storageAccount:
+                                    description: |-
+                                      storageAccount is the account the container belongs to. Identifies the
+                                      endpoint for the keyless posture.
+                                    minLength: 1
+                                    type: string
+                                required:
+                                - storageAccount
+                                type: object
+                              destinationPath:
+                                description: |-
+                                  destinationPath is the bucket and prefix: s3://bucket/path (s3 and
+                                  r2), gs://bucket/path (gcs), or the container URL (azureBlob).
+                                minLength: 1
+                                type: string
+                              gcs:
+                                description: 'GCSObjectStoreSpec: Google Cloud Storage.'
+                                properties:
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      key APPLICATION_CREDENTIALS holding a service-account JSON key. Empty
+                                      means GKE Workload Identity on the database's ServiceAccount -- the
+                                      preferred posture; see serviceAccountAnnotations.
+                                    type: string
+                                type: object
+                              r2:
+                                description: |-
+                                  R2ObjectStoreSpec: Cloudflare R2 through its S3 API. R2 has no keyless
+                                  posture; the key pair is derived from a Cloudflare API token carrying an
+                                  R2 permission group (access key id = the token's id; secret access key =
+                                  the lowercase hex SHA-256 of the token's value) and always arrives as a
+                                  Secret. The endpoint follows from the account and the bucket's
+                                  jurisdiction, and the only region R2 accepts is set for you.
+                                properties:
+                                  accountId:
+                                    description: accountId is the Cloudflare account
+                                      that owns the bucket.
+                                    minLength: 1
+                                    type: string
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      keys ACCESS_KEY_ID and SECRET_ACCESS_KEY.
+                                    minLength: 1
+                                    type: string
+                                  jurisdiction:
+                                    description: |-
+                                      jurisdiction is the bucket's data residency: empty or "default" for
+                                      standard storage, else "eu", "fedramp", or "us". A jurisdictional
+                                      bucket is served ONLY through its own host, so this must match how the
+                                      bucket was created.
+                                    enum:
+                                    - ""
+                                    - default
+                                    - eu
+                                    - fedramp
+                                    - us
+                                    type: string
+                                required:
+                                - accountId
+                                - credentialsSecretName
+                                type: object
+                              s3:
+                                description: 'S3ObjectStoreSpec: Amazon S3, or any
+                                  S3-compatible store by endpoint.'
+                                properties:
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      keys ACCESS_KEY_ID and SECRET_ACCESS_KEY. Empty means the database's
+                                      pods inherit an IAM role (IRSA, EKS Pod Identity, an instance profile)
+                                      -- the preferred posture; see serviceAccountAnnotations.
+                                    type: string
+                                  endpointCASecretRef:
+                                    description: |-
+                                      endpointCASecretRef names the CA bundle a private endpoint's TLS chains
+                                      to, when the system trust store does not carry it.
+                                    properties:
+                                      key:
+                                        description: key within the Secret.
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: name of the Secret.
+                                        minLength: 1
+                                        type: string
+                                    required:
+                                    - key
+                                    - name
+                                    type: object
+                                  endpointURL:
+                                    description: |-
+                                      endpointURL points at an S3-compatible store (MinIO, Ceph, a NAS).
+                                      Empty means Amazon S3.
+                                    type: string
+                                  region:
+                                    description: |-
+                                      region of the bucket. Required by Amazon S3; some compatible stores
+                                      ignore it.
+                                    type: string
+                                type: object
+                            required:
+                            - destinationPath
+                            type: object
+                            x-kubernetes-validations:
+                            - message: 'an object store names exactly one backend:
+                                s3, gcs, azureBlob, or r2'
+                              rule: '[has(self.s3), has(self.gcs), has(self.azureBlob),
+                                has(self.r2)].filter(x, x).size() == 1'
+                            - message: an s3 or r2 store's destinationPath starts
+                                with s3://
+                              rule: '!(has(self.s3) || has(self.r2)) || self.destinationPath.startsWith(''s3://'')'
+                            - message: a gcs store's destinationPath starts with gs://
+                              rule: '!has(self.gcs) || self.destinationPath.startsWith(''gs://'')'
+                            - message: an azureBlob store's destinationPath is the
+                                container URL, https://<account>.blob.core.windows.net/<container>/<path>
+                              rule: '!has(self.azureBlob) || self.destinationPath.startsWith(''https://'')'
+                          retentionPolicy:
+                            default: 30d
+                            description: |-
+                              retentionPolicy is how long the store keeps backups and the WAL that
+                              goes with them: an integer and a unit, d (days), w (weeks), or m
+                              (months). Default 30d.
+                            pattern: ^[1-9][0-9]*[dwm]$
+                            type: string
+                          schedule:
+                            default: 0 0 2 * * *
+                            description: |-
+                              schedule is when base backups run, as a SIX-field cron with seconds
+                              first (the database operator's grammar): "0 0 2 * * *" is daily at
+                              02:00 UTC, the default. The first base backup always runs the moment
+                              backups are declared, whatever this says.
+                            type: string
+                          serviceAccountAnnotations:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              serviceAccountAnnotations go on the ServiceAccount the database operator
+                              creates for the database's own pods (it names that account after the
+                              PostgreSQL cluster: "{platform}-postgres"). This is the keyless backup
+                              identity: EKS "eks.amazonaws.com/role-arn", GKE
+                              "iam.gke.io/gcp-service-account", AKS "azure.workload.identity/client-id"
+                              -- the cloud-side binding is written against that account, and no
+                              credential exists in the cluster. On GCS the bound identity needs BOTH
+                              roles/storage.objectAdmin and roles/storage.legacyBucketReader: the
+                              plugin verifies the destination with a bucket-level read before every
+                              archive, and object administration alone does not carry it.
+                            type: object
+                        required:
+                        - objectStore
+                        type: object
+                      recoverFrom:
+                        description: |-
+                          recoverFrom restores this platform's database from another platform's
+                          archive instead of creating it empty (see PostgreSQLRecoverFromSpec).
+                          Honored only when the database is first created.
+                        properties:
+                          objectStore:
+                            description: |-
+                              objectStore is the store the source platform archived to. Recovery only
+                              reads from it; this platform's own backups go to spec.database.postgresql.backup.
+                            properties:
+                              azureBlob:
+                                description: 'AzureBlobObjectStoreSpec: Azure Blob
+                                  Storage.'
+                                properties:
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      key AZURE_STORAGE_CONNECTION_STRING. Empty means Azure AD workload
+                                      identity on the database's ServiceAccount -- the preferred posture; see
+                                      serviceAccountAnnotations.
+                                    type: string
+                                  storageAccount:
+                                    description: |-
+                                      storageAccount is the account the container belongs to. Identifies the
+                                      endpoint for the keyless posture.
+                                    minLength: 1
+                                    type: string
+                                required:
+                                - storageAccount
+                                type: object
+                              destinationPath:
+                                description: |-
+                                  destinationPath is the bucket and prefix: s3://bucket/path (s3 and
+                                  r2), gs://bucket/path (gcs), or the container URL (azureBlob).
+                                minLength: 1
+                                type: string
+                              gcs:
+                                description: 'GCSObjectStoreSpec: Google Cloud Storage.'
+                                properties:
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      key APPLICATION_CREDENTIALS holding a service-account JSON key. Empty
+                                      means GKE Workload Identity on the database's ServiceAccount -- the
+                                      preferred posture; see serviceAccountAnnotations.
+                                    type: string
+                                type: object
+                              r2:
+                                description: |-
+                                  R2ObjectStoreSpec: Cloudflare R2 through its S3 API. R2 has no keyless
+                                  posture; the key pair is derived from a Cloudflare API token carrying an
+                                  R2 permission group (access key id = the token's id; secret access key =
+                                  the lowercase hex SHA-256 of the token's value) and always arrives as a
+                                  Secret. The endpoint follows from the account and the bucket's
+                                  jurisdiction, and the only region R2 accepts is set for you.
+                                properties:
+                                  accountId:
+                                    description: accountId is the Cloudflare account
+                                      that owns the bucket.
+                                    minLength: 1
+                                    type: string
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      keys ACCESS_KEY_ID and SECRET_ACCESS_KEY.
+                                    minLength: 1
+                                    type: string
+                                  jurisdiction:
+                                    description: |-
+                                      jurisdiction is the bucket's data residency: empty or "default" for
+                                      standard storage, else "eu", "fedramp", or "us". A jurisdictional
+                                      bucket is served ONLY through its own host, so this must match how the
+                                      bucket was created.
+                                    enum:
+                                    - ""
+                                    - default
+                                    - eu
+                                    - fedramp
+                                    - us
+                                    type: string
+                                required:
+                                - accountId
+                                - credentialsSecretName
+                                type: object
+                              s3:
+                                description: 'S3ObjectStoreSpec: Amazon S3, or any
+                                  S3-compatible store by endpoint.'
+                                properties:
+                                  credentialsSecretName:
+                                    description: |-
+                                      credentialsSecretName names a Secret in the platform's namespace with
+                                      keys ACCESS_KEY_ID and SECRET_ACCESS_KEY. Empty means the database's
+                                      pods inherit an IAM role (IRSA, EKS Pod Identity, an instance profile)
+                                      -- the preferred posture; see serviceAccountAnnotations.
+                                    type: string
+                                  endpointCASecretRef:
+                                    description: |-
+                                      endpointCASecretRef names the CA bundle a private endpoint's TLS chains
+                                      to, when the system trust store does not carry it.
+                                    properties:
+                                      key:
+                                        description: key within the Secret.
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: name of the Secret.
+                                        minLength: 1
+                                        type: string
+                                    required:
+                                    - key
+                                    - name
+                                    type: object
+                                  endpointURL:
+                                    description: |-
+                                      endpointURL points at an S3-compatible store (MinIO, Ceph, a NAS).
+                                      Empty means Amazon S3.
+                                    type: string
+                                  region:
+                                    description: |-
+                                      region of the bucket. Required by Amazon S3; some compatible stores
+                                      ignore it.
+                                    type: string
+                                type: object
+                            required:
+                            - destinationPath
+                            type: object
+                            x-kubernetes-validations:
+                            - message: 'an object store names exactly one backend:
+                                s3, gcs, azureBlob, or r2'
+                              rule: '[has(self.s3), has(self.gcs), has(self.azureBlob),
+                                has(self.r2)].filter(x, x).size() == 1'
+                            - message: an s3 or r2 store's destinationPath starts
+                                with s3://
+                              rule: '!(has(self.s3) || has(self.r2)) || self.destinationPath.startsWith(''s3://'')'
+                            - message: a gcs store's destinationPath starts with gs://
+                              rule: '!has(self.gcs) || self.destinationPath.startsWith(''gs://'')'
+                            - message: an azureBlob store's destinationPath is the
+                                container URL, https://<account>.blob.core.windows.net/<container>/<path>
+                              rule: '!has(self.azureBlob) || self.destinationPath.startsWith(''https://'')'
+                          serverName:
+                            description: |-
+                              serverName is the name the source's archive is filed under -- printed
+                              on the source platform's status (status.backup.serverName), or read from
+                              the bucket's own listing when the source is gone. Every platform archives
+                              under its own name, so a restored platform never writes over its source.
+                            minLength: 1
+                            type: string
+                          targetTime:
+                            description: |-
+                              targetTime recovers to a point in time (RFC 3339). Empty recovers to
+                              the end of the archive.
+                            type: string
+                        required:
+                        - objectStore
+                        - serverName
+                        type: object
                       replicas:
                         default: 1
                         description: |-
@@ -854,6 +1191,24 @@ spec:
                   prerequisites controls how the operator deploys its own dependencies
                   (sub-operators like CloudNativePG). Defaults to auto-detection.
                 properties:
+                  postgresBackupPlugin:
+                    default: auto
+                    description: |-
+                      postgresBackupPlugin controls deployment of the Barman Cloud plugin,
+                      CloudNativePG's backup engine, which serves every PostgreSQL on the
+                      cluster -- the platform's own database and any database deployed
+                      through Planton.
+                      "auto" (default): the operator installs the plugin whenever it
+                      installed CloudNativePG itself and cert-manager is on the cluster (the
+                      plugin needs it for the TLS between operator and plugin), or whenever
+                      spec.database.postgresql.backup is declared. A cluster that cannot run
+                      the plugin pays nothing for it; a plugin installed by any other means
+                      is detected and respected.
+                      "skip": assume already installed (or unwanted), do not deploy.
+                    enum:
+                    - auto
+                    - skip
+                    type: string
                   postgresOperator:
                     default: auto
                     description: |-
@@ -1075,17 +1430,91 @@ spec:
             description: PlantonPlatformStatus defines the observed state of a PlantonPlatform
               deployment.
             properties:
+              backup:
+                description: |-
+                  backup is what the operator knows about the platform database's
+                  backup (see BackupStatus): the one-word state the Backup column prints,
+                  the server name a recovery copies, the recoverability point, and the
+                  last base backup. Read from the database operator's own conditions.
+                properties:
+                  firstRecoverabilityPoint:
+                    description: |-
+                      firstRecoverabilityPoint is the earliest point in time the archive can
+                      restore to (the start of the oldest base backup still retained).
+                    format: date-time
+                    type: string
+                  lastFailedBackup:
+                    description: lastFailedBackup is when a base backup last failed,
+                      if one has.
+                    format: date-time
+                    type: string
+                  lastSuccessfulBackup:
+                    description: lastSuccessfulBackup is when the most recent base
+                      backup completed.
+                    format: date-time
+                    type: string
+                  message:
+                    description: |-
+                      message says why the state is what it is, in plain language -- the
+                      plugin's own sentence when it is the one that knows.
+                    type: string
+                  serverName:
+                    description: |-
+                      serverName is the name this platform's archive is filed under in the
+                      store -- what a recovery declaration copies. Set once backups are
+                      declared.
+                    type: string
+                  state:
+                    description: state is the one-word answer; see BackupState.
+                    type: string
+                required:
+                - state
+                type: object
               components:
                 description: components reports the status of each individual component.
                 properties:
                   console:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1093,18 +1522,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   controlPlane:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1112,18 +1581,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   gateway:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1131,18 +1640,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   identity:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1150,18 +1699,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   ingress:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1169,18 +1758,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   neo4j:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1188,18 +1817,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   openBao:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1207,18 +1876,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   openFGA:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1226,18 +1935,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   postgresql:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1245,18 +1994,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   redis:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1264,18 +2053,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   runner:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1283,18 +2112,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   tekton:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1302,18 +2171,58 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase
                     type: object
                   temporal:
-                    description: ComponentStatus describes the observed state of an
-                      individual component.
+                    description: |-
+                      ComponentStatus describes the observed state of an individual component:
+                      its phase, the one-word reason behind it, the object the reason is about,
+                      and the sentence a person acts on. A component that is stuck never says
+                      only "waiting" -- the reason and message name what is wrong and what to do.
                     properties:
-                      message:
-                        description: message provides human-readable detail about
-                          the component's current state.
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is when the phase, reason, or object last changed.
+                          It does not move while the same condition persists.
+                        format: date-time
                         type: string
+                      message:
+                        description: |-
+                          message provides human-readable detail about the component's current
+                          state: what was observed, what it most likely means, and the exact
+                          next step.
+                        type: string
+                      object:
+                        description: |-
+                          object names the Kubernetes object the reason is about -- the Pod whose
+                          image cannot be pulled, the PersistentVolumeClaim that will not
+                          provision -- so `kubectl describe` on it is the next step. Absent when
+                          the reason is about the component as a whole.
+                        properties:
+                          kind:
+                            description: kind is the object's kind (Pod, PersistentVolumeClaim,
+                              Deployment, Job).
+                            type: string
+                          name:
+                            description: name is the object's name.
+                            type: string
+                          namespace:
+                            description: |-
+                              namespace is set only when the object lives outside the platform's own
+                              namespace (a sub-operator's controller, for example).
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
                       phase:
                         description: phase is the lifecycle phase of this component.
                         enum:
@@ -1321,6 +2230,12 @@ spec:
                         - Deploying
                         - Ready
                         - Error
+                        type: string
+                      reason:
+                        description: |-
+                          reason is the one-word, machine-readable cause behind the phase (for
+                          example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+                          Each reason has a row in the troubleshooting reference.
                         type: string
                     required:
                     - phase

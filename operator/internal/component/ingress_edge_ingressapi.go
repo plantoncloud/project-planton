@@ -35,13 +35,13 @@ func (i *Ingress) reconcileIngressEdge(ctx context.Context, c client.Client, pla
 		return Result{}, err
 	}
 	if preflightMsg != "" {
-		return Result{Ready: false, Message: preflightMsg}, nil
+		return Refused(preflightMsg), nil
 	}
 
 	if msg, err := i.preflightTLS(ctx, c, planton); err != nil {
 		return Result{}, err
 	} else if msg != "" {
-		return Result{Ready: false, Message: msg}, nil
+		return Refused(msg), nil
 	}
 
 	cfg := resources.IngressConfig{

@@ -121,6 +121,42 @@ type PostgreSQLClusterOptions struct {
 	// so deleting the platform removes the database WITH its credentials --
 	// one coherent lifecycle.
 	OwnerRef *metav1.OwnerReference
+
+	// Backup wires the cluster to its object store through the Barman Cloud
+	// plugin: WAL is archived continuously under ServerName and base backups
+	// land in the same store. Nil renders no plugins entry at all -- the
+	// caller sets it only once the plugin serves, because a Cluster naming a
+	// plugin the operator cannot reach is parked with no instances.
+	Backup *PostgreSQLClusterBackup
+
+	// ServiceAccountAnnotations go on the ServiceAccount CloudNativePG creates
+	// for the instance pods (named after the Cluster). This is the keyless
+	// backup identity seam -- EKS "eks.amazonaws.com/role-arn", GKE
+	// "iam.gke.io/gcp-service-account", AKS "azure.workload.identity/client-id"
+	// -- the same shape the runner and the control plane use for theirs.
+	ServiceAccountAnnotations map[string]string
+
+	// Recovery bootstraps the cluster from a source's archive instead of
+	// initdb. It is honoured by CloudNativePG only at Cluster creation; the
+	// component keeps a live Cluster's bootstrap as it is and explains that
+	// in status rather than re-rendering a decision that cannot change.
+	Recovery *PostgreSQLClusterRecovery
+}
+
+// PostgreSQLClusterBackup names the store and server a cluster archives to.
+type PostgreSQLClusterBackup struct {
+	ObjectStoreName string
+	ServerName      string
+}
+
+// PostgreSQLClusterRecovery names the store and server a cluster restores
+// from, and optionally the point in time to stop at.
+type PostgreSQLClusterRecovery struct {
+	ObjectStoreName string
+	ServerName      string
+	// TargetTime is an RFC 3339 timestamp; empty recovers to the end of the
+	// archive (the latest consistent point).
+	TargetTime string
 }
 
 // NewPostgreSQLCluster builds the platform's postgresql.cnpg.io/v1 Cluster as
@@ -175,22 +211,68 @@ func NewPostgreSQLCluster(opts PostgreSQLClusterOptions) *unstructured.Unstructu
 				"memory": "2Gi",
 			},
 		},
-		"bootstrap": map[string]any{
-			"initdb": map[string]any{
-				"database": DBBase,
-				"owner":    PostgreSQLOwnerRole,
-				// Databases whose consumers cannot create them are born with
-				// the cluster: OpenFGA's migrate job expects its database to
-				// exist. Runs once, as the superuser, against the postgres
-				// maintenance database.
-				"postInitSQL": []any{
-					fmt.Sprintf("CREATE DATABASE %s", DBOpenFGA),
-				},
+		"bootstrap": postgresqlBootstrap(opts.Recovery),
+	}
+
+	if opts.Recovery != nil {
+		spec["externalClusters"] = []any{
+			map[string]any{
+				"name":   recoverySourceName,
+				"plugin": pluginConfiguration(opts.Recovery.ObjectStoreName, opts.Recovery.ServerName),
 			},
-		},
+		}
+	}
+
+	if opts.Backup != nil {
+		plugin := pluginConfiguration(opts.Backup.ObjectStoreName, opts.Backup.ServerName)
+		plugin["isWALArchiver"] = true
+		spec["plugins"] = []any{plugin}
+	}
+
+	if len(opts.ServiceAccountAnnotations) > 0 {
+		annotations := make(map[string]any, len(opts.ServiceAccountAnnotations))
+		for k, v := range opts.ServiceAccountAnnotations {
+			annotations[k] = v
+		}
+		spec["serviceAccountTemplate"] = map[string]any{
+			"metadata": map[string]any{"annotations": annotations},
+		}
 	}
 
 	obj.Object["spec"] = spec
 
 	return obj
+}
+
+// postgresqlBootstrap is how the cluster's data comes to exist: initdb for a
+// fresh platform, recovery from a source's archive for a restored one. The
+// two are exclusive by CloudNativePG's schema, and neither changes after the
+// Cluster exists.
+func postgresqlBootstrap(recovery *PostgreSQLClusterRecovery) map[string]any {
+	if recovery != nil {
+		// A restored platform's databases -- the base, OpenFGA's, the
+		// identity server's, Temporal's -- all come back from the archive;
+		// nothing here creates them. The superuser credential is the one
+		// CloudNativePG generates for THIS cluster (the {cluster}-superuser
+		// Secret) and reconciles onto the restored instance, so every
+		// consumer keeps reading the Secret it always read.
+		rec := map[string]any{"source": recoverySourceName}
+		if recovery.TargetTime != "" {
+			rec["recoveryTarget"] = map[string]any{"targetTime": recovery.TargetTime}
+		}
+		return map[string]any{"recovery": rec}
+	}
+	return map[string]any{
+		"initdb": map[string]any{
+			"database": DBBase,
+			"owner":    PostgreSQLOwnerRole,
+			// Databases whose consumers cannot create them are born with
+			// the cluster: OpenFGA's migrate job expects its database to
+			// exist. Runs once, as the superuser, against the postgres
+			// maintenance database.
+			"postInitSQL": []any{
+				fmt.Sprintf("CREATE DATABASE %s", DBOpenFGA),
+			},
+		},
+	}
 }

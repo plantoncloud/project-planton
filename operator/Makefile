@@ -307,6 +307,19 @@ endef
 CNPG_VERSION ?= 1.30.0
 CNPG_MANIFESTS_DIR := internal/resources/manifests/cloudnative-pg
 
+# The Barman Cloud plugin is CloudNativePG's backup engine (WAL archiving,
+# base backups, and recovery to an object store) since the in-tree backup
+# path was deprecated. It ships as a Helm chart, rendered at runtime into
+# CloudNativePG's own namespace -- the operator discovers plugins only there.
+# The pin matches the OSS catalog's kubernetescnpgbarmancloudplugin kind
+# (chart 0.7.0 == plugin v0.13.0) so a platform-operator cluster and a
+# catalog-installed cluster run the same plugin; move the two pins together
+# and read the plugin's CloudNativePG floor at the new pin (1.26+ today).
+BARMAN_PLUGIN_HELM_CHART_VERSION ?= 0.7.0
+BARMAN_PLUGIN_HELM_CHART_REPO_NAME := cnpg
+BARMAN_PLUGIN_HELM_CHART_REPO_URL := https://cloudnative-pg.github.io/charts
+BARMAN_PLUGIN_CHART_DIR := internal/resources/manifests/barman-plugin-chart
+
 OPENFGA_HELM_CHART_VERSION ?= 0.3.13
 OPENFGA_HELM_CHART_REPO_NAME := openfga
 OPENFGA_HELM_CHART_REPO_URL := https://openfga.github.io/helm-charts
@@ -340,7 +353,7 @@ TEKTON_PIPELINES_VERSION ?= v1.15.0
 TEKTON_PIPELINES_MANIFESTS_DIR := internal/resources/manifests/tekton-pipelines
 
 .PHONY: pull-charts
-pull-charts: pull-chart-valkey pull-chart-openfga pull-chart-temporal pull-chart-openbao pull-chart-neo4j ## Pull all embedded Helm chart archives (.tgz) for runtime rendering.
+pull-charts: pull-chart-valkey pull-chart-openfga pull-chart-temporal pull-chart-openbao pull-chart-neo4j pull-chart-barman-plugin ## Pull all embedded Helm chart archives (.tgz) for runtime rendering.
 
 .PHONY: generate-manifests
 generate-manifests: generate-manifests-cnpg generate-manifests-tekton pull-charts ## Regenerate all embedded third-party manifests and pull all Helm chart archives.
@@ -407,6 +420,17 @@ pull-chart-openbao: ## Download OpenBAO Helm chart tgz for runtime rendering.
 	@rm -f $(OPENBAO_CHART_DIR)/*.tgz
 	@$(HELM) pull $(OPENBAO_HELM_CHART_REPO_NAME)/openbao --version $(OPENBAO_HELM_CHART_VERSION) --destination $(OPENBAO_CHART_DIR)
 	@echo "Wrote $(OPENBAO_CHART_DIR)/openbao-$(OPENBAO_HELM_CHART_VERSION).tgz"
+
+.PHONY: pull-chart-barman-plugin
+pull-chart-barman-plugin: ## Download the CloudNativePG Barman Cloud plugin chart tgz for runtime rendering.
+	@command -v $(HELM) >/dev/null 2>&1 || { echo "Error: helm is not installed."; exit 1; }
+	@echo "Downloading CloudNativePG Barman Cloud plugin chart (v$(BARMAN_PLUGIN_HELM_CHART_VERSION))..."
+	@$(HELM) repo add $(BARMAN_PLUGIN_HELM_CHART_REPO_NAME) $(BARMAN_PLUGIN_HELM_CHART_REPO_URL) 2>/dev/null || true
+	@$(HELM) repo update $(BARMAN_PLUGIN_HELM_CHART_REPO_NAME) >/dev/null
+	@mkdir -p $(BARMAN_PLUGIN_CHART_DIR)
+	@rm -f $(BARMAN_PLUGIN_CHART_DIR)/*.tgz
+	@$(HELM) pull $(BARMAN_PLUGIN_HELM_CHART_REPO_NAME)/plugin-barman-cloud --version $(BARMAN_PLUGIN_HELM_CHART_VERSION) --destination $(BARMAN_PLUGIN_CHART_DIR)
+	@echo "Wrote $(BARMAN_PLUGIN_CHART_DIR)/plugin-barman-cloud-$(BARMAN_PLUGIN_HELM_CHART_VERSION).tgz"
 
 .PHONY: pull-chart-neo4j
 pull-chart-neo4j: ## Download Neo4j Helm chart tgz for runtime rendering.

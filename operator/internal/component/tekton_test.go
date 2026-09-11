@@ -8,7 +8,8 @@ import (
 	v1 "github.com/plantonhq/planton/operator/api/v1"
 )
 
-func boolPtr(b bool) *bool { return &b }
+//go:fix inline
+func boolPtr(b bool) *bool { return new(b) }
 
 // THE load-bearing product claim: a CR with no build configuration at all
 // runs builds. Builds power Service Hub -- an install without them is half a
@@ -21,13 +22,13 @@ func TestIsBuildEffective_DefaultOn(t *testing.T) {
 
 func TestIsBuildEffective_FollowsExplicitActs(t *testing.T) {
 	optedOut := ingressPlatform(false)
-	optedOut.Spec.Build = &v1.BuildSpec{Enabled: boolPtr(false)}
+	optedOut.Spec.Build = &v1.BuildSpec{Enabled: new(false)}
 	if isBuildEffective(optedOut) {
 		t.Error("an explicit spec.build opt-out must disable builds")
 	}
 
 	runnerOff := ingressPlatform(false)
-	runnerOff.Spec.Runner = &v1.RunnerSpec{Enabled: boolPtr(false)}
+	runnerOff.Spec.Runner = &v1.RunnerSpec{Enabled: new(false)}
 	if isBuildEffective(runnerOff) {
 		t.Error("builds must follow a disabled runner off -- the build worker is a capability OF the runner")
 	}
@@ -46,20 +47,20 @@ func TestTekton_IsEnabled(t *testing.T) {
 	}
 
 	optedOut := ingressPlatform(false)
-	optedOut.Spec.Build = &v1.BuildSpec{Enabled: boolPtr(false)}
+	optedOut.Spec.Build = &v1.BuildSpec{Enabled: new(false)}
 	if tekton.IsEnabled(optedOut) {
 		t.Error("tekton must be disabled on build opt-out")
 	}
 
 	runnerOffDefaultBuild := ingressPlatform(false)
-	runnerOffDefaultBuild.Spec.Runner = &v1.RunnerSpec{Enabled: boolPtr(false)}
+	runnerOffDefaultBuild.Spec.Runner = &v1.RunnerSpec{Enabled: new(false)}
 	if tekton.IsEnabled(runnerOffDefaultBuild) {
 		t.Error("with builds at default, tekton must quietly follow a disabled runner off")
 	}
 
 	runnerOffExplicitBuild := ingressPlatform(false)
-	runnerOffExplicitBuild.Spec.Runner = &v1.RunnerSpec{Enabled: boolPtr(false)}
-	runnerOffExplicitBuild.Spec.Build = &v1.BuildSpec{Enabled: boolPtr(true)}
+	runnerOffExplicitBuild.Spec.Runner = &v1.RunnerSpec{Enabled: new(false)}
+	runnerOffExplicitBuild.Spec.Build = &v1.BuildSpec{Enabled: new(true)}
 	if !tekton.IsEnabled(runnerOffExplicitBuild) {
 		t.Error("an explicit build enable must keep tekton enabled so the runner contradiction can error")
 	}
@@ -70,8 +71,8 @@ func TestTekton_IsEnabled(t *testing.T) {
 // named. The check precedes every cluster call, so no client is needed.
 func TestTekton_ReconcileRejectsExplicitBuildWithoutRunner(t *testing.T) {
 	p := ingressPlatform(false)
-	p.Spec.Runner = &v1.RunnerSpec{Enabled: boolPtr(false)}
-	p.Spec.Build = &v1.BuildSpec{Enabled: boolPtr(true)}
+	p.Spec.Runner = &v1.RunnerSpec{Enabled: new(false)}
+	p.Spec.Build = &v1.BuildSpec{Enabled: new(true)}
 
 	tekton := &Tekton{}
 	_, err := tekton.Reconcile(context.Background(), nil, nil, p)
@@ -91,7 +92,7 @@ func TestRunnerConfig_BuildEnabledFollowsSpec(t *testing.T) {
 	}
 
 	optedOut := ingressPlatform(false)
-	optedOut.Spec.Build = &v1.BuildSpec{Enabled: boolPtr(false)}
+	optedOut.Spec.Build = &v1.BuildSpec{Enabled: new(false)}
 	if cfg := runnerConfig(optedOut, nil); cfg.BuildEnabled {
 		t.Error("build opt-out must render the runner without the build capability")
 	}
@@ -109,7 +110,7 @@ func TestBuildConfig_BuildRoutingSeedFollowsSpec(t *testing.T) {
 	}
 
 	optedOut := ingressPlatform(true)
-	optedOut.Spec.Build = &v1.BuildSpec{Enabled: boolPtr(false)}
+	optedOut.Spec.Build = &v1.BuildSpec{Enabled: new(false)}
 	cfg = cp.buildConfig(optedOut, nil)
 	if cfg.Runner == nil {
 		t.Fatal("the runner binding must survive a build opt-out -- IaC deploys are unaffected")

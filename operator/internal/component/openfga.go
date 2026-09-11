@@ -70,7 +70,7 @@ func (o *OpenFGA) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sch
 	}
 	if !ready {
 		log.Info("OpenFGA not ready")
-		return Result{Ready: false, Message: "Waiting for OpenFGA server"}, nil
+		return o.NotReady(ctx, c, planton.Namespace, DeploymentRef(deployName), "Waiting for OpenFGA server"), nil
 	}
 
 	bootstrapped, err := o.ensureFGABootstrap(ctx, c, planton)

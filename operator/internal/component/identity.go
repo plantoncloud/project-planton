@@ -213,7 +213,8 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 	}
 	if !ready {
 		log.Info("Identity server not ready")
-		return Result{Ready: false, Message: "Waiting for the identity server (first boot imports the sign-in realm)"}, nil
+		return id.NotReady(ctx, c, planton.Namespace, DeploymentRef(resources.IdentityDeploymentName(planton.Name)),
+			"Waiting for the identity server (first boot imports the sign-in realm)"), nil
 	}
 
 	// The realm reconciler: the first-boot import above is the bootstrap;
@@ -252,7 +253,7 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 				ObservedGeneration: boundIdp.Generation,
 			}, nil)
 		}
-		return Result{Ready: false, Message: fmt.Sprintf(
+		return Result{Ready: false, Reason: v1.ComponentReasonReconcileFailed, Message: fmt.Sprintf(
 			"Identity server is up but its sign-in realm could not be reconciled: %v", err)}, nil
 	}
 	logRealmRepairs(log, report)

@@ -42,8 +42,8 @@ func Advertise(ctx context.Context, c client.Client) error {
 	if crd.GetAnnotations()[Annotation] == MinimumSupported {
 		return nil
 	}
-	patch := client.RawPatch(types.MergePatchType, []byte(fmt.Sprintf(
-		`{"metadata":{"annotations":{%q:%q}}}`, Annotation, MinimumSupported)))
+	patch := client.RawPatch(types.MergePatchType, fmt.Appendf(nil,
+		`{"metadata":{"annotations":{%q:%q}}}`, Annotation, MinimumSupported))
 	if err := c.Patch(ctx, crd, patch); err != nil {
 		return fmt.Errorf("advertising the platform version floor on %s: %w", PlatformDefinitionName, err)
 	}

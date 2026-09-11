@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
@@ -292,10 +293,13 @@ var _ = Describe("PlantonPlatform Controller", func() {
 
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					// The postgres component matches claims by its
-					// CloudNativePG Cluster name ({cluster}-N instance PVCs).
+					// A CloudNativePG instance claim carries the cluster
+					// label; that label, not the name, is how the postgres
+					// component knows the claim is its own before the
+					// instance pod exists.
 					Name:      "storage-explain-postgres-1",
 					Namespace: namespace,
+					Labels:    map[string]string{"cnpg.io/cluster": "storage-explain-postgres"},
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -603,6 +607,93 @@ var _ = Describe("PlantonPlatform Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, preRelease)).To(Succeed(), "a pre-release suffix is a release form")
 			Expect(k8sClient.Delete(ctx, preRelease)).To(Succeed())
+		})
+	})
+
+	Context("When a component's pod cannot start", func() {
+		// The front-door gateway has no dependencies, so it is the one
+		// component the second reconcile actually runs on a minimal spec --
+		// the right seam to prove the whole path from a kubelet's verdict on
+		// a pod to the MESSAGE column and an Event. Envtest runs no
+		// scheduler or kubelet, so the pod and its status are planted by the
+		// test exactly as the kubelet would write them.
+		It("names the pod, the image, and the fix on the component, the Ready condition, and an Event -- once", func() {
+			nn := types.NamespacedName{Name: "pull-fails", Namespace: namespace}
+			resource := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), resource) }()
+
+			recorder := record.NewFakeRecorder(16)
+			reconciler := &PlantonPlatformReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: recorder}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred(), "the second reconcile applies the gateway Deployment")
+
+			var deploy appsv1.Deployment
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: resources.GatewayDeploymentName(nn.Name), Namespace: namespace}, &deploy)).To(Succeed())
+
+			const image = "ghcr.io/plantonhq/planton-gateway:v9.9.9-missing"
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: resources.GatewayDeploymentName(nn.Name) + "-7d9f4-x1", Namespace: namespace,
+					Labels: deploy.Spec.Selector.MatchLabels,
+				},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "gateway", Image: image}}},
+			}
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), pod) }()
+			pod.Status = corev1.PodStatus{
+				Phase: corev1.PodPending,
+				ContainerStatuses: []corev1.ContainerStatus{{
+					Name: "gateway", Image: image,
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+						Reason: "ImagePullBackOff", Message: "Back-off pulling image \"" + image + "\": manifest unknown"}},
+				}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+
+			var updated plantonaiv1.PlantonPlatform
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			gw := updated.Status.Components.Gateway
+			Expect(gw).NotTo(BeNil())
+			Expect(gw.Reason).To(Equal(plantonaiv1.ComponentReasonImagePullFailed))
+			Expect(gw.Object).NotTo(BeNil())
+			Expect(gw.Object.Kind).To(Equal("Pod"))
+			Expect(gw.Object.Name).To(Equal(pod.Name))
+			Expect(gw.Message).To(ContainSubstring(image), "the status names the image, got: %s", gw.Message)
+			Expect(gw.Message).To(ContainSubstring("manifest unknown"), "the registry's own words are relayed, got: %s", gw.Message)
+			Expect(gw.Message).To(ContainSubstring("image override"), "the status names the fix, got: %s", gw.Message)
+			Expect(gw.LastTransitionTime.IsZero()).To(BeFalse())
+
+			ready := findCondition(updated.Status.Conditions, plantonaiv1.ConditionReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(string(plantonaiv1.ComponentReasonImagePullFailed)),
+				"the Ready condition carries the failing component's reason")
+			Expect(ready.Message).To(HavePrefix("gateway: image "+image),
+				"the MESSAGE column names the component and repeats its sentence, got: %s", ready.Message)
+			Expect(ready.ObservedGeneration).To(Equal(updated.Generation))
+
+			Eventually(recorder.Events, timeout, interval).Should(Receive(And(
+				ContainSubstring("Warning"), ContainSubstring("ImagePullFailed"), ContainSubstring("gateway:"), ContainSubstring(image))))
+
+			// The failure persists; the next reconcile changes nothing and
+			// records nothing more.
+			before := gw.LastTransitionTime
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			Expect(updated.Status.Components.Gateway.LastTransitionTime.Equal(&before)).To(BeTrue(),
+				"lastTransitionTime does not move while the same failure persists")
+			Consistently(recorder.Events, 300*time.Millisecond, 50*time.Millisecond).ShouldNot(Receive(),
+				"a persisting failure is one Event, not one per reconcile")
 		})
 	})
 
