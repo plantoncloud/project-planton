@@ -55,14 +55,12 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		statuses := v1.ComponentStatuses{
 			PostgreSQL:   &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			Redis:        &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
+			OpenFGA:      &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			Temporal:     &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			ControlPlane: &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			Console:      &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 		}
 
-		if isAuthorizationEnabled(planton) {
-			statuses.OpenFGA = &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
-		}
 		if isOpenBAOEnabled(planton) {
 			statuses.OpenBAO = &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
 		}
@@ -81,6 +79,17 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 	// pre-identity installs pick the slot up on upgrade.
 	if planton.Status.Components.Identity == nil {
 		planton.Status.Components.Identity = &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
+		changed = true
+	}
+
+	// The policy-engine slot is unconditional for the same reason: every
+	// request the control plane serves is authorized by OpenFGA, so a platform
+	// without it is unrepresentable. Backfilled (not only in the base block) so
+	// a platform whose status was allocated without the slot picks it up on the
+	// next reconcile instead of leaving the control plane waiting on a
+	// dependency that never reports.
+	if planton.Status.Components.OpenFGA == nil {
+		planton.Status.Components.OpenFGA = &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
 		changed = true
 	}
 
@@ -126,7 +135,6 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 	// waiting forever for an openbao slot that was never allocated.
 	changed = syncToggledSlot(&planton.Status.Components.OpenBAO, isOpenBAOEnabled(planton)) || changed
 	changed = syncToggledSlot(&planton.Status.Components.Neo4j, isNeo4jEnabled(planton)) || changed
-	changed = syncToggledSlot(&planton.Status.Components.OpenFGA, isAuthorizationEnabled(planton)) || changed
 
 	// The tekton slot follows the build capability, like the runner slot it
 	// depends on.
@@ -454,12 +462,6 @@ func allComponentPhases(planton *v1.PlantonPlatform) []v1.ComponentPhase {
 		}
 	}
 	return phases
-}
-
-func isAuthorizationEnabled(planton *v1.PlantonPlatform) bool {
-	return planton.Spec.Components != nil &&
-		planton.Spec.Components.Authorization != nil &&
-		planton.Spec.Components.Authorization.Enabled
 }
 
 // isOpenBAOEnabled defaults to true: the bundled secrets manager is integral

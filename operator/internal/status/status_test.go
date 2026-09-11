@@ -176,16 +176,12 @@ func TestInitialize_OptionalComponents(t *testing.T) {
 		Spec: v1.PlantonPlatformSpec{
 			Version: "v1.0.0",
 			Components: &v1.ComponentsSpec{
-				Authorization: &v1.ComponentToggle{Enabled: true},
-				Graph:         &v1.Neo4jSpec{Enabled: true},
+				Graph: &v1.Neo4jSpec{Enabled: true},
 			},
 		},
 	}
 	Initialize(p)
 
-	if p.Status.Components.OpenFGA == nil {
-		t.Error("expected OpenFGA status to be initialized when authorization is enabled")
-	}
 	if p.Status.Components.Neo4j == nil {
 		t.Error("expected Neo4j status to be initialized when enabled")
 	}
@@ -195,11 +191,24 @@ func TestInitialize_OptionalComponentsDisabled(t *testing.T) {
 	p := newMinimalPlanton()
 	Initialize(p)
 
-	if p.Status.Components.OpenFGA != nil {
-		t.Error("expected OpenFGA status to be nil when authorization is disabled")
-	}
 	if p.Status.Components.Neo4j != nil {
 		t.Error("expected Neo4j status to be nil when disabled")
+	}
+}
+
+// The policy engine is part of every platform, so its slot exists on the
+// minimal footprint and is backfilled onto a status allocated without it.
+func TestInitialize_OpenFGASlotIsUnconditional(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	if p.Status.Components.OpenFGA == nil || p.Status.Components.OpenFGA.Phase != v1.ComponentPhasePending {
+		t.Fatalf("expected a pending OpenFGA slot on the minimal footprint, got %+v", p.Status.Components.OpenFGA)
+	}
+
+	p.Status.Components.OpenFGA = nil
+	Initialize(p)
+	if p.Status.Components.OpenFGA == nil {
+		t.Fatal("a status allocated without the OpenFGA slot must gain it on the next reconcile")
 	}
 }
 
@@ -221,11 +230,13 @@ func TestComputeOverallPhase_AllReady(t *testing.T) {
 		p.Status.Components.PostgreSQL,
 		p.Status.Components.Redis, p.Status.Components.Temporal,
 		p.Status.Components.ControlPlane, p.Status.Components.Console,
-		// The minimal footprint now includes the front-door gateway and the
-		// identity server -- sign-in is unconditional -- plus the in-cluster
-		// runner, the bundled secrets manager, and the build engine
-		// (Tekton), all on by default.
+		// The minimal footprint includes the front-door gateway and the
+		// identity server -- sign-in is unconditional -- the policy engine
+		// -- authorization is unconditional -- plus the in-cluster runner,
+		// the bundled secrets manager, and the build engine (Tekton), all
+		// on by default.
 		p.Status.Components.Gateway, p.Status.Components.Identity,
+		p.Status.Components.OpenFGA,
 		p.Status.Components.Runner, p.Status.Components.OpenBAO,
 		p.Status.Components.Tekton,
 	} {
@@ -382,6 +393,7 @@ func TestUpdateReadyCondition_AllReady(t *testing.T) {
 		p.Status.Components.Redis, p.Status.Components.Temporal,
 		p.Status.Components.ControlPlane, p.Status.Components.Console,
 		p.Status.Components.Gateway, p.Status.Components.Identity,
+		p.Status.Components.OpenFGA,
 		p.Status.Components.Runner, p.Status.Components.OpenBAO,
 		p.Status.Components.Tekton,
 	} {

@@ -359,7 +359,7 @@ type RunnerSpec struct {
 // runner's pipeline-build worker, and seed this cluster as the platform's
 // build destination at control-plane boot. The field is named for the
 // CAPABILITY (builds), not the engine (Tekton) -- the same split as
-// components.authorization/OpenFGA.
+// components.graph/Neo4j.
 type BuildSpec struct {
 	// enabled controls whether the build capability is deployed. Default
 	// true: builds power Service Hub -- an install without them can deploy
@@ -514,8 +514,9 @@ type PlantonPlatformSpec struct {
 	// +optional
 	Vault *OpenBAOSpec `json:"vault,omitempty"`
 
-	// components toggles optional platform capabilities that are disabled by default
-	// to keep the minimal deployment footprint small.
+	// components toggles the optional platform capabilities that are disabled by
+	// default to keep the minimal deployment footprint small. The policy engine
+	// is not among them: every platform runs it, like its database.
 	// +optional
 	Components *ComponentsSpec `json:"components,omitempty"`
 
@@ -1151,31 +1152,15 @@ type BootstrapEnvironmentSpec struct {
 
 // ComponentsSpec toggles optional platform capabilities.
 //
-// The minimal footprint runs only the essential core: the control plane serves
-// authorization from its built-in allow-owner arm, search from its built-in
-// Postgres projection, and the resource graph from the built-in Postgres
-// provider. Each entry here is an opt-in upgrade to a heavier dedicated
-// backend, off by default.
+// The minimal footprint runs the essential core -- the data services, the
+// policy engine, the identity server, the control plane, the console -- and
+// serves the resource graph from the built-in Postgres provider. Each entry
+// here is an opt-in upgrade to a heavier dedicated backend, off by default.
 type ComponentsSpec struct {
-	// authorization deploys OpenFGA and switches the control plane to
-	// policy-engine authorization (fine-grained RBAC). Disabled by default: the
-	// control plane runs the built-in allow-owner authorization arm, which needs
-	// no OpenFGA. Enable this for multi-tenant, per-resource access control.
-	// +optional
-	Authorization *ComponentToggle `json:"authorization,omitempty"`
-
 	// graph configures Neo4j for relationship graph queries.
 	// Disabled by default.
 	// +optional
 	Graph *Neo4jSpec `json:"graph,omitempty"`
-}
-
-// ComponentToggle is a simple on/off switch for optional components.
-type ComponentToggle struct {
-	// enabled controls whether this component is deployed.
-	// +kubebuilder:default=false
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
 }
 
 // OpenBAOSpec configures the bundled secrets manager (OpenBAO).

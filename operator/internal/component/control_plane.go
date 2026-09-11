@@ -27,16 +27,13 @@ func (cp *ControlPlane) Dependencies(planton *v1.PlantonPlatform) []string {
 	// discovery at startup -- the identity server must be serving before the
 	// JVM comes up, or the Spring context fails and the pod crash-loops
 	// through no fault of its own.
-	deps := []string{"postgresql", "redis", "temporal", "identity"}
-	// With policy-engine authorization enabled, the control plane's FGA
-	// store/model env comes from the openfga component's bootstrap ConfigMap
+	// The policy engine is unconditional because authorization is: every
+	// request the control plane serves is answered by OpenFGA, and its store
+	// id reaches the pod through the openfga component's bootstrap ConfigMap
 	// (ConfigMapKeyRef) -- the pod literally cannot start before that exists,
 	// so the dependency makes the wait an explained status instead of a
-	// CreateContainerConfigError. The minimal footprint keeps no dependency:
-	// its arms run no policy engine.
-	if isAuthorizationEnabled(planton) {
-		deps = append(deps, "openfga")
-	}
+	// CreateContainerConfigError.
+	deps := []string{"postgresql", "redis", "temporal", "identity", "openfga"}
 	// With the vault component enabled, the control plane's VAULT_TOKEN is a
 	// SecretKeyRef into the openbao init Secret -- same tie as the FGA
 	// ConfigMap above: depend on it so the wait is an explained status, and
@@ -211,9 +208,7 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 	cfg.License = effectiveLicense(planton)
 	cfg.Email = effectiveEmail(planton)
 
-	if isAuthorizationEnabled(planton) {
-		cfg.OpenFGA = resources.OpenFGAConnection(planton.Name, planton.Namespace)
-	}
+	cfg.OpenFGA = resources.OpenFGAConnection(planton.Name, planton.Namespace)
 
 	if isNeo4jEnabled(planton) {
 		conn := resources.Neo4jConnection(planton.Name, planton.Namespace)
@@ -235,15 +230,6 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 	// controlplane component depends on identity, which does not report Ready
 	// until the URL has resolved (and the gateway URL is deterministic).
 	if publicURL, resolved := frontDoorURL(planton); resolved && publicURL != "" {
-		// The trusting-team arm is the default -- no policy engine runs, so
-		// every signed-in teammate may act while ownership/operator records
-		// still land in Postgres. Enabling the authorization component
-		// upgrades to the real engine (its connection is wired above and the
-		// boot backfill mirrors the Postgres records into it).
-		authorizationProvider := "allow-authenticated"
-		if isAuthorizationEnabled(planton) {
-			authorizationProvider = "openfga"
-		}
 		realm := identityRealm(planton)
 		cfg.Identity = &resources.IdentityBinding{
 			IssuerURL: resources.IdentityIssuerURL(publicURL, realm),
@@ -256,7 +242,6 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 			InternalIssuerURL:     resources.IdentityInternalIssuerURL(planton.Name, planton.Namespace, realm),
 			Hostname:              publicHostname(publicURL),
 			UsersClientSecretName: resources.IdentityUsersClientSecretName(planton.Name),
-			AuthorizationProvider: authorizationProvider,
 			Bootstrap:             effectiveBootstrap(planton),
 		}
 		// First-run setup mode keys on exactly spec.identity.adminEmail being
@@ -442,10 +427,6 @@ func isVaultEnabled(p *v1.PlantonPlatform) bool {
 func publicHostname(publicURL string) string {
 	host := strings.TrimPrefix(publicURL, "https://")
 	return strings.TrimPrefix(host, "http://")
-}
-
-func isAuthorizationEnabled(p *v1.PlantonPlatform) bool {
-	return p.Spec.Components != nil && p.Spec.Components.Authorization != nil && p.Spec.Components.Authorization.Enabled
 }
 
 func isNeo4jEnabled(p *v1.PlantonPlatform) bool {

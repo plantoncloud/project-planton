@@ -212,21 +212,10 @@ spec:
                 type: object
               components:
                 description: |-
-                  components toggles optional platform capabilities that are disabled by default
-                  to keep the minimal deployment footprint small.
+                  components toggles the optional platform capabilities that are disabled by
+                  default to keep the minimal deployment footprint small. The policy engine
+                  is not among them: every platform runs it, like its database.
                 properties:
-                  authorization:
-                    description: |-
-                      authorization deploys OpenFGA and switches the control plane to
-                      policy-engine authorization (fine-grained RBAC). Disabled by default: the
-                      control plane runs the built-in allow-owner authorization arm, which needs
-                      no OpenFGA. Enable this for multi-tenant, per-resource access control.
-                    properties:
-                      enabled:
-                        default: false
-                        description: enabled controls whether this component is deployed.
-                        type: boolean
-                    type: object
                   graph:
                     description: |-
                       graph configures Neo4j for relationship graph queries.

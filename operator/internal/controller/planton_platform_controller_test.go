@@ -122,9 +122,9 @@ var _ = Describe("PlantonPlatform Controller", func() {
 			Expect(updated.Status.Components.PostgreSQL.Phase).To(Equal(plantonaiv1.ComponentPhasePending))
 			Expect(updated.Status.Components.Redis).NotTo(BeNil())
 			Expect(updated.Status.Components.Redis.Phase).To(Equal(plantonaiv1.ComponentPhasePending))
-			// OpenFGA is opt-in (policy-engine authorization); the minimal
-			// footprint runs the built-in allow-owner arm, so it stays nil.
-			Expect(updated.Status.Components.OpenFGA).To(BeNil())
+			// The policy engine is part of every platform, like its
+			// database: the minimal footprint carries its slot.
+			Expect(updated.Status.Components.OpenFGA).NotTo(BeNil(), "OpenFGA should be initialized on every platform")
 			// The bundled secrets manager is integral: the version-only
 			// manifest deploys it (opting out is the deliberate act).
 			Expect(updated.Status.Components.OpenBAO).NotTo(BeNil(), "OpenBAO should be initialized by default")

@@ -4,7 +4,7 @@ A Kubernetes operator that turns one `PlantonPlatform` resource into a complete,
 
 ## What It Does
 
-The operator carries every deployment decision a self-hosted Planton needs -- which components exist, the order they come up in, their readiness gates, the credentials wired between them, and the first-boot seeding -- so an adopter declares a platform release and nothing else. It installs the prerequisite sub-operators (CloudNativePG, its Barman Cloud backup plugin when cert-manager is present, Tekton Pipelines), provisions the data services (PostgreSQL, Valkey, Temporal, the bundled OpenBAO secrets manager; OpenFGA and Neo4j when opted in), renders the control plane, console, in-cluster runner, and identity server, and reports one phase and one plain-language message per platform in `kubectl get plantonplatform`.
+The operator carries every deployment decision a self-hosted Planton needs -- which components exist, the order they come up in, their readiness gates, the credentials wired between them, and the first-boot seeding -- so an adopter declares a platform release and nothing else. It installs the prerequisite sub-operators (CloudNativePG, its Barman Cloud backup plugin when cert-manager is present, Tekton Pipelines), provisions the data services (PostgreSQL, Valkey, Temporal, the OpenFGA policy engine, the bundled OpenBAO secrets manager; Neo4j when opted in), renders the control plane, console, in-cluster runner, and identity server, and reports one phase and one plain-language message per platform in `kubectl get plantonplatform`.
 
 Exactly one operator runs per cluster. A second installation refuses itself at startup, names the first, and says what to do; a cluster may run as many platforms as it likes under that one operator.
 

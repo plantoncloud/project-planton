@@ -350,13 +350,6 @@ type IdentityBinding struct {
 	// deployment names. Set exactly when SetupCodeSecretName is.
 	SetupCodeHint string
 
-	// AuthorizationProvider selects the control plane's granular-authorization
-	// arm (the PLANTON_AUTHORIZATION_PROVIDER seam): "allow-authenticated" for
-	// the trusting-team default that runs no policy engine, "openfga" when the
-	// authorization component is enabled and wired. Only meaningful with a
-	// real issuer -- the local arm implies allow-owner and never sets it.
-	AuthorizationProvider string
-
 	// Bootstrap carries the config-driven first-boot seeds the control plane
 	// consumes as planton.bootstrap.* properties: the default org + starter
 	// environment, and the declared admins.
@@ -747,8 +740,8 @@ func ControlPlaneService(crName, namespace string, ownerRef *metav1.OwnerReferen
 //   - local-only single-runner wiring is off (the runner is a separate component).
 //
 // The minimal footprint runs the lightweight built-in capabilities (search on the
-// Postgres projection; estate indexing without Neo4j) and the local allow-owner
-// authorization arm (no OpenFGA). Not-yet-graduated integrations carry the same honest, marked
+// Postgres projection; estate indexing without Neo4j) beside the policy engine
+// every platform carries. Not-yet-graduated integrations carry the same honest, marked
 // placeholders the daemon uses; the corresponding clients are lazy or gated, so
 // the context binds without a real credential. Stigmer and object storage are the
 // two that validate eagerly -- they are made genuinely optional in the control
@@ -1058,17 +1051,6 @@ func controlPlaneEnvVars(cfg ControlPlaneConfig) []corev1.EnvVar {
 	return envs
 }
 
-// fgaEnvVars wires the policy-engine connection. With the authorization
-// component enabled (a populated connection) the real endpoint is set, the
-// store id comes from the component's bootstrap ConfigMap -- the pod
-// deliberately cannot start before that ConfigMap exists, which is why the
-// controlplane component depends on openfga when the component is enabled --
-// and the control plane is told to manage the authorization MODEL itself:
-// the model belongs to the control plane's version, so at boot it compares the
-// store's latest with its own and writes its own when they differ. No model id
-// is ever passed. Otherwise the FGA settings are inert placeholders that exist
-// only because their yaml bindings are part of the fail-fast boot contract; no
-// arm dials them (allow-owner and allow-authenticated run no policy engine).
 // effectiveIacModulesVersion resolves PLANTON_VERSION: the CR's explicit
 // spec.controlPlane.iacModulesVersion when set, otherwise the operator's
 // verified default pin. The override exists because the module-artifact train
@@ -1097,16 +1079,15 @@ func remoteRunnerAPIEndpoint(cfg ControlPlaneConfig) string {
 	return fmt.Sprintf("%s:%d", ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace), controlPlaneServicePort)
 }
 
+// fgaEnvVars wires the policy-engine connection every platform runs: the
+// engine's in-cluster endpoint, the store id from the openfga component's
+// bootstrap ConfigMap -- the pod deliberately cannot start before that
+// ConfigMap exists, which is why the controlplane component depends on
+// openfga -- and the instruction to manage the authorization MODEL itself:
+// the model belongs to the control plane's version, so at boot it compares
+// the store's latest with its own and writes its own when they differ. No
+// model id is ever passed.
 func fgaEnvVars(fga OpenFGAConnectionInfo) []corev1.EnvVar {
-	if fga.HTTPURL == "" {
-		return []corev1.EnvVar{
-			{Name: "FGA_API_ENDPOINT", Value: "http://localhost:8088"},
-			{Name: "FGA_STORE_ID", Value: "local"},
-			{Name: "FGA_READ_TIMEOUT_SECONDS", Value: "30"},
-			{Name: "FGA_CONNECT_TIMEOUT_SECONDS", Value: "10"},
-			{Name: "FGA_WRITE_TIMEOUT_SECONDS", Value: "30"},
-		}
-	}
 	return []corev1.EnvVar{
 		{Name: "FGA_API_ENDPOINT", Value: fga.HTTPURL},
 		configMapEnv("FGA_STORE_ID", fga.BootstrapConfigMapName, "store_id"),
@@ -1316,9 +1297,6 @@ func identityEnvVars(binding *IdentityBinding) []corev1.EnvVar {
 		// updates in place. Unset (the yaml default) on non-operator
 		// installs, which keeps the reader inert there.
 		{Name: "IDP_FEDERATION_FACTS_FILE", Value: IdentityFederationFactsFilePath()},
-
-		// ── granular authorization arm (planton.authorization.provider seam) ──
-		{Name: "PLANTON_AUTHORIZATION_PROVIDER", Value: binding.AuthorizationProvider},
 
 		// ── first-boot seeds (planton.bootstrap.* via Spring relaxed binding) ──
 		// Presence of the org slug is what activates the control plane's

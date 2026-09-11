@@ -8,9 +8,8 @@ import (
 )
 
 func testControlPlaneConfig() ControlPlaneConfig {
-	// OpenFGA is deliberately absent: a populated connection MEANS the
-	// authorization component is enabled and the real engine gets wired.
-	// The minimal footprint runs none.
+	// The OpenFGA connection is always present -- the policy engine is part of
+	// every platform, so the component wires it unconditionally.
 	//
 	// The identity binding is always present -- every install signs in
 	// (there is no unauthenticated arm), so a config without one is not a
@@ -22,6 +21,7 @@ func testControlPlaneConfig() ControlPlaneConfig {
 		Replicas:   1,
 		PostgreSQL: PostgreSQLConnection("planton", "default"),
 		Redis:      RedisConnection("planton", "default"),
+		OpenFGA:    OpenFGAConnection("planton", "default"),
 		Temporal:   TemporalConnection("planton", "default"),
 		Identity:   testIdentityBinding(),
 		Storage:    testStorageBinding(),
@@ -41,7 +41,6 @@ func testIdentityBinding() *IdentityBinding {
 		InternalIssuerURL:     "http://planton-identity.default.svc.cluster.local/idp/realms/planton",
 		Hostname:              "planton.example.com",
 		UsersClientSecretName: "planton-identity-users-client",
-		AuthorizationProvider: "allow-authenticated",
 		Bootstrap:             BootstrapBinding{OrgSlug: "default", OrgName: "default", EnvSlug: "default", EnvName: "default"},
 	}
 }
@@ -212,30 +211,21 @@ func TestControlPlaneDeployment_NoMessageBrokerEnvVars(t *testing.T) {
 	}
 }
 
-// The minimal footprint still runs no policy engine: the authorization
-// posture is governed by the provider mode (allow-authenticated below), and
-// the FGA_* settings are present only as inert placeholders so the Spring
-// context binds (mirroring the desktop contract). Sign-in itself is
-// unconditional -- there is no local IDP arm to fall back to.
-func TestControlPlaneDeployment_MinimalFootprintAuthorization(t *testing.T) {
+// Sign-in is unconditional -- there is no local IDP arm to fall back to.
+func TestControlPlaneDeployment_SignInIsUnconditional(t *testing.T) {
 	deploy := ControlPlaneDeployment(testControlPlaneConfig())
 	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
 
 	if envMap["IDP_PROVIDER"] != IdentityProviderKeycloak {
 		t.Errorf("IDP_PROVIDER = %q, want keycloak (sign-in is unconditional)", envMap["IDP_PROVIDER"])
 	}
-	// FGA settings are literal placeholders, not wired from an OpenFGA bootstrap.
-	if envMap["FGA_STORE_ID"] != "local" {
-		t.Errorf("FGA_STORE_ID = %q, want local (inert placeholder)", envMap["FGA_STORE_ID"])
-	}
 }
 
-// With the authorization component enabled the FGA connection is REAL: the
-// endpoint points at the deployed engine and the store/model ids come from the
-// component's bootstrap ConfigMap -- never placeholders, never hand-wired.
-func TestControlPlaneDeployment_OpenFGAOptIn(t *testing.T) {
+// The FGA connection is REAL on every platform: the endpoint points at the
+// deployed engine and the store id comes from the component's bootstrap
+// ConfigMap -- never placeholders, never hand-wired.
+func TestControlPlaneDeployment_OpenFGAAlwaysWired(t *testing.T) {
 	cfg := testControlPlaneConfig()
-	cfg.OpenFGA = OpenFGAConnection("planton", "default")
 	deploy := ControlPlaneDeployment(cfg)
 
 	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
@@ -302,8 +292,9 @@ func TestControlPlaneDeployment_IdentityBinding(t *testing.T) {
 	}
 	// Retired plumbing must never reappear: no machine-identity env (internal
 	// calls need no process identity), no RPC_AUTHORIZATION_ENABLED (the
-	// key it fed has zero readers -- enforcement is governed by the
-	// authorization provider mode), and none of the pre-pluggable-IDP Auth0
+	// key it fed has zero readers -- enforcement is the policy engine's), no
+	// authorization-arm selector (the policy engine is not selectable), and
+	// none of the pre-pluggable-IDP Auth0
 	// bindings (their owning config block was removed with zero Java
 	// consumers). Reappearance of any of these is rot.
 	for _, name := range []string{
@@ -311,6 +302,7 @@ func TestControlPlaneDeployment_IdentityBinding(t *testing.T) {
 		"MICROSERVICE_IDENTITY_IDP_CLIENT_ID",
 		"MICROSERVICE_IDENTITY_IDP_CLIENT_SECRET",
 		"RPC_AUTHORIZATION_ENABLED",
+		"PLANTON_AUTHORIZATION_PROVIDER",
 		"AUTH0_MANAGEMENT_API_URL",
 		"IDP_CLIENT_ID_CONSOLE",
 		"IDP_CLIENT_ID_CLI",
@@ -321,12 +313,8 @@ func TestControlPlaneDeployment_IdentityBinding(t *testing.T) {
 			t.Errorf("%s must not be injected into the control plane", name)
 		}
 	}
-	// The trusting-team authorization arm plus the first-boot seeds ride the
-	// identity arm: sign-in without them is the silent-failure state this
-	// wiring exists to prevent.
-	if envMap["PLANTON_AUTHORIZATION_PROVIDER"] != "allow-authenticated" {
-		t.Errorf("PLANTON_AUTHORIZATION_PROVIDER = %q, want allow-authenticated", envMap["PLANTON_AUTHORIZATION_PROVIDER"])
-	}
+	// The first-boot seeds ride the identity binding: sign-in without them
+	// is the silent-failure state this wiring exists to prevent.
 	if envMap["PLANTON_BOOTSTRAP_ORGANIZATION_SLUG"] != "default" {
 		t.Errorf("PLANTON_BOOTSTRAP_ORGANIZATION_SLUG = %q, want default", envMap["PLANTON_BOOTSTRAP_ORGANIZATION_SLUG"])
 	}
