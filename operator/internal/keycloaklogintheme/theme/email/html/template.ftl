@@ -44,6 +44,10 @@
 <p class="pl-muted" style="font-size:13px;line-height:20px;font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif;color:#656d76;margin:0 0 12px;overflow-wrap:anywhere;margin-top:0;margin-right:0;margin-bottom:12px;margin-left:0">Or paste this link into your browser: <a href="${href}" class="pl-link" style="color:#656d76;text-decoration-line:none;text-decoration:underline" target="_blank">${href}</a></p>
 </#macro>
 
+<#macro fallbackAction href>
+<p class="pl-muted" style="font-size:13px;line-height:20px;font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, Arial, sans-serif;color:#656d76;margin:0 0 12px;overflow-wrap:anywhere;margin-top:0;margin-right:0;margin-bottom:12px;margin-left:0">Or open <a href="${href}" class="pl-link" style="color:#656d76;text-decoration-line:none;text-decoration:underline" target="_blank"><#nested></a>.</p>
+</#macro>
+
 <#macro facts>
 <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" class="pl-panel" style="background-color:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:12px 16px;margin:0 0 20px"><tbody><tr><td><#nested></td></tr></tbody></table>
 </#macro>

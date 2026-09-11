@@ -77,16 +77,18 @@ func TestEmailTheme_RendersThroughKeycloak(t *testing.T) {
 	}
 	html, text := message.HTML, message.Text
 	for _, want := range []string{
-		testThemeFacts.BrandName,                        // the wordmark and the sentences name the install
-		"Finish setting up your account",                // the heading
-		"Update Your Account",                           // the button
-		"Update Password",                               // the required action, in Keycloak's own words
-		"Sent by " + testThemeFacts.BrandName,           // the footer
-		testThemeFacts.ConsoleHost(),                    // the console host in the footer
-		"Questions? Write to " + testThemeFacts.ReplyTo, // the reply-to line
-		"/realms/themed/login-actions/action-token",     // the action link
-		`class="pl-button"`,                             // the generated layout's own markup
-		"This link works for",                           // the expiry sentence
+		testThemeFacts.BrandName,                                        // the wordmark and the sentences name the install
+		"Finish setting up your account",                                // the heading
+		"Update Your Account",                                           // the button
+		"Update Password",                                               // the required action, in Keycloak's own words
+		"Sent by " + testThemeFacts.BrandName,                           // the footer
+		testThemeFacts.ConsoleHost(),                                    // the console host in the footer
+		`Questions? Write to <a href="mailto:` + testThemeFacts.ReplyTo, // the reply-to, as a link a person can act on
+		"/realms/themed/login-actions/action-token",                     // the action link
+		`class="pl-button"`,                                             // the generated layout's own markup
+		"Or open <a",                                                    // the labelled fallback: a way in without a wall of token
+		"the account update link</a>.",                                  // ... with the label, not the URL, as its text
+		"This link works for",                                           // the expiry sentence
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("html part is missing %q:\n%s", want, html)
