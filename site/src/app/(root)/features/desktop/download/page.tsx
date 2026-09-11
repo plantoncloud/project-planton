@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import { Box } from '@mui/material';
 import { DownloadPage as DownloadPageContent } from '@/components/product/desktop';
-import { DESKTOP_PLATFORMS, DOWNLOADS_LATEST } from '@/data/desktop-download';
+import { DESKTOP_DOWNLOAD_PATH, DESKTOP_PLATFORMS, DOWNLOADS_LATEST } from '@/data/desktop-download';
 import { DESKTOP_RELEASE } from '@/data/desktop-release';
 
 const description =
@@ -10,11 +10,11 @@ const description =
 export const metadata: Metadata = {
   title: 'Download Planton Desktop | Planton',
   description,
-  alternates: { canonical: 'https://planton.ai/download' },
+  alternates: { canonical: `https://planton.ai${DESKTOP_DOWNLOAD_PATH}` },
   openGraph: {
     title: 'Download Planton Desktop',
     description,
-    url: 'https://planton.ai/download',
+    url: `https://planton.ai${DESKTOP_DOWNLOAD_PATH}`,
     images: [{ url: '/_site/images/og/download.png', width: 1200, height: 630, alt: 'Download Planton Desktop' }],
   },
   twitter: { card: 'summary_large_image' },
@@ -35,7 +35,7 @@ const softwareApplication = {
   ...(DESKTOP_RELEASE.version ? { softwareVersion: DESKTOP_RELEASE.version.replace(/^v/, '') } : {}),
   downloadUrl: `${DOWNLOADS_LATEST}/`,
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-  url: 'https://planton.ai/download',
+  url: `https://planton.ai${DESKTOP_DOWNLOAD_PATH}`,
   description,
 };
 

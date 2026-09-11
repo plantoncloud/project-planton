@@ -16,7 +16,7 @@ Voice: direct, concrete, a little proud, never breathless. Title Case for headin
 **Badge:** Free Forever
 
 **Headline (direction 1, recommended):**
-Your coding agent can already create cloud infrastructure. Planton makes it verifiable, recorded, and reusable.
+Your coding agent can already create cloud infrastructure. Planton makes it verifiable, recorded, and reusable — in your account, on your laptop, free.
 
 **Alternate headline (direction 2):**
 Give your coding agent rails you can inspect.

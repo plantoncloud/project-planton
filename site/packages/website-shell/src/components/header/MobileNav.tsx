@@ -40,14 +40,16 @@ import {
 const iconSx = { fontSize: { xs: 16, md: 24 } } as const;
 
 const productIcons: Record<string, React.ReactNode> = {
-  InfraHub: <InfraHubIcon sx={iconSx} />,
-  ServiceHub: <ServiceHubIcon sx={iconSx} />,
+  // Keyed by the menu label exactly as navigation.ts spells it; a key that
+  // drifts from the label renders the item without its icon.
+  'Infra Hub': <InfraHubIcon sx={iconSx} />,
+  'Service Hub': <ServiceHubIcon sx={iconSx} />,
   'Cloud Catalog': <CatalogIcon sx={iconSx} />,
   Runner: <RunnerIcon sx={iconSx} />,
   Security: <SecurityIcon sx={iconSx} />,
   'Agent Fleet': <AgentFleetIcon sx={iconSx} />,
   CLI: <CliIcon sx={iconSx} />,
-  'Desktop App': <DesktopAppIcon sx={iconSx} />,
+  'Planton Desktop': <DesktopAppIcon sx={iconSx} />,
   'Open Source': <OpenSourceIcon sx={iconSx} />,
 };
 

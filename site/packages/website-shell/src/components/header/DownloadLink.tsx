@@ -21,7 +21,7 @@ const linkSx = {
 export const DesktopDownloadLink: FC = () => (
   <Button
     LinkComponent={Link}
-    href="/download"
+    href="/features/desktop/download"
     startIcon={<DownloadIcon sx={{ fontSize: 16 }} />}
     style={{ color: '#a0a0a0' }}
     sx={{ ...linkSx, display: { xs: 'none', md: 'inline-flex' }, '&:hover': { color: '#ededed' } }}
@@ -33,11 +33,11 @@ export const DesktopDownloadLink: FC = () => (
 export const MobileDownloadLink: FC = () => (
   <Button
     LinkComponent={Link}
-    href="/download"
+    href="/features/desktop/download"
     startIcon={<DownloadIcon sx={{ fontSize: 16 }} />}
     style={{ color: '#a0a0a0' }}
     sx={{ ...linkSx, width: '100%', justifyContent: 'center' }}
   >
-    Download Desktop
+    Download Planton Desktop
   </Button>
 );

@@ -15,6 +15,7 @@ import {
   SecondaryButton,
 } from './shared';
 import { COMMUNITY_SEAT_LIMIT, FREE_TIER_SEATS, MARKETS, SELF_SERVE_SEAT_CEILING } from '@/data/pricing';
+import { DESKTOP_LANDING_PATH } from '@/data/desktop-download';
 
 /**
  * The distribution strip. Numbers read from src/data/pricing.ts — a
@@ -27,11 +28,11 @@ export const ThreeWaysToRun: FC = () => {
   const ways: { badge: string; title: string; description: string; href?: string; cta?: string }[] = [
     {
       badge: 'Free Forever',
-      title: 'Desktop App',
+      title: 'Planton Desktop',
       description:
         'Runs on your laptop, deploys with the cloud logins already on your machine. Free forever, including commercial use — no account required.',
-      href: '/download',
-      cta: 'Download',
+      href: DESKTOP_LANDING_PATH,
+      cta: 'Learn more',
     },
     {
       badge: `Free for ${FREE_TIER_SEATS} Seats`,

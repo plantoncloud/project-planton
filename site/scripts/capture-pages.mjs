@@ -70,15 +70,20 @@ const UA = {
 /**
  * One row per scene. `expectTab` is the platform tab the page must have
  * selected on load (asserted); `og` marks a 1200x630 first-screen capture
- * that is also the page's Open Graph image when --publish-og is given.
+ * that is also the page's Open Graph image when --publish-og is given;
+ * `ogTitleSize` overrides the poster's headline size for a long headline.
  */
 const SCENES = [
-  { name: 'download-1680', route: '/download', width: 1680, ua: UA.mac, expectTab: 'macOS' },
-  { name: 'download-1280', route: '/download', width: 1280, ua: UA.mac, expectTab: 'macOS' },
-  { name: 'download-windows', route: '/download', width: 1280, ua: UA.windows, uaPlatform: 'Windows', expectTab: 'Windows' },
-  { name: 'download-linux', route: '/download', width: 1280, ua: UA.linux, expectTab: 'Linux' },
-  { name: 'download-phone', route: '/download', width: 390, ua: UA.iphone, expectTab: 'macOS' },
-  { name: 'download-og', route: '/download', width: 1200, height: 630, ua: UA.mac, og: 'download.png' },
+  { name: 'download-1680', route: '/features/desktop/download', width: 1680, ua: UA.mac, expectTab: 'macOS' },
+  { name: 'download-1280', route: '/features/desktop/download', width: 1280, ua: UA.mac, expectTab: 'macOS' },
+  { name: 'download-windows', route: '/features/desktop/download', width: 1280, ua: UA.windows, uaPlatform: 'Windows', expectTab: 'Windows' },
+  { name: 'download-linux', route: '/features/desktop/download', width: 1280, ua: UA.linux, expectTab: 'Linux' },
+  { name: 'download-phone', route: '/features/desktop/download', width: 390, ua: UA.iphone, expectTab: 'macOS' },
+  { name: 'download-og', route: '/features/desktop/download', width: 1200, height: 630, ua: UA.mac, og: 'download.png' },
+  { name: 'desktop-1680', route: '/features/desktop', width: 1680, ua: UA.mac },
+  { name: 'desktop-1280', route: '/features/desktop', width: 1280, ua: UA.mac },
+  { name: 'desktop-phone', route: '/features/desktop', width: 390, ua: UA.iphone },
+  { name: 'desktop-og', route: '/features/desktop', width: 1200, height: 630, ua: UA.mac, og: 'desktop.png', ogTitleSize: 44 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -156,14 +161,16 @@ async function capture(browser, base, scene) {
     // card, the page's own headline block centred in the 1200x630 frame.
     await page.addStyleTag({
       content: `
-        header { display: none !important; }
+        header, main [class*="sticky"] { display: none !important; }
         main { padding-top: 0 !important; }
         main section:first-of-type { min-height: 630px; display: flex; align-items: center; padding: 0 !important; }
         main section:first-of-type .mb-10 { margin-bottom: 0 !important; }
-        main section:first-of-type h1 { font-size: 64px !important; line-height: 1.1 !important; margin-bottom: 24px !important; }
+        main section:first-of-type h1 { font-size: ${scene.ogTitleSize ?? 64}px !important; line-height: 1.15 !important; margin-bottom: 24px !important; max-width: 1000px !important; }
         main section:first-of-type h1 + p { font-size: 24px !important; line-height: 1.4 !important; max-width: 820px !important; }
         main section:first-of-type h1 + p + p { font-size: 16px !important; margin-top: 24px !important; }
         main section:first-of-type a { text-decoration: none !important; }
+        main section:first-of-type img, main section:first-of-type div:has(> img) { display: none !important; }
+        main section:first-of-type div:has(> a), main section:first-of-type div:has(> code) { display: none !important; }
         [role="tablist"], div:has(> [role="tabpanel"]) { display: none !important; }
       `,
     });

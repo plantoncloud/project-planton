@@ -3,6 +3,10 @@
 **Date:** 2026-09-11
 **Approved content:** `draft-1.md` in this folder (no `preview-N.html` was produced: the same session that wrote the copy implements it, so the rendered page is the preview).
 
+## Routes
+
+The pages live at `/features/desktop` (landing) and `/features/desktop/download` (install). The short paths `/desktop` and `/download` the draft names are the intended final homes; the edge routes them to the console today, so nothing under them reaches the site.
+
 ## Overview
 
 planton.ai has had no page for Planton Desktop since the in-repo website was retired on 2026-08-14 and planton.ai came home under `site/` four days later. The desktop app is public — a signed, notarized macOS build, Windows and Linux installers, a live Homebrew cask — and the only place the website mentions it is a copy-only tile on the home page. Two pages fix that: a landing page at `/desktop` that makes the case, and an install page at `/download` that gets a visitor from click to first launch.

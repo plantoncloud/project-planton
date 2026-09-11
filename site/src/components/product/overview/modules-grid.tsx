@@ -9,11 +9,13 @@ import {
   Shield as SecurityIcon,
   Psychology as AgentFleetIcon,
   Terminal as CliIcon,
+  Laptop as DesktopIcon,
   Code as OpenSourceIcon,
 } from '@mui/icons-material';
 import { Section, SectionTitle, SectionSubtitle } from '@/components/landing-page/v3-2026-01-02-1000/shared';
 import { ReactNode } from 'react';
 import { PLATFORM_STATS } from '@/data/platform-stats';
+import { DESKTOP_LANDING_PATH } from '@/data/desktop-download';
 
 interface ProductModuleCardProps {
   icon: ReactNode;
@@ -88,6 +90,13 @@ const modules: ProductModuleCardProps[] = [
     pain: 'Context-switching between terminal, console, and CI. Different tools for different operations.',
     solution: 'Everything Planton does, from your terminal. kubectl-inspired commands, manifest-driven workflows, real-time stack job streaming.',
     href: '/features/cli',
+  },
+  {
+    icon: <DesktopIcon />,
+    title: 'Planton Desktop',
+    pain: 'Your coding agent can already create cloud infrastructure -- and leave you with resources you cannot explain, permissions nobody derived, and a password that went through the chat.',
+    solution: 'The whole platform on your laptop, deploying to your own cloud with the logins already on your machine. Verifiable, recorded, reusable. Free for individuals, including commercial use.',
+    href: DESKTOP_LANDING_PATH,
   },
   {
     icon: <OpenSourceIcon />,

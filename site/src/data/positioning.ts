@@ -49,7 +49,7 @@ export const POSITIONING = {
    */
   desktop: {
     name: 'Planton Desktop',
-    line: 'Your coding agent can already create cloud infrastructure. Planton makes it verifiable, recorded, and reusable -- in your account, on your laptop, free.',
+    line: 'Your coding agent can already create cloud infrastructure. Planton makes it verifiable, recorded, and reusable — in your account, on your laptop, free.',
     whatItAdds: [
       'A typed catalog, not memory: schema lookups and validation run offline, so a wrong field fails before it touches your cloud.',
       'Verified before created: the monthly cost with its coverage stated, and the least-privilege permission policy derived from what is composed.',

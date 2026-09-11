@@ -6,10 +6,10 @@
   <url><loc>https://planton.ai/terms</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://planton.ai/pricing</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
 
-  <url><loc>https://planton.ai/download</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
-
   <!-- Features -->
   <url><loc>https://planton.ai/features</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://planton.ai/features/desktop</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://planton.ai/features/desktop/download</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://planton.ai/features/auditable-intelligence</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://planton.ai/features/iac-workflows</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://planton.ai/features/kubernetes-dashboard</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>

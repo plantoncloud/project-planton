@@ -11,7 +11,7 @@ import {
   Divider,
   Grid,
 } from '@/components/landing-page/v3-2026-01-02-1000/shared';
-import { DESKTOP_BREW_UPGRADE_COMMAND, desktopChecksumsUrl, type DesktopPlatform } from '@/data/desktop-download';
+import { DESKTOP_BREW_UPGRADE_COMMAND, DESKTOP_LANDING_PATH, desktopChecksumsUrl, type DesktopPlatform } from '@/data/desktop-download';
 import { CommandBlock } from './command-block';
 
 interface DownloadVerifyProps {
@@ -63,6 +63,9 @@ export const DownloadVerify: FC<DownloadVerifyProps> = ({ platform, version }) =
         </Grid>
 
         <Typography className="text-center text-sm text-[#666] mt-12 max-w-2xl mx-auto">
+          <Link href={DESKTOP_LANDING_PATH} className="underline decoration-[#3a3a3a] hover:text-[#a0a0a0]">
+            Why run Planton on your laptop?
+          </Link>{' '}
           Want the platform without the app?{' '}
           <Link href="/docs/cli" className="underline decoration-[#3a3a3a] hover:text-[#a0a0a0]">
             Install the CLI on its own

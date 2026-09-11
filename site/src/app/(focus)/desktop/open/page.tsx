@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { Box, Typography } from '@mui/material';
+import { DESKTOP_DOWNLOAD_PATH } from '@/data/desktop-download';
 
 // The one public page a Planton Desktop deep link can hide behind.
 //
@@ -65,7 +66,7 @@ export default function OpenInDesktopPage() {
               Nothing happened? Planton Desktop is not installed here, or the run belongs to someone else&apos;s
               laptop. The status you clicked already carries the outcome; the full run — its logs, its stages,
               its deployments — lives in that developer&apos;s desktop.{' '}
-              <a href="/download" className="underline decoration-[#3a3a3a] hover:text-[#a0a0a0]">
+              <a href={DESKTOP_DOWNLOAD_PATH} className="underline decoration-[#3a3a3a] hover:text-[#a0a0a0]">
                 Get Planton Desktop
               </a>
               .

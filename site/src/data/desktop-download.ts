@@ -47,6 +47,8 @@ export interface DesktopPlatform {
   /** Renders the platform card at all. See the header comment before flipping. */
   available: boolean;
   artifacts: readonly DesktopArtifact[];
+  /** The one-phrase floor a sentence can name ("macOS 12 or newer"). */
+  minimum: string;
   /** Short facts under the button: architecture, minimum OS, package form. */
   facts: readonly string[];
   /**
@@ -62,6 +64,17 @@ export interface DesktopPlatform {
    */
   verifyCommands: readonly string[];
 }
+
+/**
+ * Where the desktop pages live on the website. Both sit under /features
+ * because the edge currently routes the short paths (/desktop, /download) to
+ * the console; those short paths are the intended final homes, and moving
+ * back is a folder rename plus these two constants. Every site component
+ * reads them from here; the shell package's navigation keeps literal hrefs
+ * like every other entry because it cannot import from src/.
+ */
+export const DESKTOP_LANDING_PATH = '/features/desktop';
+export const DESKTOP_DOWNLOAD_PATH = '/features/desktop/download';
 
 export const DOWNLOADS_BASE = 'https://downloads.planton.app/desktop';
 
@@ -80,6 +93,7 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
     id: 'macos',
     name: 'macOS',
     available: true,
+    minimum: 'macOS 12 or newer',
     artifacts: [
       {
         label: 'Download for macOS',
@@ -101,6 +115,7 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
   {
     id: 'windows',
     name: 'Windows',
+    minimum: 'Windows 10 or newer',
     // Off until a release republishes a real installer under the alias; the
     // one there now is a cache-warm build (see the header comment).
     available: false,
@@ -124,6 +139,7 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
     id: 'linux',
     name: 'Linux',
     available: true,
+    minimum: 'glibc 2.35 or newer',
     artifacts: [
       {
         label: 'Download AppImage',
