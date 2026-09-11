@@ -51,12 +51,20 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		changed = true
 	}
 
+	// The unconditional slots are allocated once, together: every platform
+	// runs the data services, the identity server (sign-in through the
+	// gateway's port-forward front door or the ingress hostname -- an
+	// unauthenticated platform is unrepresentable), the policy engine (every
+	// request the control plane serves is authorized by OpenFGA -- a platform
+	// without it is unrepresentable), the control plane, and the console.
+	// Slots that follow a dial are synced below, in both directions.
 	if planton.Status.Components.PostgreSQL == nil {
 		statuses := v1.ComponentStatuses{
 			PostgreSQL:   &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			Redis:        &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			OpenFGA:      &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			Temporal:     &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
+			Identity:     &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			ControlPlane: &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 			Console:      &v1.ComponentStatus{Phase: v1.ComponentPhasePending},
 		}
@@ -69,27 +77,6 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 		}
 
 		planton.Status.Components = statuses
-		changed = true
-	}
-
-	// The identity slot is unconditional: every install carries the bundled
-	// identity server (sign-in through the gateway's port-forward front door
-	// or the ingress hostname). An unauthenticated platform is
-	// unrepresentable. Backfilled here (not only in the base block above) so
-	// pre-identity installs pick the slot up on upgrade.
-	if planton.Status.Components.Identity == nil {
-		planton.Status.Components.Identity = &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
-		changed = true
-	}
-
-	// The policy-engine slot is unconditional for the same reason: every
-	// request the control plane serves is authorized by OpenFGA, so a platform
-	// without it is unrepresentable. Backfilled (not only in the base block) so
-	// a platform whose status was allocated without the slot picks it up on the
-	// next reconcile instead of leaving the control plane waiting on a
-	// dependency that never reports.
-	if planton.Status.Components.OpenFGA == nil {
-		planton.Status.Components.OpenFGA = &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
 		changed = true
 	}
 
@@ -124,15 +111,14 @@ func Initialize(planton *v1.PlantonPlatform) bool {
 
 	// The runner slot follows its toggle in both directions (like the front
 	// door), so an install can opt out -- or back in -- on a running
-	// platform. Backfilled (not only in the base block) so pre-runner
-	// installs pick the slot up on upgrade.
+	// platform.
 	changed = syncToggledSlot(&planton.Status.Components.Runner, isRunnerEnabled(planton)) || changed
 
 	// Optional component slots follow their toggles in both directions so a
-	// running platform can opt in (or back out) without a reinstall. Without
-	// this backfill, a vault arm enabled after the first reconcile (the lab's
-	// negative-then-vault flow, or a GitOps patch) would leave control plane
-	// waiting forever for an openbao slot that was never allocated.
+	// running platform can opt in (or back out) without a reinstall: a vault
+	// arm enabled after the first reconcile (the lab's negative-then-vault
+	// flow, or a GitOps patch) must not leave the control plane waiting
+	// forever for an openbao slot that was never allocated.
 	changed = syncToggledSlot(&planton.Status.Components.OpenBAO, isOpenBAOEnabled(planton)) || changed
 	changed = syncToggledSlot(&planton.Status.Components.Neo4j, isNeo4jEnabled(planton)) || changed
 

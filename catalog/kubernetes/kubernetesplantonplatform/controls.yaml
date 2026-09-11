@@ -44,7 +44,7 @@ spec:
       status: enforced_by_default
       evidence:
         type: module_default
-        reference: The module creates the CR and (optionally) its namespace; every platform workload runs with namespace-scoped identities the operator creates per platform. The platform's own user-facing access control is its identity server (Keycloak) with org-role authorization; the opt-in components.authorization arm (OpenFGA) adds fine-grained relationship authorization.
+        reference: The module creates the CR and (optionally) its namespace; every platform workload runs with namespace-scoped identities the operator creates per platform. The platform's own user-facing access control is its identity server (Keycloak) for sign-in and its policy engine (OpenFGA) for fine-grained relationship authorization on every request.
     - control_id: workload-identity
       status: configurable
       field_path: runner.service_account_annotations

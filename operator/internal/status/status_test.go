@@ -197,18 +197,12 @@ func TestInitialize_OptionalComponentsDisabled(t *testing.T) {
 }
 
 // The policy engine is part of every platform, so its slot exists on the
-// minimal footprint and is backfilled onto a status allocated without it.
+// minimal footprint.
 func TestInitialize_OpenFGASlotIsUnconditional(t *testing.T) {
 	p := newMinimalPlanton()
 	Initialize(p)
 	if p.Status.Components.OpenFGA == nil || p.Status.Components.OpenFGA.Phase != v1.ComponentPhasePending {
 		t.Fatalf("expected a pending OpenFGA slot on the minimal footprint, got %+v", p.Status.Components.OpenFGA)
-	}
-
-	p.Status.Components.OpenFGA = nil
-	Initialize(p)
-	if p.Status.Components.OpenFGA == nil {
-		t.Fatal("a status allocated without the OpenFGA slot must gain it on the next reconcile")
 	}
 }
 
