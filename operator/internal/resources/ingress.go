@@ -257,6 +257,12 @@ func ingressAnnotations(cfg IngressConfig) map[string]string {
 		// limit; the servers stay the authority (the storage relay
 		// additionally enforces its 50MB transfer cap itself).
 		annotations["nginx.ingress.kubernetes.io/proxy-body-size"] = "100m"
+		// The console's sign-in callback answers with a session cookie
+		// larger than ingress-nginx's 4k default header buffer; below it
+		// the callback is a 502 "upstream sent too big header" and a
+		// browser-based CLI sign-in never completes. The in-cluster
+		// gateway door sets the same fact (gateway.go).
+		annotations["nginx.ingress.kubernetes.io/proxy-buffer-size"] = "32k"
 	}
 
 	if cfg.CertManagerIssuerName != "" {

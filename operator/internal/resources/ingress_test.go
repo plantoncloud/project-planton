@@ -251,6 +251,12 @@ func TestIngress_NginxAnnotationsOnlyWhenDetected(t *testing.T) {
 	if ing.Annotations["nginx.ingress.kubernetes.io/proxy-body-size"] != "100m" {
 		t.Error("expected proxy-body-size raised to the servers' own limit")
 	}
+	// The console's sign-in callback answers with a session cookie larger
+	// than ingress-nginx's 4k default header buffer; below it the callback
+	// is a 502 and a browser-based CLI sign-in never completes.
+	if ing.Annotations["nginx.ingress.kubernetes.io/proxy-buffer-size"] != "32k" {
+		t.Error("expected proxy-buffer-size raised so the sign-in callback's session cookie fits")
+	}
 }
 
 func TestIngress_UserAnnotationsWin(t *testing.T) {

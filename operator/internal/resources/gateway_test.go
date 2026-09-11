@@ -69,6 +69,18 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 		t.Error("proxy_pass must use variables so upstream DNS resolves at request time, not startup")
 	}
 
+	// A browser session is bigger than nginx's defaults: the console's
+	// sign-in callback answers with a session cookie larger than the 8k
+	// response-header buffer (a 502 "upstream sent too big header" and the
+	// CLI's browser sign-in never completes), and the browser sends it back
+	// on every request.
+	if !strings.Contains(config, "proxy_buffer_size 32k;") {
+		t.Error("the identity and console routes must raise proxy_buffer_size so the sign-in callback's session cookie fits")
+	}
+	if !strings.Contains(config, "large_client_header_buffers 4 32k;") {
+		t.Error("the server must accept the session cookie the browser sends back (large_client_header_buffers)")
+	}
+
 	// Streaming: gRPC-Web server-streaming is a long-lived chunked response;
 	// buffering or a short read timeout would stall and sever it.
 	if !strings.Contains(config, "proxy_buffering off") {

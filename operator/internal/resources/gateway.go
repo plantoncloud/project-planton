@@ -109,9 +109,18 @@ func GatewayPortForwardCommand(crName, namespace string, localPort int32) string
 //     browser's localhost:port origin, from which the identity server's
 //     sign-in pages and OIDC responses derive URLs (KC_PROXY_HEADERS=
 //     xforwarded) and the console its callbacks.
+//   - A browser session is bigger than nginx's defaults assume, in both
+//     directions. The console's sign-in callback answers with a session
+//     cookie larger than the 8k header buffer nginx reads an upstream
+//     response into (proxy_buffer_size governs that buffer even with
+//     buffering off; without it the callback is a 502 "upstream sent too
+//     big header" and the CLI's browser sign-in never completes), and the
+//     browser then sends that cookie back on every request
+//     (large_client_header_buffers). The Ingress door sets the same
+//     response-side fact as an annotation (ingress.go).
 func GatewayNginxConfig(crName, namespace string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;\n\nserver {\n    listen %d;\n\n", gatewayContainerPort)
+	fmt.Fprintf(&b, "resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;\n\nserver {\n    listen %d;\n    large_client_header_buffers 4 32k;\n\n", gatewayContainerPort)
 
 	routes := FrontDoorRoutes()
 	upstreamVar := func(r FrontDoorRoute) string {
@@ -160,7 +169,8 @@ func GatewayNginxConfig(crName, namespace string) string {
 				"        proxy_set_header X-Forwarded-For $remote_addr;\n" +
 				"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
 				"        proxy_set_header X-Forwarded-Host $http_host;\n" +
-				"        proxy_buffering off;\n")
+				"        proxy_buffering off;\n" +
+				"        proxy_buffer_size 32k;\n")
 		}
 		b.WriteString("    }\n")
 	}
