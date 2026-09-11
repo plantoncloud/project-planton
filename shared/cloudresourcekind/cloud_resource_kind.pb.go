@@ -1387,7 +1387,8 @@ const (
 	// The Recovery Services vault (Microsoft.RecoveryServices/vaults) --
 	// the safe that classic Azure Backup data and Site Recovery
 	// configuration live in. Backup policies and protected items are
-	// ARM children of a vault.
+	// ARM children of a vault, so the vault is a container kind: a diagram
+	// draws them inside it, as the portal's own blades do.
 	CloudResourceKind_AzureRecoveryServicesVault CloudResourceKind = 2175
 	// An ARM child of its vault (.../backupPolicies/{name}) -- the
 	// schedule and retention rules that govern IaaS VM backups.
@@ -1413,7 +1414,8 @@ const (
 	// backupVaults) -- the safe that MODERN Azure Backup data lives in
 	// (managed disks, blob storage, AKS clusters, MySQL/PostgreSQL
 	// flexible servers, Data Lake storage). Backup policies and backup
-	// instances are ARM children of a vault.
+	// instances are ARM children of a vault, so the vault is a container
+	// kind: a diagram draws them inside it, as the portal's own blades do.
 	CloudResourceKind_AzureDataProtectionBackupVault CloudResourceKind = 2180
 	// An ARM child of its vault (.../backupPolicies/{name}) -- the
 	// schedule and retention rules for ONE Data Protection datasource
@@ -4205,7 +4207,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\xdf\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\xe3\xdb\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4602,13 +4604,13 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\"AzureMachineLearningOnlineEndpoint\x10\xfa\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmloe:\x02\xf3\x10P\xd0\x01\x12J\n" +
 	"$AzureMachineLearningOnlineDeployment\x10\xfb\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlod:\x02\xfa\x10P\xd0\x01\x12G\n" +
 	"!AzureMachineLearningBatchEndpoint\x10\xfc\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbe:\x02\xf3\x10P\xd0\x01\x12I\n" +
-	"#AzureMachineLearningBatchDeployment\x10\xfd\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbd:\x02\xfc\x10P\xd0\x01\x12?\n" +
-	"\x1aAzureRecoveryServicesVault\x10\xff\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azrsv:\x02\xd0\x0fP\xd4\x01\x128\n" +
+	"#AzureMachineLearningBatchDeployment\x10\xfd\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbd:\x02\xfc\x10P\xd0\x01\x12A\n" +
+	"\x1aAzureRecoveryServicesVault\x10\xff\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azrsv0\x01:\x02\xd0\x0fP\xd4\x01\x128\n" +
 	"\x13AzureBackupPolicyVm\x10\x80\x11\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azbpv:\x02\xff\x10P\xd4\x01\x12>\n" +
 	"\x16AzureBackupProtectedVm\x10\x81\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azbprv:\x04\x80\x11\xd8\x0fP\xd4\x01\x12@\n" +
 	"\x1aAzureBackupPolicyFileShare\x10\x82\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azbpfs:\x02\xff\x10P\xd4\x01\x12H\n" +
-	"\x1dAzureBackupProtectedFileShare\x10\x83\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\aazbprfs:\x06\xab\x10\x82\x11\xa5\x11P\xd4\x01\x12D\n" +
-	"\x1eAzureDataProtectionBackupVault\x10\x84\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdpbv:\x02\xd0\x0fP\xd4\x01\x12E\n" +
+	"\x1dAzureBackupProtectedFileShare\x10\x83\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\aazbprfs:\x06\xab\x10\x82\x11\xa5\x11P\xd4\x01\x12F\n" +
+	"\x1eAzureDataProtectionBackupVault\x10\x84\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azdpbv0\x01:\x02\xd0\x0fP\xd4\x01\x12E\n" +
 	"\x1fAzureDataProtectionBackupPolicy\x10\x85\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdpbp:\x02\x84\x11P\xd4\x01\x12I\n" +
 	"!AzureDataProtectionBackupInstance\x10\x86\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azdpbi:\x04\x84\x11\x85\x11P\xd4\x01\x12;\n" +
 	"\x10AzureBastionHost\x10\x88\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\tazbastion:\x04\xdb\x0f\xdd\x0fP\xcd\x01\x12C\n" +

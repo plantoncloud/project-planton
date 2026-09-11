@@ -3843,12 +3843,14 @@ enum CloudResourceKind {
   // The Recovery Services vault (Microsoft.RecoveryServices/vaults) --
   // the safe that classic Azure Backup data and Site Recovery
   // configuration live in. Backup policies and protected items are
-  // ARM children of a vault.
+  // ARM children of a vault, so the vault is a container kind: a diagram
+  // draws them inside it, as the portal's own blades do.
   AzureRecoveryServicesVault = 2175 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azrsv"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_backup
   }];
   // An ARM child of its vault (.../backupPolicies/{name}) -- the
@@ -3906,12 +3908,14 @@ enum CloudResourceKind {
   // backupVaults) -- the safe that MODERN Azure Backup data lives in
   // (managed disks, blob storage, AKS clusters, MySQL/PostgreSQL
   // flexible servers, Data Lake storage). Backup policies and backup
-  // instances are ARM children of a vault.
+  // instances are ARM children of a vault, so the vault is a container
+  // kind: a diagram draws them inside it, as the portal's own blades do.
   AzureDataProtectionBackupVault = 2180 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azdpbv"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_backup
   }];
   // An ARM child of its vault (.../backupPolicies/{name}) -- the
