@@ -232,3 +232,20 @@ func TestRealmStateRecord_ReadWriteAndEndpointsSurvive(t *testing.T) {
 		t.Error("the email fingerprint must advance")
 	}
 }
+
+func TestEmailThemeFacts(t *testing.T) {
+	// Nothing declared: the product name, the front door, no reply-to.
+	bare := emailThemeFacts(&v1.PlantonPlatform{}, "https://planton.acme.com")
+	if bare.BrandName != "Planton" || bare.ConsoleURL != "https://planton.acme.com" || bare.ReplyTo != "" {
+		t.Errorf("bare facts = %+v", bare)
+	}
+
+	declared := &v1.PlantonPlatform{Spec: v1.PlantonPlatformSpec{Email: &v1.EmailSpec{
+		From:    v1.EmailFromSpec{Address: "no-reply@acme.com", Name: "Acme Platform"},
+		ReplyTo: "it-help@acme.com",
+	}}}
+	facts := emailThemeFacts(declared, "https://planton.acme.com")
+	if facts.BrandName != "Acme Platform" || facts.ReplyTo != "it-help@acme.com" || facts.ConsoleHost() != "planton.acme.com" {
+		t.Errorf("declared facts = %+v", facts)
+	}
+}

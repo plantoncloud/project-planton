@@ -79,7 +79,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 
 .PHONY: test-realm-convergence
 test-realm-convergence: ## Run the Keycloak realm-convergence + federation suite (requires Docker; boots a real Keycloak and the lab directory).
-	go test -tags=requires_docker ./internal/keycloak/ -run 'TestConvergence|TestFederation' -v -timeout 20m
+	go test -tags=requires_docker ./internal/keycloak/ -run 'TestConvergence|TestFederation|TestEmailTheme' -v -timeout 20m
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.

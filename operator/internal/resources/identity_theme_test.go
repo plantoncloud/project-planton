@@ -8,7 +8,8 @@ import (
 )
 
 func TestIdentityThemeConfigMap(t *testing.T) {
-	cm, err := IdentityThemeConfigMap("planton", "default", nil)
+	facts := keycloaklogintheme.EmailFacts{BrandName: "Acme Platform", ConsoleURL: "https://planton.acme.com", ReplyTo: "it-help@acme.com"}
+	cm, err := IdentityThemeConfigMap("planton", "default", facts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +19,7 @@ func TestIdentityThemeConfigMap(t *testing.T) {
 
 	// Every library file must land in the ConfigMap: text in Data (legible
 	// in kubectl describe), fonts in BinaryData.
-	files := keycloaklogintheme.Files()
+	files := keycloaklogintheme.Files(facts)
 	if len(cm.Data)+len(cm.BinaryData) != len(files) {
 		t.Fatalf("ConfigMap carries %d entries, theme has %d files",
 			len(cm.Data)+len(cm.BinaryData), len(files))
@@ -32,6 +33,17 @@ func TestIdentityThemeConfigMap(t *testing.T) {
 	}
 	if _, ok := cm.BinaryData["login__resources__fonts__inter-latin.woff2"]; !ok {
 		t.Error("the font must ride BinaryData (it is not valid UTF-8)")
+	}
+	// The email manifest is rendered for THIS install: its facts are what
+	// the identity server's emails say about who sent them.
+	if props := cm.Data["email__theme.properties"]; !strings.Contains(props, "brandName=Acme Platform") || !strings.Contains(props, "consoleHost=planton.acme.com") {
+		t.Errorf("email manifest does not carry the install's facts:\n%s", props)
+	}
+	// The generated layout and the message bodies ride the same ConfigMap.
+	for _, key := range []string{"email__html__template.ftl", "email__text__template.ftl", "email__html__password-reset.ftl", "email__messages__messages_en.properties"} {
+		if _, ok := cm.Data[key]; !ok {
+			t.Errorf("%s missing from Data", key)
+		}
 	}
 }
 
@@ -102,13 +114,19 @@ func TestIdentityRealmImport_LoginThemeAndDisplayName(t *testing.T) {
 	}
 }
 
-func TestIdentityThemeHashIsStable(t *testing.T) {
-	first := IdentityThemeHash()
-	second := IdentityThemeHash()
+func TestIdentityThemeHashIsStableAndFollowsTheFacts(t *testing.T) {
+	facts := keycloaklogintheme.EmailFacts{BrandName: "Planton", ConsoleURL: "https://planton.acme.com"}
+	first := IdentityThemeHash(facts)
+	second := IdentityThemeHash(facts)
 	if first != second {
 		t.Errorf("theme hash must be deterministic: %q vs %q", first, second)
 	}
 	if strings.TrimSpace(first) == "" {
 		t.Error("theme hash must not be empty")
+	}
+	moved := facts
+	moved.ConsoleURL = "https://planton.acme.io"
+	if IdentityThemeHash(moved) == first {
+		t.Error("a moved console must change the theme hash so the identity pod rolls and its emails name the new address")
 	}
 }

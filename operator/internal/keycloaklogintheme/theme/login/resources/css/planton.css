@@ -1,18 +1,4 @@
-package keycloaklogintheme
-
-// stylesCSS restyles every login-family page the identity server renders
-// (sign-in, forced password update, profile completion, errors, logout)
-// into the Planton monochrome design system.
-//
-// Source of truth for every color is the console's theme package (the
-// platform's design tokens); the values are a deliberate,
-// documented copy -- update both together. Selectors target PatternFly v5
-// (what the parent keycloak.v2 theme renders) plus the few
-// keycloak-specific hooks its own stylesheet defines. Every rule below was
-// validated in a real browser against Keycloak 26.3 across the full
-// first-admin journey, including the base-theme screens (profile, error,
-// logout) that inherit these classes.
-const stylesCSS = `/*
+/*
  * Planton login theme -- the monochrome design system translated to the
  * identity server's pages.
  *
@@ -294,4 +280,3 @@ label[for='logout-sessions'] {
 .pf-v5-c-login__main-footer {
   color: var(--planton-text-muted);
 }
-`

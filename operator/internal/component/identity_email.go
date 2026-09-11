@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/plantonhq/planton/operator/api/v1"
 	"github.com/plantonhq/planton/operator/internal/keycloak"
+	"github.com/plantonhq/planton/operator/internal/keycloaklogintheme"
 	"github.com/plantonhq/planton/operator/internal/resources"
 )
 
@@ -80,6 +81,23 @@ func (b *emailRealmBuild) advanceRecord(record *realmStateRecord) {
 // already reports the same finding as its own not-Ready message, so this
 // component does not add a second voice (and must not go not-Ready itself:
 // the control plane waits on this component).
+// emailThemeFacts is what the identity server's own emails say about this
+// install: the sending name the platform declared (the product name when
+// nothing is declared, matching the control plane's fallback), the front
+// door's URL, and the declared reply-to. Rendered into the email theme's
+// manifest on every pass, so a renamed sender or a moved console reaches
+// the next password-reset email.
+func emailThemeFacts(planton *v1.PlantonPlatform, publicURL string) keycloaklogintheme.EmailFacts {
+	facts := keycloaklogintheme.EmailFacts{BrandName: "Planton", ConsoleURL: publicURL}
+	if e := planton.Spec.Email; e != nil {
+		if e.From.Name != "" {
+			facts.BrandName = e.From.Name
+		}
+		facts.ReplyTo = e.ReplyTo
+	}
+	return facts
+}
+
 func (id *Identity) buildEmailRealmState(ctx context.Context, c client.Client, planton *v1.PlantonPlatform, recorded realmStateRecord) *emailRealmBuild {
 	log := logf.FromContext(ctx).WithValues("component", id.Name())
 

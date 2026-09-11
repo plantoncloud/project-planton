@@ -158,10 +158,12 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 		return Result{}, fmt.Errorf("applying realm import Secret: %w", err)
 	}
 
-	// The login theme rides a ConfigMap (applied before the Deployment that
-	// mounts it) so the sign-in pages ship in the product design system on
-	// the unmodified official Keycloak image.
-	themeConfigMap, err := resources.IdentityThemeConfigMap(planton.Name, planton.Namespace, ownerRef)
+	// The theme rides a ConfigMap (applied before the Deployment that mounts
+	// it) so the sign-in pages and the identity server's emails ship in the
+	// product design system on the unmodified official Keycloak image. The
+	// emails name THIS install: its facts render into the email manifest.
+	themeFacts := emailThemeFacts(planton, publicURL)
+	themeConfigMap, err := resources.IdentityThemeConfigMap(planton.Name, planton.Namespace, themeFacts, ownerRef)
 	if err != nil {
 		return Result{}, fmt.Errorf("building identity theme ConfigMap: %w", err)
 	}
@@ -178,7 +180,7 @@ func (id *Identity) Reconcile(ctx context.Context, c client.Client, _ *runtime.S
 		Realm:           identityRealm(planton),
 		PublicURL:       publicURL,
 		RealmImportHash: hex.EncodeToString(importHash[:]),
-		ThemeHash:       resources.IdentityThemeHash(),
+		ThemeHash:       resources.IdentityThemeHash(themeFacts),
 		PostgreSQL:      resources.PostgreSQLConnection(planton.Name, planton.Namespace),
 	}
 	if fedBuild != nil && fedBuild.caBundleSecretName != "" {
