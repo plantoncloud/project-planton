@@ -530,6 +530,10 @@ type AzureEventgridEventSubscriptionStorageQueueDestination struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The storage account holding the queue, by ARM ID -- defaults to
 	// referencing an AzureStorageAccount's storage_account_id output.
+	//
+	// Events are DELIVERED into a queue in this account; the subscription
+	// belongs to the topic it subscribes to, so on a diagram the reference is
+	// access, not placement.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The queue's name within that account (the queue must exist --
 	// AzureStorageQueue manages one).
@@ -839,6 +843,10 @@ type AzureEventgridEventSubscriptionDeadLetter struct {
 	// The storage account holding the dead-letter container, by ARM ID
 	// -- defaults to referencing an AzureStorageAccount's
 	// storage_account_id output.
+	//
+	// Dead-lettered events are WRITTEN into this account; the subscription
+	// belongs to the topic it subscribes to, so on a diagram the reference is
+	// access, not placement.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The blob container dead-lettered events are written into (the
 	// container must exist -- AzureStorageContainer manages one).
@@ -1665,9 +1673,9 @@ const file_catalog_azure_azureeventgrideventsubscription_v1alpha1_spec_proto_raw
 	"\x14max_events_per_batch\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02(\x01H\x00R\x11maxEventsPerBatch\x88\x01\x01\x12V\n" +
 	"!preferred_batch_size_in_kilobytes\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02(\x01H\x01R\x1dpreferredBatchSizeInKilobytes\x88\x01\x01B\x17\n" +
 	"\x15_max_events_per_batchB$\n" +
-	"\"_preferred_batch_size_in_kilobytes\"\xf7\x02\n" +
-	"6AzureEventgridEventSubscriptionStorageQueueDestination\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12)\n" +
+	"\"_preferred_batch_size_in_kilobytes\"\xfb\x02\n" +
+	"6AzureEventgridEventSubscriptionStorageQueueDestination\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12)\n" +
 	"\n" +
 	"queue_name\x18\x02 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\tqueueName\x12S\n" +
@@ -1696,9 +1704,9 @@ const file_catalog_azure_azureeventgrideventsubscription_v1alpha1_spec_proto_raw
 	"\x05value\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x04\xa0\xa6\x1d\x01R\x05value\x12!\n" +
 	"\fsource_field\x18\x04 \x01(\tR\vsourceField\x12\x16\n" +
 	"\x06secret\x18\x05 \x01(\bR\x06secret:\xb8\x02\xbaH\xb4\x02\x1a\xb1\x02\n" +
-	",event_subscription_delivery_property_pairing\x12xStatic entries require value (and may set secret); Dynamic entries require source_field and must not set value or secret\x1a\x86\x01(this.type == 'Static') ? (has(this.value) && this.source_field == '') : (this.source_field != '' && !has(this.value) && !this.secret)\"\x8b\x02\n" +
-	")AzureEventgridEventSubscriptionDeadLetter\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12I\n" +
+	",event_subscription_delivery_property_pairing\x12xStatic entries require value (and may set secret); Dynamic entries require source_field and must not set value or secret\x1a\x86\x01(this.type == 'Static') ? (has(this.value) && this.source_field == '') : (this.source_field != '' && !has(this.value) && !this.secret)\"\x8f\x02\n" +
+	")AzureEventgridEventSubscriptionDeadLetter\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12I\n" +
 	"\x1bstorage_blob_container_name\x18\x02 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x18storageBlobContainerName\"\xab\x03\n" +
 	",AzureEventgridEventSubscriptionSubjectFilter\x12.\n" +

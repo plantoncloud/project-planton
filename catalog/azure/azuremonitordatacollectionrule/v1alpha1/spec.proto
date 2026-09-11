@@ -754,9 +754,14 @@ message AzureMonitorDataCollectionRuleStorageBlobDestination {
 
   // The destination storage account, by ARM resource ID. Can be a
   // literal ARM ID or a reference to an AzureStorageAccount output.
+  //
+  // Collected data is DELIVERED into this account; the rule lives in its
+  // own resource group, so on a diagram the reference is access, not
+  // placement -- the diagnostic setting's rule.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 3 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 }
@@ -777,9 +782,14 @@ message AzureMonitorDataCollectionRuleStorageTableDirect {
 
   // The destination storage account, by ARM resource ID. Can be a
   // literal ARM ID or a reference to an AzureStorageAccount output.
+  //
+  // Collected data is DELIVERED into this account; the rule lives in its
+  // own resource group, so on a diagram the reference is access, not
+  // placement -- the diagnostic setting's rule.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 3 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 }

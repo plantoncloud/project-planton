@@ -951,6 +951,10 @@ func (x *AzureCognitiveAccountNetworkInjection) GetSubnetId() *v1.StringValueOrR
 type AzureCognitiveAccountStorage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The storage account's ARM ID.
+	//
+	// The account reads training data and writes results here and lives in
+	// its own resource group, so on a diagram the reference is access, not
+	// placement.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The client ID of the USER-ASSIGNED identity that accesses the
 	// storage account. Leave unset to use the system-assigned identity.
@@ -1332,9 +1336,9 @@ const file_catalog_azure_azurecognitiveaccount_v1alpha1_spec_proto_rawDesc = "" 
 	"$ignore_missing_vnet_service_endpoint\x18\x02 \x01(\bR ignoreMissingVnetServiceEndpoint\"\xce\x01\n" +
 	"%AzureCognitiveAccountNetworkInjection\x12+\n" +
 	"\bscenario\x18\x01 \x01(\tB\x0f\xbaH\f\xc8\x01\x01r\aR\x05agentR\bscenario\x12x\n" +
-	"\tsubnet_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\"\xee\x01\n" +
-	"\x1cAzureCognitiveAccountStorage\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x129\n" +
+	"\tsubnet_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\"\xf2\x01\n" +
+	"\x1cAzureCognitiveAccountStorage\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x129\n" +
 	"\x12identity_client_id\x18\x02 \x01(\tB\v\xbaH\b\xd8\x01\x01r\x03\xb0\x01\x01R\x10identityClientId\"\xa6\x02\n" +
 	"!AzureCognitiveAccountRaiBlocklist\x123\n" +
 	"\x04name\x18\x01 \x01(\tB\x1f\xbaH\x1c\xc8\x01\x01r\x172\x15^[a-zA-Z0-9_-]{2,64}$R\x04name\x12 \n" +

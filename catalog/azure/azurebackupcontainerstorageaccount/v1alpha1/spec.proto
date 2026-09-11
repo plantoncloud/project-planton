@@ -43,9 +43,14 @@ message AzureBackupContainerStorageAccountSpec {
 
   // The storage account to register, by ARM ID. The account must live
   // in the vault's region (Azure Files backup is regional).
+  //
+  // The registration REGISTERS this account with the vault and is an ARM
+  // child of the vault, never a thing inside the account, so on a diagram
+  // the reference is access, not placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 3 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 }

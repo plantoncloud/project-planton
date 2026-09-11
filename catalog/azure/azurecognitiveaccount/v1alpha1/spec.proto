@@ -478,9 +478,14 @@ message AzureCognitiveAccountNetworkInjection {
 // One user-owned storage attachment.
 message AzureCognitiveAccountStorage {
   // The storage account's ARM ID.
+  //
+  // The account reads training data and writes results here and lives in
+  // its own resource group, so on a diagram the reference is access, not
+  // placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 

@@ -256,9 +256,14 @@ message AzureEventgridEventSubscriptionAzureFunctionDestination {
 message AzureEventgridEventSubscriptionStorageQueueDestination {
   // The storage account holding the queue, by ARM ID -- defaults to
   // referencing an AzureStorageAccount's storage_account_id output.
+  //
+  // Events are DELIVERED into a queue in this account; the subscription
+  // belongs to the topic it subscribes to, so on a diagram the reference is
+  // access, not placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 
@@ -404,9 +409,14 @@ message AzureEventgridEventSubscriptionDeadLetter {
   // The storage account holding the dead-letter container, by ARM ID
   // -- defaults to referencing an AzureStorageAccount's
   // storage_account_id output.
+  //
+  // Dead-lettered events are WRITTEN into this account; the subscription
+  // belongs to the topic it subscribes to, so on a diagram the reference is
+  // access, not placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 

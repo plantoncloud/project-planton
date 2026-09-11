@@ -304,6 +304,11 @@ type AzureMachineLearningWorkspaceSpec struct {
 	// built-in datastores, by ARM ID. Must be a general-purpose account
 	// WITHOUT hierarchical namespace (ARM rejects Data Lake Gen2
 	// accounts as default workspace storage). Fixed at creation.
+	//
+	// The workspace READS and WRITES this account as its default storage and
+	// lives in its own resource group, so on a diagram the reference is
+	// access, not placement -- the same rule its key_vault_id already
+	// carries.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,6,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The workspace's managed identity. REQUIRED -- the workspace
 	// accesses its companion services (storage, key vault, insights)
@@ -1186,7 +1191,7 @@ var File_catalog_azure_azuremachinelearningworkspace_v1alpha1_spec_proto protore
 
 const file_catalog_azure_azuremachinelearningworkspace_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"?catalog/azure/azuremachinelearningworkspace/v1alpha1/spec.proto\x128dev.planton.azure.azuremachinelearningworkspace.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\x90\"\n" +
+	"?catalog/azure/azuremachinelearningworkspace/v1alpha1/spec.proto\x128dev.planton.azure.azuremachinelearningworkspace.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\x94\"\n" +
 	"!AzureMachineLearningWorkspaceSpec\x12\"\n" +
 	"\x06region\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x06region\x12\x8c\x01\n" +
@@ -1194,8 +1199,8 @@ const file_catalog_azure_azuremachinelearningworkspace_v1alpha1_spec_proto_rawDe
 	"\x04name\x18\x03 \x01(\tB*\xbaH'\xc8\x01\x01r\"2 ^[a-zA-Z0-9][a-zA-Z0-9_-]{2,32}$R\x04name\x12\xa1\x01\n" +
 	"\x17application_insights_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\x83\x10\x92\xd4a&status.outputs.application_insights_idR\x15applicationInsightsId\x12\x80\x01\n" +
 	"\fkey_vault_id\x18\x05 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_idR\n" +
-	"keyVaultId\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x06 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12\x83\x01\n" +
+	"keyVaultId\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x06 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12\x83\x01\n" +
 	"\bidentity\x18\a \x01(\v2_.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceIdentityB\x06\xbaH\x03\xc8\x01\x01R\bidentity\x12o\n" +
 	"\x04kind\x18\b \x01(\x0e2[.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceKindR\x04kind\x12\x88\x01\n" +
 	"\rfeature_store\x18\t \x01(\v2c.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceFeatureStoreR\ffeatureStore\x12\x9c\x01\n" +
