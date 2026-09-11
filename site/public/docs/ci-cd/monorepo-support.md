@@ -187,7 +187,7 @@ Triggers and the kustomize tree still scope to `apps/web`; only the image build 
 
 ## Editing These Settings
 
-All four settings are fields on the Service record: edit the service's YAML and `planton apply -f service.yaml`, or ask the Planton Assistant ("also rebuild payment-api when proto/ changes") and it makes the same edit. Read the current values with `planton get Service <slug> -o yaml`.
+All four settings are fields on the Service record, and every door writes the same record: in the web console, the service's **Configuration** tab shows each of them as a row — the project root and build context under **Build Settings**, the trigger paths under **Build Triggers** — with an Edit dial that says the rule before saving; from a terminal, edit the service's YAML and `planton apply -f service.yaml`; or ask the Planton Assistant ("also rebuild payment-api when proto/ changes") and it makes the same edit. Read the current values with `planton get Service <slug> -o yaml`.
 
 ## Related Documentation
 

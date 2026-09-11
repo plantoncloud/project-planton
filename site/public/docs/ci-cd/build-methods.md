@@ -90,6 +90,8 @@ During service creation, the build configuration step presents:
 4. **Pipeline branches**: Branches that trigger builds on push.
 5. **Advanced settings** (collapsed): Dockerfile path, tag build toggles, and tag patterns.
 
+After creation, every one of these lives on the service's **Configuration** tab. **Build Settings** shows the builder (with the Dockerfile path and build context, or the custom pipeline and its params), the push registry and image path, the build cluster, the target platforms, and the project root; **Build Triggers** shows the builds switch, the trigger branches, the trigger paths, what pull requests do (and how long a preview lives), and what tag pushes do. Each row states its current value and what that value does for the service, and opens a dialog that says the rule before it saves — a branch cannot both trigger the full promotion walk and be mapped to a single environment, a target platform is written as `os/arch`, a preview lifetime is at most thirty days. A build that would fail on its next run — no builder chosen, or a Dockerfile build with no registry to push to — is called out at the top of the tab with the door that fixes it.
+
 After creation, build configuration is editable in the service's **Settings** tab under Pipeline Configuration.
 
 ### CLI
