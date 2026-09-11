@@ -46,3 +46,5 @@ None — this preset deploys as-is.
 - **03-eks** — EKS posture: gp3 storage, ALB ingress, IRSA runner
   identity
 - **04-gateway-api** — a real hostname through a Gateway API Gateway
+- **05-email-smtp** — the same platform sending email through your own
+  relay, so invitations arrive instead of being shared as links

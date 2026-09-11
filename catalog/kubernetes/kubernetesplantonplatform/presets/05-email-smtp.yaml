@@ -1,0 +1,50 @@
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesPlantonPlatform
+metadata:
+  name: planton
+spec:
+  namespace:
+    value: planton
+  create_namespace: true
+  # The first platform release whose control plane sends through an SMTP
+  # relay. An older release refuses to boot with `smtp` declared, so this
+  # preset never names a lower version.
+  version: v0.0.60
+  email:
+    # One declaration for both senders: the control plane (invitations,
+    # alerts) and the identity server (password resets) send through this
+    # relay, from this address. The relay must permit sending as it.
+    from:
+      address: no-reply@planton.example.com
+      name: Planton
+    reply_to: it-help@example.com
+    smtp:
+      host: smtp.office365.com
+      # 587 with STARTTLS (a required upgrade, never a silent fallback) is
+      # the submission default; both are left at their defaults here.
+      # Credentials live in a kubernetes.io/basic-auth Secret in the
+      # platform's namespace — create it before applying:
+      #
+      #   kubectl -n planton create secret generic planton-email \
+      #     --type=kubernetes.io/basic-auth \
+      #     --from-literal=username=no-reply@planton.example.com \
+      #     --from-literal=password=...
+      #
+      # A rotated password is live on the next send with no restart.
+      credentials_secret_name: planton-email
+      # Exchange Online tenants that have retired password sign-in use an
+      # OAuth2 app registration instead — replace credentials_secret_name
+      # with:
+      #
+      #   oauth2:
+      #     user: no-reply@planton.example.com
+      #     token_url: https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token
+      #     scope: https://outlook.office365.com/.default
+      #     client_id: <app registration client id>
+      #     client_secret_ref:
+      #       name: planton-email-oauth2
+      #       key: client-secret
+      #
+      # A relay behind a private certificate authority adds its PEM bundle
+      # with `ca_bundle_secret_ref: {name: corp-ca, key: ca.crt}`.
+    # Requires operator chart 0.14.1 or newer.

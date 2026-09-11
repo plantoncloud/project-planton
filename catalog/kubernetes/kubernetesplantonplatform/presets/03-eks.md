@@ -47,3 +47,5 @@ the runner keyless AWS identity.
 - **01-zero-config** — start here when the cluster addons are not ready
 - **02-ingress-tls** — in-cluster TLS via cert-manager (nginx-style
   ingress controllers)
+- **05-email-smtp** — outbound email through your own relay (SES's SMTP
+  endpoint included)

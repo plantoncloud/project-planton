@@ -100,6 +100,44 @@ variable "spec" {
     remote_runners = optional(object({
       enabled = optional(bool)
     }))
+    # Outbound email: exactly one of smtp | resend (the spec's CEL holds
+    # it). Credentials are Secret names and Secret key references, never
+    # values; port and security ride the CRD defaults (587, starttls) when
+    # omitted.
+    email = optional(object({
+      from = object({
+        address = string
+        name    = optional(string)
+      })
+      reply_to = optional(string, "")
+      smtp = optional(object({
+        host = string
+        port = optional(number)
+        # starttls | tls | none; empty rides the CRD default (starttls).
+        security                = optional(string)
+        credentials_secret_name = optional(string, "")
+        oauth2 = optional(object({
+          user      = string
+          token_url = string
+          scope     = string
+          client_id = string
+          client_secret_ref = object({
+            name = string
+            key  = string
+          })
+        }))
+        ca_bundle_secret_ref = optional(object({
+          name = string
+          key  = string
+        }))
+      }))
+      resend = optional(object({
+        api_key_secret_ref = object({
+          name = string
+          key  = string
+        })
+      }))
+    }))
     vault = optional(object({
       enabled            = optional(bool)
       init_mode          = optional(string)

@@ -62,6 +62,7 @@ resource's outputs.
 | `storage` | no | cluster default | Platform-wide class + size; every component can override |
 | `database.postgresql.replicas` | no | `1` | 2+ = streaming replication with automatic failover, live |
 | `identity.admin_email` | no | setup-code flow | Pre-seed a known admin instead of first-visitor setup |
+| `email` | no | no email | Outbound email through your own provider — `smtp` (any relay; `security` `starttls`/`tls`/`none`; a basic-auth Secret, OAuth2, or no credential; an optional private-CA bundle) XOR `resend`; `from.address` is the sending identity both the control plane and the identity server use; credentials are Secret names and references, never values. Absent, invitations are shared as links and the sign-in page has no "Forgot password?" |
 | `bootstrap` | no | sane seeds | First org/env, extra admins, IaC provisioner (`tofu`/`terraform`), secret backend (`platform`/`awsSecretsManager`) |
 | `runner`, `build`, `vault` | no | ON | The default-on arms; explicit `enabled: false` is the deliberate opt-out |
 | `components` | no | off | Opt-ins: authorization (OpenFGA), search (Solr), graph (Neo4j) |

@@ -42,6 +42,19 @@ spec:
     reachability: public
   gateway:
     local_port: 8080
+  email:
+    from:
+      address: no-reply@planton.example.com
+      name: Planton
+    reply_to: it-help@example.com
+    smtp:
+      host: smtp.office365.com
+      port: 587
+      security: starttls
+      credentials_secret_name: planton-email
+      ca_bundle_secret_ref:
+        name: corp-ca
+        key: ca.crt
   identity:
     realm: planton
     admin_email: admin@example.com

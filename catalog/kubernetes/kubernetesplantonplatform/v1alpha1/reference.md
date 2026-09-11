@@ -102,6 +102,19 @@ spec:
     reachability: public
   gateway:
     local_port: 8080
+  email:
+    from:
+      address: no-reply@planton.example.com
+      name: Planton
+    reply_to: it-help@example.com
+    smtp:
+      host: smtp.office365.com
+      port: 587
+      security: starttls
+      credentials_secret_name: planton-email
+      ca_bundle_secret_ref:
+        name: corp-ca
+        key: ca.crt
   identity:
     realm: planton
     admin_email: admin@example.com
@@ -160,7 +173,7 @@ spec:
 | `spec.version` | `string` | yes |  |  |
 | `spec.license` | `KubernetesPlantonPlatformLicense` |  |  |  |
 | `spec.license.key` | `string` (sensitive) |  |  |  |
-| `spec.license.secretKeyRef` | `KubernetesPlantonPlatformLicenseSecretKeyRef` |  |  |  |
+| `spec.license.secretKeyRef` | `KubernetesPlantonPlatformSecretKeyRef` |  |  |  |
 | `spec.license.secretKeyRef.name` | `string` | yes |  |  |
 | `spec.license.secretKeyRef.key` | `string` | yes |  |  |
 | `spec.storage` | `KubernetesPlantonPlatformStorage` |  |  |  |
@@ -256,6 +269,31 @@ spec:
 | `spec.console.externalConfigSecretName` | `string` |  |  |  |
 | `spec.remoteRunners` | `KubernetesPlantonPlatformRemoteRunners` |  |  |  |
 | `spec.remoteRunners.enabled` | `bool` |  | `false` |  |
+| `spec.email` | `KubernetesPlantonPlatformEmail` |  |  |  |
+| `spec.email.from` | `KubernetesPlantonPlatformEmailFrom` | yes |  |  |
+| `spec.email.from.address` | `string` | yes |  |  |
+| `spec.email.from.name` | `string` |  | `Planton` |  |
+| `spec.email.replyTo` | `string` |  |  |  |
+| `spec.email.smtp` | `KubernetesPlantonPlatformEmailSmtp` |  |  |  |
+| `spec.email.smtp.host` | `string` | yes |  |  |
+| `spec.email.smtp.port` | `int32` |  | `587` |  |
+| `spec.email.smtp.security` | `string` |  | `starttls` |  |
+| `spec.email.smtp.credentialsSecretName` | `string` |  |  |  |
+| `spec.email.smtp.oauth2` | `KubernetesPlantonPlatformEmailSmtpOauth2` |  |  |  |
+| `spec.email.smtp.oauth2.user` | `string` | yes |  |  |
+| `spec.email.smtp.oauth2.tokenUrl` | `string` | yes |  |  |
+| `spec.email.smtp.oauth2.scope` | `string` | yes |  |  |
+| `spec.email.smtp.oauth2.clientId` | `string` | yes |  |  |
+| `spec.email.smtp.oauth2.clientSecretRef` | `KubernetesPlantonPlatformSecretKeyRef` | yes |  |  |
+| `spec.email.smtp.oauth2.clientSecretRef.name` | `string` | yes |  |  |
+| `spec.email.smtp.oauth2.clientSecretRef.key` | `string` | yes |  |  |
+| `spec.email.smtp.caBundleSecretRef` | `KubernetesPlantonPlatformSecretKeyRef` |  |  |  |
+| `spec.email.smtp.caBundleSecretRef.name` | `string` | yes |  |  |
+| `spec.email.smtp.caBundleSecretRef.key` | `string` | yes |  |  |
+| `spec.email.resend` | `KubernetesPlantonPlatformEmailResend` |  |  |  |
+| `spec.email.resend.apiKeySecretRef` | `KubernetesPlantonPlatformSecretKeyRef` | yes |  |  |
+| `spec.email.resend.apiKeySecretRef.name` | `string` | yes |  |  |
+| `spec.email.resend.apiKeySecretRef.key` | `string` | yes |  |  |
 
 ## Field Details
 
@@ -310,7 +348,7 @@ managed-secret reference, never inline plaintext.
 
 ### spec.license.secretKeyRef
 
-`KubernetesPlantonPlatformLicenseSecretKeyRef`
+`KubernetesPlantonPlatformSecretKeyRef`
 
 Read the license key from an existing Kubernetes Secret in the
 platform's namespace instead.
@@ -327,7 +365,7 @@ Secret name (in the platform's namespace).
 
 `string` · required
 
-Key within the Secret holding the license key.
+Key within the Secret holding the value.
 
 - rule: {"string":{"minLen":"1"}}
 
@@ -1143,6 +1181,250 @@ carries for its remote runners); the queue's administrative service
 never leaves the cluster.
 
 - default: `false`
+
+### spec.email
+
+`KubernetesPlantonPlatformEmail`
+
+The one mail provider every sender on the install uses: the control
+plane (invitations, alerts, license mail) and the identity server
+(password resets) both send through it, so one declaration is the
+whole configuration. Absent, the install sends no email: invitations
+are shared as links and the sign-in page offers no "Forgot password?".
+Exactly one provider arm is set — an SMTP relay or a Resend account.
+Credentials are never inline: they are Secrets in the platform's
+namespace, named here, and reach the control plane as mounted files so
+a rotated password is live on the next send. The operator delivers the
+declaration and preflights every Secret it names; the control plane
+checks the relay on demand from the console's Email settings and
+reports each failure in the relay's own words. Requires a
+planton-operator chart that knows this field (0.14.1 or newer); an
+older definition refuses the declaration.
+
+- rule: email declares exactly one provider: set spec.email.smtp for a relay or spec.email.resend for a Resend account, never both, never neither
+
+### spec.email.from
+
+`KubernetesPlantonPlatformEmailFrom` · required
+
+The identity every email carries: the address the install sends as
+and the display name beside it. The relay must permit sending as this
+address (a mailbox's own address, or one it has Send As rights to);
+SPF and DKIM for the domain are the domain owner's job.
+
+- rule: {"required":true}
+
+### spec.email.from.address
+
+`string` · required
+
+The address the install sends as, e.g. no-reply@planton.acme.com.
+Required whenever email is declared: there is no default address,
+because a default would name somebody else's domain.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.from.name
+
+`string` · optional (explicit presence)
+
+The name shown beside the address in mail clients. Platform default:
+Planton.
+
+- default: `Planton`
+
+### spec.email.replyTo
+
+`string`
+
+Where a person's reply lands — a help desk or a shared mailbox — when
+the sending address is a no-reply one. Empty, replies go to
+from.address.
+
+### spec.email.smtp
+
+`KubernetesPlantonPlatformEmailSmtp`
+
+Send through any SMTP relay: a workplace mail system (Exchange Online,
+Google Workspace, an internal smart host) or a transactional vendor's
+SMTP endpoint (SES, SendGrid, Postmark, Mailgun, Resend).
+
+- rule: smtp authenticates one way: set credentials_secret_name for a username and password, or oauth2 for a token, not both
+- rule: security: none would send credentials in the clear; keep security at starttls or tls, or drop credentials_secret_name and oauth2 for a relay that admits this cluster's address without them
+
+### spec.email.smtp.host
+
+`string` · required
+
+Host of the relay, e.g. smtp.office365.com or
+smtp-relay.corp.acme.com.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.port
+
+`int32` · optional (explicit presence)
+
+Port the relay listens on. 587 is the submission port most relays use
+with STARTTLS; implicit-TLS relays (security: tls) usually listen on
+465; an internal plaintext relay on 25. Platform default: 587.
+
+- default: `587`
+- rule: {"int32":{"lte":65535,"gte":1}}
+
+### spec.email.smtp.security
+
+`string` · optional (explicit presence)
+
+How the connection to the relay is protected: starttls (connect in the
+clear and REQUIRE the upgrade before anything is sent — a relay that
+does not offer it is a failed connection, never a silent fallback; the
+default), tls (implicit TLS from the first byte), or none (plaintext
+end to end, for credential-free internal relays only; credentials are
+refused on it). Platform default: starttls.
+
+- default: `starttls`
+- rule: {"string":{"in":["","starttls","tls","none"]}}
+
+### spec.email.smtp.credentialsSecretName
+
+`string`
+
+Name of a kubernetes.io/basic-auth Secret in the platform's namespace
+whose username and password keys sign in to the relay:
+
+  kubectl -n <namespace> create secret generic planton-email \
+    --type=kubernetes.io/basic-auth \
+    --from-literal=username=... --from-literal=password=...
+
+Omit it for a relay that admits this cluster by network address. The
+values reach the control plane as mounted files, so a rotated password
+is live on the next send with no restart.
+
+### spec.email.smtp.oauth2
+
+`KubernetesPlantonPlatformEmailSmtpOauth2`
+
+Sign in with a token from an OAuth2 client-credentials grant (SASL
+XOAUTH2) instead of a password. Exchange Online: token_url
+https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token, scope
+https://outlook.office365.com/.default, the app registration's client
+id and secret, and user = the mailbox the app may send as.
+
+### spec.email.smtp.oauth2.user
+
+`string` · required
+
+The mailbox the token sends as — the account the app registration has
+been permitted to use.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.oauth2.tokenUrl
+
+`string` · required
+
+The provider's OAuth2 token endpoint. Must be an https:// URL.
+
+- rule: token_url must be an https:// URL
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.oauth2.scope
+
+`string` · required
+
+The scope requested for the token.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.oauth2.clientId
+
+`string` · required
+
+The app registration's client id.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.oauth2.clientSecretRef
+
+`KubernetesPlantonPlatformSecretKeyRef` · required
+
+The app registration's client secret, by reference: the secret is
+never inline.
+
+- rule: {"required":true}
+
+### spec.email.smtp.oauth2.clientSecretRef.name
+
+`string` · required
+
+Secret name (in the platform's namespace).
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.oauth2.clientSecretRef.key
+
+`string` · required
+
+Key within the Secret holding the value.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.caBundleSecretRef
+
+`KubernetesPlantonPlatformSecretKeyRef`
+
+A PEM CA bundle for verifying the relay's TLS certificate — the
+private-CA case, the classic enterprise blocker. Omit it when the
+relay's certificate chains to a public root.
+
+### spec.email.smtp.caBundleSecretRef.name
+
+`string` · required
+
+Secret name (in the platform's namespace).
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.smtp.caBundleSecretRef.key
+
+`string` · required
+
+Key within the Secret holding the value.
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.resend
+
+`KubernetesPlantonPlatformEmailResend`
+
+Send through Resend's API with an API key.
+
+### spec.email.resend.apiKeySecretRef
+
+`KubernetesPlantonPlatformSecretKeyRef` · required
+
+The Resend API key, by reference: the key is never inline. Reaches the
+control plane as a mounted file, so a rotated key is live on the next
+send with no restart.
+
+- rule: {"required":true}
+
+### spec.email.resend.apiKeySecretRef.name
+
+`string` · required
+
+Secret name (in the platform's namespace).
+
+- rule: {"string":{"minLen":"1"}}
+
+### spec.email.resend.apiKeySecretRef.key
+
+`string` · required
+
+Key within the Secret holding the value.
+
+- rule: {"string":{"minLen":"1"}}
 
 ## Outputs
 

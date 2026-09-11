@@ -23,7 +23,7 @@ spec:
       field_path: ingress.tls
       evidence:
         type: spec_default
-        reference: External traffic is HTTPS when ingress.tls is set (brought certificate or cert-manager issuer; TLS-at-the-edge postures like ACM ride ingress.annotations) or, on the Gateway API door (ingress.gateway_ref), when the Gateway's listener serving the hostname terminates TLS. The zero-config port-forward door is a kubectl tunnel — encrypted by the Kubernetes API server's TLS end to end.
+        reference: External traffic is HTTPS when ingress.tls is set (brought certificate or cert-manager issuer; TLS-at-the-edge postures like ACM ride ingress.annotations) or, on the Gateway API door (ingress.gateway_ref), when the Gateway's listener serving the hostname terminates TLS. The zero-config port-forward door is a kubectl tunnel — encrypted by the Kubernetes API server's TLS end to end. Outbound email rides email.smtp.security — starttls (a required upgrade, never a silent fallback; the default) or tls (implicit TLS); none is plaintext for credential-free internal relays only, and the spec refuses credentials over it.
       notes: In-cluster traffic between platform components rides ClusterIP services in one namespace.
     - control_id: no-public-access
       status: enforced_by_default

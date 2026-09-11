@@ -36,6 +36,37 @@ or `auto` will read it as private. Changing the declaration is safe on a
 running platform; it changes which doors the console offers, never the
 platform's address.
 
+## Declare email once, and both senders use it
+
+A platform a team runs day to day needs to reach people: invitations
+that land in inboxes, alerts someone reads, a "Forgot password?" that
+works on the sign-in page. `email` is that one declaration. The control
+plane and the identity server both send through it, from the address you
+name, so there is no second place where a relay is configured and no way
+for the two to disagree. Without it the platform is fully usable —
+invitations are shared as links and the sign-in page offers no password
+reset — and the console's Email settings show the exact `email` fragment
+and the one `kubectl create secret` command for this install.
+
+Pick one arm. `smtp` reaches every workplace mail system and every
+transactional vendor's SMTP endpoint; `resend` uses Resend's API. On a
+relay, `security` is a promise the platform keeps: `starttls` requires
+the upgrade and fails a relay that will not offer it, `tls` opens TLS from
+the first byte, and `none` is plaintext for a credential-free internal
+smart host — the platform refuses credentials over it. Sign in one way: a
+username and password in a `kubernetes.io/basic-auth` Secret, an OAuth2
+app registration (Exchange Online after Microsoft's password retirement),
+or no credential. Every credential is a Secret name or a Secret key
+reference, never a value; the operator preflights each one and, when a
+Secret is missing, says so in words while the platform runs as if no
+email were declared. Credentials reach the control plane as mounted
+files, so rotating a password is a Secret edit that is live on the next
+send. The relay must permit sending as `from.address` — SPF and DKIM for
+that domain are the domain owner's job — and the one failure only a real
+send can reveal (a From the account may not send as) is what the
+console's "Send Me a Test Email" is for. The platform never probes the
+relay on a timer; the checks run when someone asks.
+
 ## Version is the upgrade lever, and it is never automated
 
 `version` is required with no default, deliberately: a module-owned
