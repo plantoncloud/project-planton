@@ -51,10 +51,13 @@ message AzureFrontDoorRouteSpec {
   // The origin group that answers requests matched by this route, by ARM
   // ID. References an AzureFrontDoorOriginGroup's origin_group_id
   // output. Updatable in place (repointing a route is how traffic moves
-  // between backend pools).
+  // between backend pools). The route lives in its endpoint and forwards
+  // TO the origin group, so the reference is access, not placement, on a
+  // diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef origin_group_id = 3 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureFrontDoorOriginGroup,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.origin_group_id"
   ];
 

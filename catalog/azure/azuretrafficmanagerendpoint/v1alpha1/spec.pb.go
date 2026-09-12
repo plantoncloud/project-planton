@@ -356,7 +356,9 @@ type AzureTrafficManagerNestedEndpoint struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The CHILD profile's ARM resource ID -- defaults to referencing an
 	// AzureTrafficManagerProfile's traffic_manager_profile_id output.
-	// Retargeting updates the endpoint in place.
+	// Retargeting updates the endpoint in place. The endpoint lives in its
+	// own parent profile (profile_id) and merely points at this one, so the
+	// reference is access, not placement, on a diagram.
 	TargetProfileId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=target_profile_id,json=targetProfileId,proto3" json:"target_profile_id,omitempty"`
 	// The minimum number of healthy endpoints the child profile must
 	// hold for THIS endpoint to count as healthy (at least 1). Updatable
@@ -603,9 +605,9 @@ const file_catalog_azure_azuretrafficmanagerendpoint_v1alpha1_spec_proto_rawDesc
 	"\x06target\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x06\xbaH\x03\xc8\x01\x01R\x06target\x12+\n" +
 	"\x11endpoint_location\x18\x02 \x01(\tR\x10endpointLocation\x12@\n" +
 	"\x14always_serve_enabled\x18\x03 \x01(\bB\t\x8a\xa6\x1d\x05falseH\x00R\x12alwaysServeEnabled\x88\x01\x01B\x17\n" +
-	"\x15_always_serve_enabled\"\xe4\x04\n" +
-	"!AzureTrafficManagerNestedEndpoint\x12\x98\x01\n" +
-	"\x11target_profile_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB8\xbaH\x03\xc8\x01\x01\x88\xd4a\x8d\x11\x92\xd4a)status.outputs.traffic_manager_profile_idR\x0ftargetProfileId\x12G\n" +
+	"\x15_always_serve_enabled\"\xe8\x04\n" +
+	"!AzureTrafficManagerNestedEndpoint\x12\x9c\x01\n" +
+	"\x11target_profile_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB<\xbaH\x03\xc8\x01\x01\x88\xd4a\x8d\x11\x92\xd4a)status.outputs.traffic_manager_profile_id\x98\xd4a\x01R\x0ftargetProfileId\x12G\n" +
 	"\x17minimum_child_endpoints\x18\x02 \x01(\x05B\n" +
 	"\xbaH\a\xc8\x01\x01\x1a\x02(\x01H\x00R\x15minimumChildEndpoints\x88\x01\x01\x12^\n" +
 	"%minimum_required_child_endpoints_ipv4\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02(\x00H\x01R!minimumRequiredChildEndpointsIpv4\x88\x01\x01\x12^\n" +

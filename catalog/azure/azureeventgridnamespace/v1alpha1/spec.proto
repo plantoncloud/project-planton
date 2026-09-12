@@ -153,8 +153,12 @@ message AzureEventgridNamespaceTopicSpacesConfiguration {
   // (AzureEventgridTopic) for fan-out to non-MQTT subscribers. The
   // custom topic must live in the same region and use the CloudEvents
   // schema. Omit to keep MQTT traffic inside the broker.
+  //
+  // The namespace lives in its resource group and routes INTO the topic,
+  // so the reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef route_topic_id = 4 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureEventgridTopic,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.topic_id"
   ];
 

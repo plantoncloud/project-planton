@@ -962,6 +962,10 @@ type AzureDataFactoryIntegrationRuntimeSsisExpressVnetIntegration struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The subnet the runtime reaches, by ARM ID -- defaults to
 	// referencing an AzureSubnet's subnet_id output.
+	//
+	// The runtime is an ARM child of its factory and lives there; the
+	// subnet is where its nodes attach, so on a diagram the reference is
+	// access, not placement -- the AKS node pool's rule.
 	SubnetId      *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1012,10 +1016,16 @@ type AzureDataFactoryIntegrationRuntimeSsisVnetIntegration struct {
 	// The virtual network, by ARM ID -- pairs with subnet_name.
 	// Defaults to referencing an AzureVirtualNetwork's
 	// virtual_network_id output.
+	//
+	// The runtime is an ARM child of its factory and lives there; the
+	// network is where its nodes attach, so on a diagram the reference is
+	// access, not placement -- the AKS node pool's rule.
 	VnetId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=vnet_id,json=vnetId,proto3" json:"vnet_id,omitempty"`
 	// The subnet, by ARM ID -- the direct alternative to vnet_id +
 	// subnet_name. Defaults to referencing an AzureSubnet's subnet_id
 	// output.
+	//
+	// Access, not placement, for the same reason as vnet_id above.
 	SubnetId *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	// The subnet's name inside vnet_id -- required with vnet_id,
 	// meaningless with subnet_id.
@@ -1591,12 +1601,12 @@ const file_catalog_azure_azuredatafactoryintegrationruntime_v1alpha1_spec_proto_
 	"\x0esecret_version\x18\x04 \x01(\tR\rsecretVersion\x1a=\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb8\x01\n" +
-	"<AzureDataFactoryIntegrationRuntimeSsisExpressVnetIntegration\x12x\n" +
-	"\tsubnet_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\"\xf1\a\n" +
-	"5AzureDataFactoryIntegrationRuntimeSsisVnetIntegration\x12w\n" +
-	"\avnet_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\x88\xd4a\xd6\x0f\x92\xd4a!status.outputs.virtual_network_idR\x06vnetId\x12r\n" +
-	"\tsubnet_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\x12\x1f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbc\x01\n" +
+	"<AzureDataFactoryIntegrationRuntimeSsisExpressVnetIntegration\x12|\n" +
+	"\tsubnet_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB+\xbaH\x03\xc8\x01\x01\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\bsubnetId\"\xf9\a\n" +
+	"5AzureDataFactoryIntegrationRuntimeSsisVnetIntegration\x12{\n" +
+	"\avnet_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\x88\xd4a\xd6\x0f\x92\xd4a!status.outputs.virtual_network_id\x98\xd4a\x01R\x06vnetId\x12v\n" +
+	"\tsubnet_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\bsubnetId\x12\x1f\n" +
 	"\vsubnet_name\x18\x03 \x01(\tR\n" +
 	"subnetName\x12w\n" +
 	"\n" +
