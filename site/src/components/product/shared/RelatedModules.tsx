@@ -10,9 +10,11 @@ import {
   Shield as SecurityIcon,
   Psychology as AgentFleetIcon,
   Terminal as CliIcon,
+  Laptop as DesktopIcon,
   Code as OpenSourceIcon,
 } from '@mui/icons-material';
 import { Section } from '@/components/landing-page/v3-2026-01-02-1000/shared';
+import { DESKTOP_LANDING_PATH } from '@/data/desktop-download';
 import { PLATFORM_STATS } from '@/data/platform-stats';
 
 interface ModuleInfo {
@@ -58,6 +60,12 @@ const allModules: Record<string, ModuleInfo> = {
     title: 'CLI',
     description: 'Everything Planton does, from your terminal.',
     href: '/features/cli',
+  },
+  desktop: {
+    icon: <DesktopIcon sx={{ fontSize: 20 }} />,
+    title: 'Planton Desktop',
+    description: 'The whole platform on your laptop, free forever.',
+    href: DESKTOP_LANDING_PATH,
   },
   'open-source': {
     icon: <OpenSourceIcon sx={{ fontSize: 20 }} />,

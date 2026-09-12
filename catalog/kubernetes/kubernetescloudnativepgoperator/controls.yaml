@@ -19,16 +19,16 @@ spec:
       status: enforced_by_default
       evidence:
         type: module_default
-        reference: The operator's admission webhooks serve TLS to the API server (the webhook service name is baked into the webhook certificate -- the reason the release name is fixed), and the Barman Cloud plugin's operator-to-sidecar gRPC is TLS issued by cert-manager (the plugin chart renders its Issuer and Certificate unconditionally, which is why the plugin arm requires cert-manager on the cluster).
-      notes: TLS for client connections to the managed databases is owned by the KubernetesPostgres resources (CloudNativePG self-signs per-cluster certificates there).
+        reference: The operator's admission webhooks serve TLS to the API server (the webhook service name is baked into the webhook certificate -- the reason the release name is fixed).
+      notes: TLS for client connections to the managed databases is owned by the KubernetesPostgres resources (CloudNativePG self-signs per-cluster certificates there); the operator-to-plugin gRPC TLS is owned by KubernetesCnpgBarmanCloudPlugin.
     - control_id: no-public-access
       status: enforced_by_default
       evidence:
         type: module_default
-        reference: The modules render no external exposure -- the operator's only services are the in-cluster webhook endpoint consumed by the API server and the plugin's internal gRPC service; the spec offers no ingress or LoadBalancer seam.
+        reference: The modules render no external exposure -- the operator's only service is the in-cluster webhook endpoint consumed by the API server; the spec offers no ingress or LoadBalancer seam.
     - control_id: restricted-ingress
       status: not_applicable
-      notes: The operator serves no client-facing traffic to restrict; its inbound callers are the Kubernetes API server (webhooks) and the operator itself (plugin gRPC). Kubernetes NetworkPolicies (separate resources) can fence these paths if required.
+      notes: The operator serves no client-facing traffic to restrict; its inbound caller is the Kubernetes API server (webhooks). Kubernetes NetworkPolicies (separate resources) can fence that path if required.
     - control_id: edge-protection
       status: not_applicable
       notes: A cluster-internal controller serves no HTTP edge traffic -- web application firewalls do not apply.
@@ -60,7 +60,7 @@ spec:
       notes: Metrics for the managed databases themselves are served per cluster and owned by KubernetesPostgres resources.
     - control_id: backup-recovery
       status: not_applicable
-      notes: The operator holds no data to back up; its own configuration is this manifest, re-appliable at any time. It does install the backup ENGINE -- barman_cloud_plugin deploys the object-store backup path every KubernetesPostgres backup block depends on -- but what gets backed up, where, and on what schedule is declared on the KubernetesPostgres resources.
+      notes: The operator holds no data to back up; its own configuration is this manifest, re-appliable at any time. The backup ENGINE every KubernetesPostgres backup block depends on is KubernetesCnpgBarmanCloudPlugin, installed into this operator's namespace; what gets backed up, where, and on what schedule is declared on the KubernetesPostgres resources.
     - control_id: backup-retention-policy
       status: not_applicable
       notes: No backups exist at this layer; retention for database backups is declared per database on KubernetesPostgres resources (see backup-recovery).
@@ -70,7 +70,7 @@ spec:
       evidence:
         type: spec_default
         reference: replicas defaults to 1; extra replicas are leader-elected warm standbys that shorten failover of the operator itself. Kubernetes spreads them across nodes subject to the cluster's scheduling.
-      notes: An operator outage pauses reconciliation and failover automation only -- managed databases keep serving. Both presets run one replica.
+      notes: An operator outage pauses reconciliation and failover automation only -- managed databases keep serving. The preset runs one replica.
     - control_id: deletion-protection
       status: not_applicable
       notes: "Neither Kubernetes nor the chart offers a deletion-protection flag on the release. The blast radius of deletion is deliberately bounded upstream: the chart stamps helm.sh/resource-policy: keep on every CRD unconditionally, so uninstalling never cascade-deletes the Cluster resources or the databases behind them."
@@ -79,5 +79,5 @@ spec:
       field_path: chart_version
       evidence:
         type: spec_default
-        reference: Unset installs the pinned default chart (0.29.0, which ships operator 1.30.0); upgrades are deliberate chart_version changes re-running the release with the new chart. The plugin carries its own independent pin (barman_cloud_plugin.chart_version, default 0.7.0).
+        reference: Unset installs the pinned default chart (0.29.0, which ships operator 1.30.0); upgrades are deliberate chart_version changes re-running the release with the new chart. The Barman Cloud plugin carries its own independent pin on its own kind.
       notes: Operator upgrades roll the managed databases' instance manager -- CloudNativePG's own documented rolling behavior, applied per cluster.

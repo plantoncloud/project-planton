@@ -31,6 +31,29 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 	if !strings.Contains(config, "http://planton-console.planton-ns.svc.cluster.local:80") {
 		t.Error("the catch-all must route to the console Service")
 	}
+	// The port-forward door is an honest issuer too: the discovery document a
+	// developer fetches at localhost names the door it is served at, and the
+	// webhook namespace reaches the same port.
+	for _, loc := range []string{OIDCDiscoveryPath, OIDCJWKSPath} {
+		if !strings.Contains(config, "location = "+loc+" {") {
+			t.Errorf("the %s document must be an exact location (one document, not a namespace):\n%s", loc, config)
+		}
+	}
+	if !strings.Contains(config, "location "+WebhooksPathPrefix+" {") {
+		t.Errorf("the %s namespace must be a prefix location:\n%s", WebhooksPathPrefix, config)
+	}
+	if !strings.Contains(config, "set $controlplane_webhook_upstream http://planton-control-plane.planton-ns.svc.cluster.local:8086;") ||
+		!strings.Contains(config, "proxy_pass $controlplane_webhook_upstream") {
+		t.Errorf("the webhook port needs its own request-time upstream:\n%s", config)
+	}
+	// The header-matched native-gRPC row is skipped on this door: exactly one
+	// root location (the console), and no upstream on the raw gRPC port.
+	if n := strings.Count(config, "location / {"); n != 1 {
+		t.Errorf("root locations = %d, want exactly one (the console catch-all)", n)
+	}
+	if strings.Contains(config, "planton-control-plane.planton-ns.svc.cluster.local:80;") {
+		t.Error("the port-forward door must not proxy to the raw gRPC port; native clients port-forward it directly")
+	}
 
 	// Request-time upstream resolution (variables + resolver): the gateway
 	// deploys BEFORE its backends exist, so literal proxy_pass hosts would
@@ -44,6 +67,23 @@ func TestGatewayNginxConfig_MirrorsIngressLayout(t *testing.T) {
 		!strings.Contains(config, "proxy_pass $identity_upstream") ||
 		!strings.Contains(config, "proxy_pass $console_upstream") {
 		t.Error("proxy_pass must use variables so upstream DNS resolves at request time, not startup")
+	}
+
+	// A browser session is bigger than nginx's defaults: the console's
+	// sign-in callback answers with a session cookie larger than the 8k
+	// response-header buffer (a 502 "upstream sent too big header" and the
+	// CLI's browser sign-in never completes), and the browser sends it back
+	// on every request.
+	if !strings.Contains(config, "proxy_buffer_size 32k;") {
+		t.Error("the identity and console routes must raise proxy_buffer_size so the sign-in callback's session cookie fits")
+	}
+	// nginx checks the three buffer directives against each other at parse
+	// time; a raised proxy_buffer_size alone refuses to start (observed live).
+	if !strings.Contains(config, "proxy_buffers 4 32k;") || !strings.Contains(config, "proxy_busy_buffers_size 64k;") {
+		t.Error("proxy_buffers and proxy_busy_buffers_size must be set consistently with proxy_buffer_size or nginx refuses to start")
+	}
+	if !strings.Contains(config, "large_client_header_buffers 4 32k;") {
+		t.Error("the server must accept the session cookie the browser sends back (large_client_header_buffers)")
 	}
 
 	// Streaming: gRPC-Web server-streaming is a long-lived chunked response;

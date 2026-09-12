@@ -22,17 +22,30 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 	ing := Ingress(baseIngressConfig())
 
 	paths := ing.Spec.Rules[0].HTTP.Paths
-	if len(paths) != 4 {
-		t.Fatalf("expected 4 paths, got %d", len(paths))
+	// Seven of the table's eight rows: the header-matched native-gRPC row has
+	// no portable Ingress form and is skipped, never flattened to a path.
+	if len(paths) != 7 {
+		t.Fatalf("expected 7 paths, got %d", len(paths))
+	}
+	for _, p := range paths {
+		if p.Backend.Service.Port.Name == controlPlaneGrpcPortName {
+			t.Errorf("path %s routes to the raw gRPC port; the Ingress door cannot express the content-type rule", p.Path)
+		}
 	}
 
 	api := paths[0]
 	if api.Path != APIPathPrefix {
 		t.Errorf("API path = %s, want %s", api.Path, APIPathPrefix)
 	}
-	// Every rule is a portable segment-prefix rule: the API has its own path
-	// namespace precisely so no controller-specific matching is needed.
+	// Every namespace rule is a portable segment-prefix rule: the API has its
+	// own path namespace precisely so no controller-specific matching is
+	// needed. Only the two single-document rows (a dotted path the strict
+	// Ingress grammar cannot spell) are ImplementationSpecific, and no
+	// annotation accompanies them.
 	for _, p := range paths {
+		if p.Path == OIDCDiscoveryPath || p.Path == OIDCJWKSPath {
+			continue
+		}
 		if *p.PathType != networkingv1.PathTypePrefix {
 			t.Errorf("path %s pathType = %s, want Prefix", p.Path, *p.PathType)
 		}
@@ -67,7 +80,36 @@ func TestIngress_RoutesAPIStorageIdentityAndConsole(t *testing.T) {
 			identity.Backend.Service.Name, identity.Backend.Service.Port.Name)
 	}
 
-	console := paths[3]
+	// The keyless issuer's two documents at the root the specification pins
+	// them to, and the webhook namespace: all three to the control plane's
+	// webhook port, by name. Exactly the two discovery paths -- never the
+	// whole /.well-known, which ACME challenges share -- and as
+	// ImplementationSpecific rows: ingress-nginx's strict path validation
+	// refuses a dotted path under Prefix AND Exact, so either rendering would
+	// leave every nginx-edged install without a front door (found live).
+	for idx, want := range []struct {
+		path     string
+		pathType networkingv1.PathType
+	}{
+		{OIDCDiscoveryPath, networkingv1.PathTypeImplementationSpecific},
+		{OIDCJWKSPath, networkingv1.PathTypeImplementationSpecific},
+		{WebhooksPathPrefix, networkingv1.PathTypePrefix},
+	} {
+		p := paths[3+idx]
+		if p.Path != want.path || *p.PathType != want.pathType {
+			t.Errorf("path[%d] = %s (%s), want %s (%s)", 3+idx, p.Path, *p.PathType, want.path, want.pathType)
+		}
+		if p.Backend.Service.Name != controlPlaneSvcName || p.Backend.Service.Port.Name != "webhook" {
+			t.Errorf("%s backend = %s:%s, want %s:webhook", want, p.Backend.Service.Name, p.Backend.Service.Port.Name, controlPlaneSvcName)
+		}
+	}
+	for _, p := range paths {
+		if p.Path == "/.well-known" || p.Path == "/github" {
+			t.Errorf("path %s claims a namespace the door shares with others (ACME challenges; the console's GitHub App setup page)", p.Path)
+		}
+	}
+
+	console := paths[6]
 	if console.Path != "/" || *console.PathType != networkingv1.PathTypePrefix {
 		t.Errorf("console path = %s (%s), want / (Prefix)", console.Path, *console.PathType)
 	}
@@ -208,6 +250,12 @@ func TestIngress_NginxAnnotationsOnlyWhenDetected(t *testing.T) {
 	// state-file uploads while both backend servers accept 100m.
 	if ing.Annotations["nginx.ingress.kubernetes.io/proxy-body-size"] != "100m" {
 		t.Error("expected proxy-body-size raised to the servers' own limit")
+	}
+	// The console's sign-in callback answers with a session cookie larger
+	// than ingress-nginx's 4k default header buffer; below it the callback
+	// is a 502 and a browser-based CLI sign-in never completes.
+	if ing.Annotations["nginx.ingress.kubernetes.io/proxy-buffer-size"] != "32k" {
+		t.Error("expected proxy-buffer-size raised so the sign-in callback's session cookie fits")
 	}
 }
 

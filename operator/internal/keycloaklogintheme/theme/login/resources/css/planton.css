@@ -1,0 +1,282 @@
+/*
+ * Planton login theme -- the monochrome design system translated to the
+ * identity server's pages.
+ *
+ * Source of truth for every color here is the console's theme package
+ * (the platform's design tokens); the values are a deliberate,
+ * documented copy -- update both together. The selectors target
+ * PatternFly v5 (what keycloak.v2 renders) plus the few keycloak-specific
+ * hooks (#kc-header-wrapper, kc-logo-text) its own stylesheet defines.
+ */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../fonts/inter-latin.woff2') format('woff2');
+}
+
+:root {
+  /* Planton tokens */
+  --planton-bg: #0d1117;
+  --planton-surface: #161b22;
+  --planton-border: #30363d;
+  --planton-text: #b0b8c2;
+  --planton-text-emphasis: #f0f6fc;
+  --planton-text-muted: #7d8590;
+  --planton-input-bg: #21262d;
+  --planton-btn-bg: #e6edf3;
+  --planton-btn-fg: #0d1117;
+  --planton-btn-hover-bg: #c9d1d9;
+  --planton-error: #f85149;
+  --planton-focus-border: #696741;
+
+  /* PatternFly globals -> Planton palette */
+  --pf-v5-global--FontFamily--text: 'Inter', system-ui, -apple-system, sans-serif;
+  --pf-v5-global--FontFamily--heading: 'Inter', system-ui, -apple-system, sans-serif;
+  --pf-v5-global--BackgroundColor--100: var(--planton-surface);
+  --pf-v5-global--BackgroundColor--200: var(--planton-bg);
+  --pf-v5-global--Color--100: var(--planton-text);
+  --pf-v5-global--Color--200: var(--planton-text-muted);
+  --pf-v5-global--BorderColor--100: var(--planton-border);
+  --pf-v5-global--link--Color: var(--planton-text);
+  --pf-v5-global--link--Color--hover: var(--planton-text-emphasis);
+  --pf-v5-global--primary-color--100: var(--planton-btn-bg);
+  --pf-v5-global--primary-color--200: var(--planton-btn-hover-bg);
+  --pf-v5-global--danger-color--100: var(--planton-error);
+  /* PF marks the focused element with active-color (verified live:
+   * form-control's ::after border resolves to this) -- the focus accent. */
+  --pf-v5-global--active-color--100: var(--planton-focus-border);
+
+  /* keycloak.v2's own hooks */
+  --keycloak-card-top-color: transparent;
+  --keycloak-bg-logo-url: none;
+  --keycloak-logo-url: url('../img/planton-logo.svg');
+  --keycloak-logo-height: 64px;
+  --keycloak-logo-width: 64px;
+}
+
+/* Full-bleed dark canvas -- no photo backdrop. */
+.login-pf body,
+body {
+  background: var(--planton-bg) !important;
+  color: var(--planton-text);
+}
+
+/* The realm-name banner: replace the uppercase text with the P mark.
+ * 40px mark, 48px credential-zone gap -- without the removed sign-in title
+ * the logo must carry the whole brand beat; 32px read as cramped in review. */
+#kc-header-wrapper {
+  font-size: 0;
+  letter-spacing: 0;
+  background: var(--keycloak-logo-url) no-repeat center;
+  background-size: contain;
+  height: 40px;
+  margin: 0 auto 48px;
+}
+
+/* The card: the CONTAINER carries the surface so the P mark sits inside the
+ * card with the form (the parent theme floats the logo above it on the page
+ * background). The inner main panel goes transparent -- including its shadow,
+ * whose bottom edge otherwise renders as a phantom hairline inside the card. */
+.pf-v5-c-login__container {
+  background-color: var(--planton-surface);
+  border: 1px solid var(--planton-border);
+  border-radius: 12px;
+  padding-top: 32px;
+  padding-bottom: 24px;
+}
+
+.pf-v5-c-login__main {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--planton-text);
+  /* Parent theme stacks margin-bottom + body padding-bottom + container
+   * padding-bottom -- ~72px of dead air under a two-field form. */
+  margin-bottom: 0;
+}
+
+/* Tighten the body band: keep button breathing room without a hollow card. */
+.pf-v5-c-login__main-body {
+  padding-bottom: 24px !important;
+}
+
+/* Credential labels: slightly brighter than body copy so fields read as the
+ * task without reintroducing a page title. */
+.pf-v5-c-form__label {
+  color: var(--planton-text-emphasis);
+  font-weight: 500;
+}
+
+.pf-v5-c-login__main-header {
+  border-top: none;
+}
+
+/* The sign-in page carries no heading: the in-card mark is the identity and
+ * "Sign in to your account" repeated what the page already says. Action pages
+ * (password update, profile) keep their titles -- those carry the task. */
+.pf-v5-c-login__main:has(#kc-form-login) .pf-v5-c-login__main-header {
+  display: none;
+}
+
+.pf-v5-c-title {
+  color: var(--planton-text-emphasis);
+  font-weight: 600;
+}
+
+/* Titles never wrap: the card is wide enough for every heading at 1.5rem;
+ * the parent's 3xl size is what forced two lines. */
+#kc-page-title {
+  white-space: nowrap;
+  font-size: 1.5rem;
+}
+
+/* Inputs: console geometry and states. PatternFly splits the input border
+ * across TWO pseudo-elements (verified live on 26.3): ::before draws the
+ * top/left/right sides -- in a minified literal near-white (#f0f0f0) that no
+ * global variable reaches -- and ::after draws only the bottom. Styling only
+ * ::after leaves a bright three-sided box (the original founder-reported
+ * artifact), so the full console border lives on ::before and ::after is
+ * retired entirely. */
+.pf-v5-c-form-control {
+  background-color: var(--planton-input-bg);
+  border-radius: 8px;
+  color: var(--planton-text);
+}
+
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > textarea {
+  color: var(--planton-text);
+}
+
+.pf-v5-c-form-control::before {
+  border: 1px solid var(--planton-border) !important;
+  border-radius: 8px;
+}
+
+.pf-v5-c-form-control::after {
+  border: none !important;
+}
+
+/* Focus: the design system's one non-monochrome accent (see the console
+ * theme's focus token) -- the WHOLE border lights up, matching the console's
+ * inputs. Error fields keep their red. */
+.pf-v5-c-form-control:focus-within:not(.pf-m-error)::before {
+  border-color: var(--planton-focus-border) !important;
+}
+
+/* The accent border IS the focus indicator; the browser's native outline on
+ * the inner input would double it. */
+.pf-v5-c-form-control > input:focus,
+.pf-v5-c-form-control > textarea:focus,
+.pf-v5-c-form-control > select:focus {
+  outline: none;
+}
+
+.pf-v5-c-form-control.pf-m-error::before {
+  border-color: var(--planton-error) !important;
+}
+
+/* Password fields: the input and the show-password button render as separate
+ * input-group items, each with its own chrome -- a mismatched box glued to the
+ * field. Merge them into ONE control: the input keeps the left rounded corners
+ * and gives up its right edge; the button carries the right corners with the
+ * same fill; group focus lights the whole assembly. */
+.pf-v5-c-input-group__item.pf-m-fill .pf-v5-c-form-control,
+.pf-v5-c-input-group__item.pf-m-fill .pf-v5-c-form-control::before {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.pf-v5-c-input-group__item.pf-m-fill .pf-v5-c-form-control::before {
+  border-right: none !important;
+}
+
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
+  background-color: var(--planton-input-bg);
+  color: var(--planton-text-muted);
+  border-radius: 0 8px 8px 0;
+}
+
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control::after {
+  border: 1px solid var(--planton-border);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+}
+
+.pf-v5-c-input-group:focus-within .pf-v5-c-form-control:not(.pf-m-error)::before {
+  border-color: var(--planton-focus-border) !important;
+}
+
+.pf-v5-c-input-group:focus-within .pf-v5-c-button.pf-m-control::after {
+  border-color: var(--planton-focus-border);
+  border-left: none;
+}
+
+/* "Sign out from other devices" on the forced password update: a first-run
+ * admin has no other sessions and the option only adds a decision to the one
+ * screen that should have none. The id selectors are the no-:has fallback. */
+.pf-v5-c-check:has(> #logout-sessions),
+#logout-sessions,
+label[for='logout-sessions'] {
+  display: none;
+}
+
+/* Buttons: monochrome primary (near-white bg, near-black text), 6px radius,
+ * no uppercase, no shadows. */
+.pf-v5-c-button {
+  border-radius: 6px;
+  font-weight: 500;
+  box-shadow: none;
+  text-transform: none;
+}
+
+.pf-v5-c-button.pf-m-primary {
+  background-color: var(--planton-btn-bg);
+  color: var(--planton-btn-fg);
+}
+
+.pf-v5-c-button.pf-m-primary:hover {
+  background-color: var(--planton-btn-hover-bg);
+  color: var(--planton-btn-fg);
+}
+
+/* Alerts: genuine errors keep the boxed red treatment; the informational
+ * required-action notices ("you need to change your password...") read as
+ * quiet helper text -- a box within the card said "warning" where the page
+ * means "here's why you're on this screen". */
+.pf-v5-c-alert {
+  background-color: var(--planton-surface);
+  border: 1px solid var(--planton-border);
+}
+
+.pf-v5-c-alert.pf-m-warning,
+.pf-v5-c-alert.pf-m-info {
+  background-color: transparent;
+  border: none;
+  padding-left: 0;
+}
+
+.pf-v5-c-alert.pf-m-warning .pf-v5-c-alert__title,
+.pf-v5-c-alert.pf-m-info .pf-v5-c-alert__title {
+  color: var(--planton-text-muted);
+  font-weight: 400;
+}
+
+.pf-v5-c-helper-text__item-text,
+.kc-feedback-text {
+  color: var(--planton-text-muted);
+}
+
+.pf-m-error .pf-v5-c-helper-text__item-text,
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text {
+  color: var(--planton-error);
+}
+
+/* Footer band (locale switcher, info links) */
+.pf-v5-c-login__main-footer {
+  color: var(--planton-text-muted);
+}

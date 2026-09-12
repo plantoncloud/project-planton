@@ -17,7 +17,7 @@ spec:
     - field_path: backup
       sku_meter: object storage for backups
       pricing_unit: GB-months
-      impact: Scheduled backups and PITR oplog chunks accumulate on the declared object stores (S3, GCS, Azure); each task's keep count bounds how many backups survive pruning.
+      impact: Scheduled backups and PITR oplog chunks accumulate on the declared object stores (S3, Cloudflare R2, GCS, Azure); each task's keep count bounds how many backups survive pruning.
     - field_path: log_collector
       sku_meter: cluster CPU and memory reservations
       impact: When declared, the fluent-bit log-collector sidecar rides every member pod; its resources field is the only reservation it declares.

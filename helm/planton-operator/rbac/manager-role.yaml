@@ -8,13 +8,12 @@ rules:
   - ""
   resources:
   - configmaps
-  - namespaces
-  - persistentvolumeclaims
   - secrets
   - serviceaccounts
   - services
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -25,8 +24,32 @@ rules:
   resources:
   - events
   verbs:
+  - create
   - get
   - list
+  - patch
+- apiGroups:
+  - ""
+  resourceNames:
+  - cnpg-system
+  - tekton-pipelines
+  - tekton-pipelines-resolvers
+  resources:
+  - namespaces
+  verbs:
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  - persistentvolumeclaims
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -43,6 +66,7 @@ rules:
   - validatingwebhookconfigurations
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -54,25 +78,23 @@ rules:
   - customresourcedefinitions
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
   - update
   - watch
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  verbs:
+  - get
+  - list
 - apiGroups:
   - apps
   resources:
   - deployments
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
   - statefulsets
   verbs:
   - create
@@ -88,11 +110,41 @@ rules:
   - horizontalpodautoscalers
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
   - update
   - watch
+- apiGroups:
+  - barmancloud.cnpg.io
+  resources:
+  - objectstores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - barmancloud.cnpg.io
+  - postgresql.cnpg.io
+  - resolution.tekton.dev
+  - tekton.dev
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - get
+  - list
 - apiGroups:
   - batch
   resources:
@@ -117,6 +169,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - issuers
+  verbs:
+  - delete
+  - get
+  - list
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
@@ -218,7 +278,16 @@ rules:
 - apiGroups:
   - postgresql.cnpg.io
   resources:
+  - backups
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - postgresql.cnpg.io
+  resources:
   - clusters
+  - scheduledbackups
   verbs:
   - create
   - delete
@@ -237,29 +306,6 @@ rules:
   - rbac.authorization.k8s.io
   resources:
   - clusterrolebindings
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - clusterroles
-  verbs:
-  - bind
-  - create
-  - escalate
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
   - rolebindings
   verbs:
   - create
@@ -272,6 +318,7 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
+  - clusterroles
   - roles
   verbs:
   - bind

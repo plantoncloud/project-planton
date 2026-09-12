@@ -89,6 +89,8 @@ After provisioning, `status.outputs` contains values that downstream Cloud Resou
 |--------|-------------|----------------------|
 | `token_id` | The Cloudflare-assigned token ID — the token's identity for management calls, not the credential | Referencing the token in rotation or audit tooling |
 | `value` | The token's secret value, returned exactly once at create and secret-marked | Storing in a Secrets Store Secret for Workers and pipelines to consume |
+| `r2_access_key_id` | The token as an S3 access key id for R2's S3 API -- Cloudflare defines it as the token's id; meaningful only when the token carries an R2 permission group | A database's or backup tool's R2 store credential, by reference |
+| `r2_secret_access_key` | The token as an S3 secret access key for R2's S3 API -- the SHA-256 of the value, exactly what the dashboard shows for the same token; secret-marked, same once-on-create lifecycle | Paired with `r2_access_key_id` on any S3-compatible client pointed at R2 |
 
 ## Common Patterns
 

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -70,6 +71,19 @@ func harnessForScenario(manifestPath string) (h *kubernetese2e.Harness, skipReas
 	if err != nil {
 		return nil, "", fmt.Errorf("reading cluster profile from %s: %w", manifestPath, err)
 	}
+
+	// A resident-prerequisite declaration is a promise about a REAL cluster
+	// (something already runs there that the chain must not reinstall). On a
+	// harness-owned cluster nothing is resident, so the declaration is only
+	// coherent on a scenario pinned to a real-cluster profile — refuse it
+	// anywhere else rather than let a lane skip a prerequisite it needed.
+	if declares, err := runner.ScenarioDeclaresResidents(manifestPath); err != nil {
+		return nil, "", fmt.Errorf("reading resident prerequisites from %s: %w", manifestPath, err)
+	} else if declares && !slices.Contains(kubernetese2e.RealClusterProfiles, profile) {
+		return nil, "", fmt.Errorf("scenario %s declares resident prerequisites (%s) but is not pinned to a real-cluster profile via %s (one of %v) — nothing is resident on a harness-owned cluster",
+			manifestPath, runner.ScenarioResidentPrerequisitesAnnotation, kubernetese2e.ClusterProfileAnnotation, kubernetese2e.RealClusterProfiles)
+	}
+
 	if profile == "" {
 		return testHarness, "", nil
 	}
@@ -96,7 +110,7 @@ func harnessForScenario(manifestPath string) (h *kubernetese2e.Harness, skipReas
 			ciliumHarness = h
 		}
 		return ciliumHarness, "", nil
-	case kubernetese2e.ClusterProfileAwsEks:
+	case kubernetese2e.ClusterProfileAwsEks, kubernetese2e.ClusterProfileGcpGke:
 		return nil, fmt.Sprintf(
 			"scenario requires the %q real-cluster profile, which no local cluster can provide — runs in batched real-cluster lanes (%s + %s=%s)",
 			profile, kubernetese2e.ExternalKubeconfigEnvVar, kubernetese2e.ExternalClusterProfileEnvVar, profile), nil

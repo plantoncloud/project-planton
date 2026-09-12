@@ -1,25 +1,27 @@
 # S3-Compatible Backups
 
 This preset declares a highly available PostgreSQL cluster whose backups
-land in an S3-COMPATIBLE object store — in-cluster MinIO, Cloudflare R2,
-Ceph RGW, DigitalOcean Spaces, anything speaking the S3 API — via the
-`endpoint_url` override with declared access keys. The self-contained
-posture for on-prem clusters and stores outside AWS. Requires the
-operator installed with the Barman Cloud plugin
-(KubernetesCloudNativePgOperator with `barman_cloud_plugin.enabled`).
+land in an S3-COMPATIBLE object store — in-cluster MinIO, Ceph RGW,
+DigitalOcean Spaces, anything speaking the S3 API — via the `endpoint_url`
+override with declared access keys. The self-contained posture for on-prem
+clusters and stores outside AWS. (Cloudflare R2 has its own arm and preset,
+**GKE Production HA with Cloudflare R2 Backups**, declared in R2's terms by
+reference to the catalog's Cloudflare kinds.) Requires the Barman
+Cloud plugin on the cluster, in the operator's namespace
+(KubernetesCnpgBarmanCloudPlugin).
 
 ## When to Use
 
 - On-prem and bare-metal clusters backing up to MinIO or Ceph RGW
-- Clusters whose backup store is R2, Spaces, or another S3-compatible
-  service — no AWS account involved
+- Clusters whose backup store is Spaces or another S3-compatible service
+  without a catalog kind of its own — no AWS account involved
 
 ## Key Configuration Choices
 
 - **`endpoint_url`** — what makes the arm S3-compatible: the store's
   endpoint instead of real AWS S3 (`http://minio.minio-system.svc:9000`
-  for in-cluster MinIO, `https://<account>.r2.cloudflarestorage.com` for
-  R2). The `destination_path` keeps the `s3://` scheme either way
+  for in-cluster MinIO). The `destination_path` keeps the `s3://` scheme
+  either way
 - **`access_keys`, not `keyless`** — an S3-compatible endpoint
   authenticates with the store's key pair (for MinIO: access key =
   username, secret key = password); the keyless posture only mints AWS
@@ -27,7 +29,7 @@ operator installed with the Barman Cloud plugin
   materialize as the `app-db-backup-creds` Secret — never inline in the
   rendered resources
 - **`region: minio`** — S3-compatible stores take a conventional value
-  (MinIO accepts any; R2 expects `auto`)
+  (MinIO accepts any)
 - **`endpoint_ca_pem`** (commented) — for stores serving self-signed
   TLS, the PEM CA bundle materializes as a Secret the plugin verifies
   against

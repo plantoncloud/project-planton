@@ -26,8 +26,18 @@ locals {
   # Public access via the managed r2.dev domain.
   public_access = coalesce(try(var.spec.public_access, null), false)
 
-  # Path-style S3 API URL for the bucket.
-  bucket_url = "https://${local.account_id}.r2.cloudflarestorage.com/${local.bucket_name}"
+  # The bucket's jurisdiction as Cloudflare reports it: "default" when unset.
+  jurisdiction_normalized = coalesce(local.jurisdiction, "default")
+
+  # The S3 API endpoint that serves this bucket -- the ONLY host that does. A
+  # bucket created in "eu" (or "fedramp", "us") is served through
+  # <account>.<jurisdiction>.r2.cloudflarestorage.com; a request against the
+  # default host fails rather than redirects. The host table mirrors the Go
+  # helper package pkg/cloudflare/r2 (the source of truth both engines follow).
+  s3_endpoint = local.jurisdiction_normalized == "default" ? "https://${local.account_id}.r2.cloudflarestorage.com" : "https://${local.account_id}.${local.jurisdiction_normalized}.r2.cloudflarestorage.com"
+
+  # Path-style S3 API URL for the bucket: the jurisdiction's endpoint plus the name.
+  bucket_url = "${local.s3_endpoint}/${local.bucket_name}"
 
   # Enabled custom domains, keyed by domain name for for_each.
   custom_domains_enabled = {

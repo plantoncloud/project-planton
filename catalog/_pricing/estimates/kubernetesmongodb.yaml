@@ -31,3 +31,25 @@ spec:
         basis: 3 members (replica set rs0) x (1 CPU / 2Gi memory requests, 2 CPU / 4Gi limits) + 3 x 100Gi data volumes; no sharding, no arbiter, no log collector
       exclusions:
         - the dollar value of this capacity is the target cluster's node and storage-class economics
+    - preset: 03-gke-replica-set-gcs-backups
+      capacity_footprint:
+        cpu_requests: "3"
+        memory_requests: 6Gi
+        cpu_limits: "6"
+        memory_limits: 12Gi
+        persistent_storage: 300Gi
+        basis: 3 members (replica set rs0) x (1 CPU / 2Gi memory requests, 2 CPU / 4Gi limits) + 3 x 100Gi data volumes; no sharding, no arbiter, no log collector; the backup agents are sidecars inside the member pods and reserve nothing of their own
+      exclusions:
+        - the dollar value of this capacity is the target cluster's node and storage-class economics
+        - object storage for the logical backups and PITR oplog chunks grows with database churn across the retention window
+    - preset: 04-gke-replica-set-r2-backups
+      capacity_footprint:
+        cpu_requests: "3"
+        memory_requests: 6Gi
+        cpu_limits: "6"
+        memory_limits: 12Gi
+        persistent_storage: 300Gi
+        basis: 3 members (replica set rs0) x (1 CPU / 2Gi memory requests, 2 CPU / 4Gi limits) + 3 x 100Gi data volumes; no sharding, no arbiter, no log collector; the backup agents are sidecars inside the member pods and reserve nothing of their own
+      exclusions:
+        - the dollar value of this capacity is the target cluster's node and storage-class economics
+        - Cloudflare R2 storage for the logical backups and PITR oplog chunks grows with database churn across the retention window (R2 charges storage and class A/B operations, no egress)

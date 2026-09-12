@@ -123,6 +123,8 @@ jobs:
           push: ${{ steps.version.outputs.dry_run != 'true' }}
           provenance: false
           tags: ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+          build-args: |
+            OPERATOR_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=operator
           cache-to: type=gha,mode=max,scope=operator
 

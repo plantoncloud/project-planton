@@ -18,3 +18,9 @@ spec:
       issuer:
         name: letsencrypt
         kind: ClusterIssuer
+    # reachability is left at its default (auto): a hostname served over
+    # HTTPS is treated as reachable from the public internet, which is what
+    # keyless cloud connections and GitHub webhook delivery need. If only
+    # your network reaches this address (split DNS, a corporate CA), say so
+    # with `reachability: private` and those doors stay honestly closed.
+    # Requires operator chart 0.11.0 or newer.

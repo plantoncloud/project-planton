@@ -176,10 +176,10 @@ runner fleet for its controller — each pair inside its own toggle.
   dependency edge keeps the operator alive until then. Never delete the
   operator resource alone first.
 - **Backups:** the database deploys without object-store backups (the
-  Barman Cloud plugin requires cert-manager). Once present, enable
-  `barman_cloud_plugin` on the operator and declare a `backup` block on
-  the KubernetesPostgres resource — point it at a DIFFERENT bucket/path
-  than the registry blobs.
+  Barman Cloud plugin requires cert-manager). Once present, declare a
+  `KubernetesCnpgBarmanCloudPlugin` referencing the operator's namespace
+  and a `backup` block on the KubernetesPostgres resource — point it at a
+  DIFFERENT bucket/path than the registry blobs.
 
 ---
 

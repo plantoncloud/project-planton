@@ -91,8 +91,8 @@ message KubernetesPlantonPlatformSpec {
 
   /**
    * Platform-wide storage defaults: every persistent volume the platform
-   * creates (databases, cache, workflow engine, search, secrets manager,
-   * runner state) uses these unless its component overrides them.
+   * creates (databases, cache, workflow engine, secrets manager, runner
+   * state) uses these unless its component overrides them.
    * Unset means the cluster's default StorageClass and each component's
    * built-in size.
    */
@@ -166,17 +166,16 @@ message KubernetesPlantonPlatformSpec {
   KubernetesPlantonPlatformVault vault = 13;
 
   /**
-   * Opt-in platform components, all off by default: fine-grained
-   * authorization (OpenFGA), search (Solr), and the graph explorer
+   * Opt-in platform components, off by default: the graph explorer
    * (Neo4j).
    */
   KubernetesPlantonPlatformComponents components = 14;
 
   /**
    * Cluster-shared sub-operators the platform rides (CloudNativePG,
-   * Tekton Pipelines, the Solr operator). "auto" (the default) installs
-   * each one only when no installation exists on the cluster; "skip"
-   * declares that something else manages it.
+   * Tekton Pipelines). "auto" (the default) installs each one only when
+   * no installation exists on the cluster; "skip" declares that something
+   * else manages it.
    */
   KubernetesPlantonPlatformPrerequisites prerequisites = 15;
 
@@ -193,6 +192,249 @@ message KubernetesPlantonPlatformSpec {
    * environment through a Secret.
    */
   KubernetesPlantonPlatformConsole console = 17;
+
+  /**
+   * Runners outside this cluster — a developer's laptop deploying with the
+   * cloud sign-in already on it, an appliance in another network — pulling
+   * this platform's deploy work. OFF by default. Rides the front door:
+   * the deploy queue is routed through the platform hostname beside the
+   * native gRPC API, so it needs a Gateway API front door (ingress with a
+   * gateway_ref); on any other door the capability stays closed and the
+   * platform's status says why. The in-cluster runner is unaffected.
+   */
+  KubernetesPlantonPlatformRemoteRunners remote_runners = 18;
+
+  /**
+   * The one mail provider every sender on the install uses: the control
+   * plane (invitations, alerts, license mail) and the identity server
+   * (password resets) both send through it, so one declaration is the
+   * whole configuration. Absent, the install sends no email: invitations
+   * are shared as links and the sign-in page offers no "Forgot password?".
+   * Exactly one provider arm is set — an SMTP relay or a Resend account.
+   * Credentials are never inline: they are Secrets in the platform's
+   * namespace, named here, and reach the control plane as mounted files so
+   * a rotated password is live on the next send. The operator delivers the
+   * declaration and preflights every Secret it names; the control plane
+   * checks the relay on demand from the console's Email settings and
+   * reports each failure in the relay's own words. Requires a
+   * planton-operator chart that knows this field (0.14.1 or newer); an
+   * older definition refuses the declaration.
+   */
+  KubernetesPlantonPlatformEmail email = 19;
+}
+
+/**
+ * Outbound email through the adopter's own provider — exactly one arm.
+ */
+message KubernetesPlantonPlatformEmail {
+  option (buf.validate.message).cel = {
+    id: "spec.email.exactly_one_provider"
+    message: "email declares exactly one provider: set spec.email.smtp for a relay or spec.email.resend for a Resend account, never both, never neither"
+    expression: "has(this.smtp) != has(this.resend)"
+  };
+
+  /**
+   * The identity every email carries: the address the install sends as
+   * and the display name beside it. The relay must permit sending as this
+   * address (a mailbox's own address, or one it has Send As rights to);
+   * SPF and DKIM for the domain are the domain owner's job.
+   */
+  KubernetesPlantonPlatformEmailFrom from = 1 [(buf.validate.field).required = true];
+
+  /**
+   * Where a person's reply lands — a help desk or a shared mailbox — when
+   * the sending address is a no-reply one. Empty, replies go to
+   * from.address.
+   */
+  string reply_to = 2;
+
+  /**
+   * Send through any SMTP relay: a workplace mail system (Exchange Online,
+   * Google Workspace, an internal smart host) or a transactional vendor's
+   * SMTP endpoint (SES, SendGrid, Postmark, Mailgun, Resend).
+   */
+  KubernetesPlantonPlatformEmailSmtp smtp = 3;
+
+  /**
+   * Send through Resend's API with an API key.
+   */
+  KubernetesPlantonPlatformEmailResend resend = 4;
+}
+
+/**
+ * The sender identity on every email the install sends.
+ */
+message KubernetesPlantonPlatformEmailFrom {
+  /**
+   * The address the install sends as, e.g. no-reply@planton.acme.com.
+   * Required whenever email is declared: there is no default address,
+   * because a default would name somebody else's domain.
+   */
+  string address = 1 [(buf.validate.field).string.min_len = 1];
+
+  /**
+   * The name shown beside the address in mail clients. Platform default:
+   * Planton.
+   */
+  optional string name = 2 [(dev.planton.shared.options.default) = "Planton"];
+}
+
+/**
+ * An SMTP relay. Three ways to be let in, matching how mail teams actually
+ * run relays: a username and password (a kubernetes.io/basic-auth Secret),
+ * an OAuth2 app registration (Exchange Online, whose password submission
+ * Microsoft is retiring), or no credential at all (an internal smart host
+ * that allow-lists the cluster's egress).
+ */
+message KubernetesPlantonPlatformEmailSmtp {
+  option (buf.validate.message).cel = {
+    id: "spec.email.smtp.one_way_in"
+    message: "smtp authenticates one way: set credentials_secret_name for a username and password, or oauth2 for a token, not both"
+    expression: "!(this.credentials_secret_name != '' && has(this.oauth2))"
+  };
+  option (buf.validate.message).cel = {
+    id: "spec.email.smtp.no_credentials_over_plaintext"
+    message: "security: none would send credentials in the clear; keep security at starttls or tls, or drop credentials_secret_name and oauth2 for a relay that admits this cluster's address without them"
+    expression: "!has(this.security) || this.security != 'none' || (this.credentials_secret_name == '' && !has(this.oauth2))"
+  };
+
+  /**
+   * Host of the relay, e.g. smtp.office365.com or
+   * smtp-relay.corp.acme.com.
+   */
+  string host = 1 [(buf.validate.field).string.min_len = 1];
+
+  /**
+   * Port the relay listens on. 587 is the submission port most relays use
+   * with STARTTLS; implicit-TLS relays (security: tls) usually listen on
+   * 465; an internal plaintext relay on 25. Platform default: 587.
+   */
+  optional int32 port = 2 [
+    (dev.planton.shared.options.default) = "587",
+    (buf.validate.field).int32 = {
+      gte: 1
+      lte: 65535
+    }
+  ];
+
+  /**
+   * How the connection to the relay is protected: starttls (connect in the
+   * clear and REQUIRE the upgrade before anything is sent — a relay that
+   * does not offer it is a failed connection, never a silent fallback; the
+   * default), tls (implicit TLS from the first byte), or none (plaintext
+   * end to end, for credential-free internal relays only; credentials are
+   * refused on it). Platform default: starttls.
+   */
+  optional string security = 3 [
+    (dev.planton.shared.options.default) = "starttls",
+    (buf.validate.field).string = {
+      in: [
+        "",
+        "starttls",
+        "tls",
+        "none"
+      ]
+    }
+  ];
+
+  /**
+   * Name of a kubernetes.io/basic-auth Secret in the platform's namespace
+   * whose username and password keys sign in to the relay:
+   *
+   *   kubectl -n <namespace> create secret generic planton-email \
+   *     --type=kubernetes.io/basic-auth \
+   *     --from-literal=username=... --from-literal=password=...
+   *
+   * Omit it for a relay that admits this cluster by network address. The
+   * values reach the control plane as mounted files, so a rotated password
+   * is live on the next send with no restart.
+   */
+  string credentials_secret_name = 4;
+
+  /**
+   * Sign in with a token from an OAuth2 client-credentials grant (SASL
+   * XOAUTH2) instead of a password. Exchange Online: token_url
+   * https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token, scope
+   * https://outlook.office365.com/.default, the app registration's client
+   * id and secret, and user = the mailbox the app may send as.
+   */
+  KubernetesPlantonPlatformEmailSmtpOauth2 oauth2 = 5;
+
+  /**
+   * A PEM CA bundle for verifying the relay's TLS certificate — the
+   * private-CA case, the classic enterprise blocker. Omit it when the
+   * relay's certificate chains to a public root.
+   */
+  KubernetesPlantonPlatformSecretKeyRef ca_bundle_secret_ref = 6;
+}
+
+/**
+ * The client-credentials grant that yields the SMTP token: the same four
+ * facts the identity server needs, so one declaration powers both senders.
+ */
+message KubernetesPlantonPlatformEmailSmtpOauth2 {
+  /**
+   * The mailbox the token sends as — the account the app registration has
+   * been permitted to use.
+   */
+  string user = 1 [(buf.validate.field).string.min_len = 1];
+
+  /**
+   * The provider's OAuth2 token endpoint. Must be an https:// URL.
+   */
+  string token_url = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).cel = {
+      id: "email.smtp.oauth2.token_url_https"
+      message: "token_url must be an https:// URL"
+      expression: "this.startsWith('https://')"
+    }
+  ];
+
+  /**
+   * The scope requested for the token.
+   */
+  string scope = 3 [(buf.validate.field).string.min_len = 1];
+
+  /**
+   * The app registration's client id.
+   */
+  string client_id = 4 [(buf.validate.field).string.min_len = 1];
+
+  /**
+   * The app registration's client secret, by reference: the secret is
+   * never inline.
+   */
+  KubernetesPlantonPlatformSecretKeyRef client_secret_ref = 5 [(buf.validate.field).required = true];
+}
+
+/**
+ * Resend's HTTP API.
+ */
+message KubernetesPlantonPlatformEmailResend {
+  /**
+   * The Resend API key, by reference: the key is never inline. Reaches the
+   * control plane as a mounted file, so a rotated key is live on the next
+   * send with no restart.
+   */
+  KubernetesPlantonPlatformSecretKeyRef api_key_secret_ref = 1 [(buf.validate.field).required = true];
+}
+
+/**
+ * Runners in other networks pulling this platform's deploy work.
+ */
+message KubernetesPlantonPlatformRemoteRunners {
+  /**
+   * Open the deploy queue to runners outside the cluster and advertise the
+   * front door's address to them. Platform default: false — an install that
+   * has not chosen this keeps its queue in-cluster, and a runner asking to
+   * enroll from outside is refused with the reason, never handed an address
+   * it cannot reach. What opens: the queue's workflow service, over TLS,
+   * without authentication of its own (the posture the hosted platform
+   * carries for its remote runners); the queue's administrative service
+   * never leaves the cluster.
+   */
+  optional bool enabled = 1 [(dev.planton.shared.options.default) = "false"];
 }
 
 /**
@@ -215,20 +457,22 @@ message KubernetesPlantonPlatformLicense {
    * Read the license key from an existing Kubernetes Secret in the
    * platform's namespace instead.
    */
-  KubernetesPlantonPlatformLicenseSecretKeyRef secret_key_ref = 2;
+  KubernetesPlantonPlatformSecretKeyRef secret_key_ref = 2;
 }
 
 /**
- * A key in an existing Kubernetes Secret.
+ * A key in an existing Kubernetes Secret in the platform's namespace — the
+ * one shape every by-reference credential on this spec uses (the license
+ * key, the relay's CA bundle, the OAuth2 client secret, the Resend API key).
  */
-message KubernetesPlantonPlatformLicenseSecretKeyRef {
+message KubernetesPlantonPlatformSecretKeyRef {
   /**
    * Secret name (in the platform's namespace).
    */
   string name = 1 [(buf.validate.field).string.min_len = 1];
 
   /**
-   * Key within the Secret holding the license key.
+   * Key within the Secret holding the value.
    */
   string key = 2 [(buf.validate.field).string.min_len = 1];
 }
@@ -355,6 +599,11 @@ message KubernetesPlantonPlatformIngress {
     message: "with gateway_ref the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference"
     expression: "!has(this.gateway_ref) || !has(this.tls) || this.tls.secret_name == ''"
   };
+  option (buf.validate.message).cel = {
+    id: "spec.ingress.public_requires_enabled"
+    message: "reachability: public declares an address the internet reaches, but with enabled: false the platform is reached only through kubectl port-forward from the machine running it; set enabled: true, or leave reachability at auto"
+    expression: "!has(this.reachability) || this.reachability != 'public' || this.enabled"
+  };
 
   /**
    * Expose the platform through the cluster's front door. With no
@@ -405,6 +654,33 @@ message KubernetesPlantonPlatformIngress {
    * field (0.9.0 or newer); an older definition refuses the declaration.
    */
   KubernetesPlantonPlatformGatewayRef gateway_ref = 6;
+
+  /**
+   * Whether the public internet can reach this front door — the one fact
+   * about the door the operator cannot observe from inside the cluster.
+   * The capabilities that need an inbound path from the internet (keyless
+   * cloud connections, where the cloud fetches the issuer's discovery
+   * document; GitHub webhook delivery) are offered only where the door is
+   * public. `auto` (default) resolves from the door's shape: a hostname
+   * served over HTTPS is public, anything else private. Declare `private`
+   * for an HTTPS door only your network reaches (split DNS, a corporate
+   * CA, an internal load balancer); declare `public` to affirm it. Only
+   * `public` is refused when enabled is false — a port-forward door is
+   * never reached from the internet — while `private` there is simply
+   * true. Requires a planton-operator chart that knows this field (0.11.0
+   * or newer); an older definition refuses the declaration.
+   */
+  optional string reachability = 7 [
+    (dev.planton.shared.options.default) = "auto",
+    (buf.validate.field).string = {
+      in: [
+        "",
+        "auto",
+        "public",
+        "private"
+      ]
+    }
+  ];
 }
 
 /**
@@ -777,110 +1053,9 @@ message KubernetesPlantonPlatformVault {
  */
 message KubernetesPlantonPlatformComponents {
   /**
-   * Fine-grained authorization (OpenFGA). Off = the platform's
-   * allow-authenticated authorization arm.
-   */
-  KubernetesPlantonPlatformToggle authorization = 1;
-
-  /**
-   * Search (Solr).
-   */
-  KubernetesPlantonPlatformSearch search = 2;
-
-  /**
    * The graph explorer (Neo4j).
    */
   KubernetesPlantonPlatformGraph graph = 3;
-}
-
-/**
- * A plain component toggle.
- */
-message KubernetesPlantonPlatformToggle {
-  /**
-   * Enable the component.
-   */
-  bool enabled = 1;
-}
-
-/**
- * Search (Solr).
- */
-message KubernetesPlantonPlatformSearch {
-  /**
-   * Enable search.
-   */
-  bool enabled = 1;
-
-  /**
-   * Deployment mode: "standalone" (a single Solr with its ZooKeeper) or
-   * "operator" (SolrCloud via the Solr operator — see
-   * prerequisites.solr_operator).
-   */
-  optional string mode = 2 [
-    (dev.planton.shared.options.default) = "standalone",
-    (buf.validate.field).string = {
-      in: [
-        "",
-        "standalone",
-        "operator"
-      ]
-    }
-  ];
-
-  /**
-   * Volume size (e.g. "10Gi"). Falls back to spec.storage.size, then the
-   * platform default.
-   */
-  string storage_size = 3 [
-    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
-    (buf.validate.field).cel = {
-      id: "search.storage_size_quantity"
-      message: "storage_size must be a Kubernetes quantity like \"10Gi\""
-      expression: "this.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')"
-    }
-  ];
-
-  /**
-   * StorageClass override for the search volumes.
-   */
-  string storage_class_name = 4;
-
-  /**
-   * ZooKeeper for standalone-mode Solr.
-   */
-  KubernetesPlantonPlatformZookeeper zookeeper = 5;
-}
-
-/**
- * ZooKeeper (standalone-mode search only).
- */
-message KubernetesPlantonPlatformZookeeper {
-  /**
-   * ZooKeeper replicas.
-   */
-  optional int32 replicas = 1 [
-    (dev.planton.shared.options.default) = "1",
-    (buf.validate.field).int32.gte = 1
-  ];
-
-  /**
-   * Volume size (e.g. "5Gi"). Falls back to spec.storage.size, then the
-   * platform default.
-   */
-  string storage_size = 2 [
-    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
-    (buf.validate.field).cel = {
-      id: "zookeeper.storage_size_quantity"
-      message: "storage_size must be a Kubernetes quantity like \"5Gi\""
-      expression: "this.matches('^[0-9]+(\\\\.[0-9]+)?(Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|K)?$')"
-    }
-  ];
-
-  /**
-   * StorageClass override for the ZooKeeper volumes.
-   */
-  string storage_class_name = 3;
 }
 
 /**
@@ -921,21 +1096,6 @@ message KubernetesPlantonPlatformPrerequisites {
    * automatically either way).
    */
   optional string postgres_operator = 1 [
-    (dev.planton.shared.options.default) = "auto",
-    (buf.validate.field).string = {
-      in: [
-        "",
-        "auto",
-        "skip"
-      ]
-    }
-  ];
-
-  /**
-   * The Solr operator (only relevant when components.search.mode is
-   * "operator").
-   */
-  optional string solr_operator = 2 [
     (dev.planton.shared.options.default) = "auto",
     (buf.validate.field).string = {
       in: [

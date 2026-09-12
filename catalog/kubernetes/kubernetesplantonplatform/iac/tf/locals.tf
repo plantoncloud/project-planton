@@ -122,6 +122,9 @@ locals {
       gatewayRef       = local.ingress_gateway_ref
       annotations      = length(try(var.spec.ingress.annotations, {})) > 0 ? var.spec.ingress.annotations : null
       tls              = local.ingress_tls
+      # Rendered on presence, like every defaulted three-state string: an
+      # omitted value is left to the CRD's own default (auto).
+      reachability = try(var.spec.ingress.reachability, "") != "" ? var.spec.ingress.reachability : null
     } : k => v if v != null
   }
 
@@ -185,6 +188,61 @@ locals {
       enabled = try(var.spec.build.enabled, null)
     } : k => v if v != null
   }
+  remote_runners_body = {
+    for k, v in {
+      enabled = try(var.spec.remote_runners.enabled, null)
+    } : k => v if v != null
+  }
+
+  # ---- email -----------------------------------------------------------------
+  # One declaration for both senders. Each nested object is its own local so
+  # the parent stays a flat null-prune; the two provider arms render only
+  # when declared (the spec's CEL already holds exactly one). Defaulted
+  # scalars (port, security, from.name) render on presence only, so an
+  # omitted value is left to the CRD's own default.
+  email_from = {
+    for k, v in {
+      address = try(var.spec.email.from.address, "") != "" ? var.spec.email.from.address : null
+      name    = try(var.spec.email.from.name, "") != "" ? var.spec.email.from.name : null
+    } : k => v if v != null
+  }
+  email_smtp_oauth2 = try(var.spec.email.smtp.oauth2, null) == null ? null : {
+    user     = var.spec.email.smtp.oauth2.user
+    tokenUrl = var.spec.email.smtp.oauth2.token_url
+    scope    = var.spec.email.smtp.oauth2.scope
+    clientId = var.spec.email.smtp.oauth2.client_id
+    clientSecretRef = {
+      name = var.spec.email.smtp.oauth2.client_secret_ref.name
+      key  = var.spec.email.smtp.oauth2.client_secret_ref.key
+    }
+  }
+  email_smtp = try(var.spec.email.smtp, null) == null ? null : {
+    for k, v in {
+      host                  = var.spec.email.smtp.host
+      port                  = try(var.spec.email.smtp.port, null)
+      security              = try(var.spec.email.smtp.security, "") != "" ? var.spec.email.smtp.security : null
+      credentialsSecretName = try(var.spec.email.smtp.credentials_secret_name, "") != "" ? var.spec.email.smtp.credentials_secret_name : null
+      oauth2                = local.email_smtp_oauth2
+      caBundleSecretRef = try(var.spec.email.smtp.ca_bundle_secret_ref, null) == null ? null : {
+        name = var.spec.email.smtp.ca_bundle_secret_ref.name
+        key  = var.spec.email.smtp.ca_bundle_secret_ref.key
+      }
+    } : k => v if v != null
+  }
+  email_resend = try(var.spec.email.resend, null) == null ? null : {
+    apiKeySecretRef = {
+      name = var.spec.email.resend.api_key_secret_ref.name
+      key  = var.spec.email.resend.api_key_secret_ref.key
+    }
+  }
+  email_body = {
+    for k, v in {
+      from    = length(local.email_from) > 0 ? local.email_from : null
+      replyTo = try(var.spec.email.reply_to, "") != "" ? var.spec.email.reply_to : null
+      smtp    = local.email_smtp
+      resend  = local.email_resend
+    } : k => v if v != null
+  }
   vault_body = {
     for k, v in {
       enabled          = try(var.spec.vault.enabled, null)
@@ -195,22 +253,6 @@ locals {
   }
 
   # ---- components ------------------------------------------------------------
-  components_zookeeper = {
-    for k, v in {
-      replicas         = try(var.spec.components.search.zookeeper.replicas, null)
-      storageSize      = try(var.spec.components.search.zookeeper.storage_size, "") != "" ? var.spec.components.search.zookeeper.storage_size : null
-      storageClassName = try(var.spec.components.search.zookeeper.storage_class_name, "") != "" ? var.spec.components.search.zookeeper.storage_class_name : null
-    } : k => v if v != null
-  }
-  components_search = {
-    for k, v in {
-      enabled          = try(var.spec.components.search.enabled, false) ? true : null
-      mode             = try(var.spec.components.search.mode, "") != "" ? var.spec.components.search.mode : null
-      storageSize      = try(var.spec.components.search.storage_size, "") != "" ? var.spec.components.search.storage_size : null
-      storageClassName = try(var.spec.components.search.storage_class_name, "") != "" ? var.spec.components.search.storage_class_name : null
-      zookeeper        = length(local.components_zookeeper) > 0 ? local.components_zookeeper : null
-    } : k => v if v != null
-  }
   components_graph = {
     for k, v in {
       enabled          = try(var.spec.components.graph.enabled, false) ? true : null
@@ -220,9 +262,7 @@ locals {
   }
   components_body = {
     for k, v in {
-      authorization = try(var.spec.components.authorization.enabled, false) ? { enabled = true } : null
-      search        = length(local.components_search) > 0 ? local.components_search : null
-      graph         = length(local.components_graph) > 0 ? local.components_graph : null
+      graph = length(local.components_graph) > 0 ? local.components_graph : null
     } : k => v if v != null
   }
 
@@ -230,7 +270,6 @@ locals {
   prerequisites_body = {
     for k, v in {
       postgresOperator = try(var.spec.prerequisites.postgres_operator, "") != "" ? var.spec.prerequisites.postgres_operator : null
-      solrOperator     = try(var.spec.prerequisites.solr_operator, "") != "" ? var.spec.prerequisites.solr_operator : null
       tektonPipelines  = try(var.spec.prerequisites.tekton_pipelines, "") != "" ? var.spec.prerequisites.tekton_pipelines : null
     } : k => v if v != null
   }
@@ -278,6 +317,8 @@ locals {
       bootstrap     = length(local.bootstrap_body) > 0 ? local.bootstrap_body : null
       runner        = length(local.runner_body) > 0 ? local.runner_body : null
       build         = length(local.build_body) > 0 ? local.build_body : null
+      remoteRunners = length(local.remote_runners_body) > 0 ? local.remote_runners_body : null
+      email         = length(local.email_body) > 0 ? local.email_body : null
       vault         = length(local.vault_body) > 0 ? local.vault_body : null
       components    = length(local.components_body) > 0 ? local.components_body : null
       prerequisites = length(local.prerequisites_body) > 0 ? local.prerequisites_body : null

@@ -16,8 +16,15 @@ const paths: Record<string, string> = {
   Security: '/features/security',
   'Agent Fleet': '/features/agent-fleet',
   CLI: '/features/cli',
+  'Planton Desktop': '/features/desktop',
   'Open Source': '/features/open-source',
 };
+
+// A tab is active on its own path and on any page nested under it (the
+// desktop's install page lives under /features/desktop). The index tab is
+// exact only; otherwise it would light on every product page.
+const isActiveTab = (pathname: string, href: string) =>
+  pathname === href || (href !== '/features' && pathname.startsWith(`${href}/`));
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -31,7 +38,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             key={key}
             href={value}
             className={`text-sm font-medium whitespace-nowrap ${
-              pathname === value ? 'text-white' : 'text-[#666] hover:text-[#a0a0a0]'
+              isActiveTab(pathname, value) ? 'text-white' : 'text-[#666] hover:text-[#a0a0a0]'
             } transition-colors`}
           >
             {key}

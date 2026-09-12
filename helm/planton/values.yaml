@@ -4,7 +4,8 @@
 # built-in front door (console + API + sign-in over one kubectl port-forward),
 # the bundled identity server, the bundled secrets manager (OpenBAO --
 # initialized, unsealed, and registered as the org's default secret store),
-# and the in-cluster runner. No value below is required.
+# and the in-cluster runner. ONE value is required: platform.spec.version,
+# the platform release to install -- the chart pins no release of its own.
 #
 # The cluster must already run the Planton operator (the planton-operator
 # chart), which brings the PlantonPlatform definition and reconciles the
@@ -22,9 +23,14 @@ platform:
   # CRD is expressible here -- the chart curates nothing, so a new operator
   # capability never needs a chart release to become reachable. Field
   # reference: https://github.com/plantonhq/planton/tree/main/helm/planton-operator#the-plantonplatform-resource
-  # spec.version defaults to this chart's appVersion when omitted.
+  #
+  # spec.version is REQUIRED (`--set platform.spec.version=<release>`): the
+  # published releases are the control-plane image's tags,
+  # https://github.com/orgs/plantonhq/packages/container/package/planton%2Fcontrol-plane
+  # -- an operator runs releases from a floor upward and refuses an older one
+  # in the resource's status with the floor named.
   spec: {}
-    # version: v0.0.45
+    # version: <release>      # required
     # storage:                # platform-wide storage defaults (see README "Storage"):
     #   storageClassName: ""  #   the class EVERY volume provisions from (else the cluster default)
     #   size: 800Gi           #   one size for EVERY volume (else per-component defaults;

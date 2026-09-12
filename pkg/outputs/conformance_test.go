@@ -107,11 +107,12 @@ func TestStackOutputsConformance(t *testing.T) {
 					"name": "orders-mongo-secrets",
 					"key":  "MONGODB_DATABASE_ADMIN_PASSWORD",
 				},
+				"restore_name": "orders-mongo-restore-9412eb87",
 			},
 			mustPopulate: []string{
 				"namespace", "cluster_name", "service", "kube_endpoint",
 				"replica_set", "port_forward_command",
-				"admin_password_secret",
+				"admin_password_secret", "restore_name",
 			},
 		},
 		{
@@ -374,17 +375,29 @@ func TestStackOutputsConformance(t *testing.T) {
 			},
 		},
 		{
-			// KubernetesCloudNativePgOperator: install identity plus the
-			// plugin release handle.
+			// KubernetesCloudNativePgOperator: the install identity.
 			name: "KubernetesCloudNativePgOperator",
 			kind: cloudresourcekind.CloudResourceKind_KubernetesCloudNativePgOperator,
 			rawOutputs: map[string]interface{}{
-				"namespace":                  "cnpg-system",
-				"release_name":               "cnpg",
-				"barman_plugin_release_name": "plugin-barman-cloud",
+				"namespace":    "cnpg-system",
+				"release_name": "cnpg",
 			},
 			mustPopulate: []string{
-				"namespace", "release_name", "barman_plugin_release_name",
+				"namespace", "release_name",
+			},
+		},
+		{
+			// KubernetesCnpgBarmanCloudPlugin: the install identity plus the
+			// CNPG-I plugin name a Cluster's plugins list carries.
+			name: "KubernetesCnpgBarmanCloudPlugin",
+			kind: cloudresourcekind.CloudResourceKind_KubernetesCnpgBarmanCloudPlugin,
+			rawOutputs: map[string]interface{}{
+				"namespace":    "cnpg-system",
+				"release_name": "plugin-barman-cloud",
+				"plugin_name":  "barman-cloud.cloudnative-pg.io",
+			},
+			mustPopulate: []string{
+				"namespace", "release_name", "plugin_name",
 			},
 		},
 		{
@@ -1023,8 +1036,11 @@ func TestStackOutputsConformance(t *testing.T) {
 			rawOutputs: map[string]interface{}{
 				"route_name": "app-route",
 				"namespace":  "team-alpha",
+				// The route's first hostname is an address, exported as the
+				// Ingress exports first_host so one reader serves both.
+				"first_host": "api.example.com",
 			},
-			mustPopulate: []string{"route_name", "namespace"},
+			mustPopulate: []string{"route_name", "namespace", "first_host"},
 		},
 		{
 			name: "KubernetesGrpcRoute",
@@ -8410,6 +8426,44 @@ func TestStackOutputsConformance(t *testing.T) {
 				"browser_ids", "browser_arns", "browser_profile_ids",
 				"browser_profile_arns", "code_interpreter_ids",
 				"code_interpreter_arns",
+			},
+		},
+		{
+			// CloudflareR2Bucket: the bucket's identity for S3 clients -- the
+			// jurisdiction-aware endpoint (an EU bucket is served only through
+			// its own host), the owning account, and the normalized
+			// jurisdiction beside the name and the path-style URL.
+			name: "CloudflareR2Bucket",
+			kind: cloudresourcekind.CloudResourceKind_CloudflareR2Bucket,
+			rawOutputs: map[string]interface{}{
+				"bucket_name":        "acme-pg-archive",
+				"bucket_url":         "https://4793d734c0b8e484dfc37ec392b5fa8a.eu.r2.cloudflarestorage.com/acme-pg-archive",
+				"custom_domain_urls": []interface{}{"https://archive.example.com"},
+				"public_url":         "",
+				"account_id":         "4793d734c0b8e484dfc37ec392b5fa8a",
+				"jurisdiction":       "eu",
+				"s3_endpoint":        "https://4793d734c0b8e484dfc37ec392b5fa8a.eu.r2.cloudflarestorage.com",
+			},
+			mustPopulate: []string{
+				"bucket_name", "bucket_url", "custom_domain_urls",
+				"account_id", "jurisdiction", "s3_endpoint",
+			},
+		},
+		{
+			// CloudflareAccountApiToken: the token's management id and its
+			// once-on-create value, plus the same token as the S3 key pair
+			// R2's S3 API authenticates (id as the access key id, SHA-256 of
+			// the value as the secret access key).
+			name: "CloudflareAccountApiToken",
+			kind: cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken,
+			rawOutputs: map[string]interface{}{
+				"token_id":             "f267e341f3dd4697bd3b9f71dd96247f",
+				"value":                "v1.0-abc",
+				"r2_access_key_id":     "f267e341f3dd4697bd3b9f71dd96247f",
+				"r2_secret_access_key": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+			},
+			mustPopulate: []string{
+				"token_id", "value", "r2_access_key_id", "r2_secret_access_key",
 			},
 		},
 	}

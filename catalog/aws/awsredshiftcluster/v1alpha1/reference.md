@@ -933,6 +933,9 @@ Restrict the grant to specific VPCs in the grantee account. Empty
 authorizes ALL of the account's VPCs. Reference AwsVpc vpc_id
 outputs or pass literal VPC IDs.
 
+Containment-exempt: a grant admits another VPC's endpoints to the
+cluster; the cluster never lives inside the VPC it authorizes.
+
 - references: AwsVpc (`status.outputs.vpc_id`)
 - rule: write as {value: <literal>} or {valueFrom: {kind: AwsVpc, name: <that resource's name>, fieldPath: status.outputs.vpc_id}} -- a bare string does not parse
 

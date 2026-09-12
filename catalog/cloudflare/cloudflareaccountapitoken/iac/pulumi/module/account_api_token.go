@@ -5,6 +5,7 @@ import (
 
 	"github.com/pkg/errors"
 	cloudflareaccountapitokenv1alpha1 "github.com/plantonhq/planton/catalog/cloudflare/cloudflareaccountapitoken/v1alpha1"
+	"github.com/plantonhq/planton/pkg/cloudflare/r2"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -86,6 +87,18 @@ func accountApiToken(
 
 	ctx.Export(OpTokenId, createdToken.ID())
 	ctx.Export(OpValue, createdToken.Value)
+
+	// The same token, in the shape R2's S3 API authenticates: Cloudflare
+	// defines the access key id as the token's id and the secret access key as
+	// the SHA-256 of the token's value (derived by the shared pkg/cloudflare/r2
+	// helper so every module agrees). The derivation runs inside the secret
+	// Output's apply, so the hash never leaves the secret boundary; ToSecret
+	// re-marks the result because a transform of a secret is not automatically
+	// one in every SDK path.
+	ctx.Export(OpR2AccessKeyId, createdToken.ID().ToStringOutput())
+	ctx.Export(OpR2SecretAccessKey, pulumi.ToSecret(createdToken.Value.ApplyT(func(v string) string {
+		return r2.S3SecretAccessKey(v)
+	}).(pulumi.StringOutput)))
 
 	return nil
 }

@@ -2,7 +2,7 @@
 
 import { FC, useRef, useEffect, useState } from 'react';
 import { Box, Typography } from '@mui/material';
-import { motion, useInView } from 'framer-motion';
+import { motion, useInView, useReducedMotion } from 'framer-motion';
 
 export interface MetricItem {
   value: string;
@@ -47,6 +47,12 @@ const AnimatedValue: FC<{ value: string; animate: boolean }> = ({ value, animate
 export const MetricsStrip: FC<MetricsStripProps> = ({ metrics, className = '' }) => {
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: true, margin: '-40px' });
+  // A reader who asked for less motion sees the figures at once, at their
+  // final value: the count-up and the rise are decoration, and a strip whose
+  // numbers only appear on scroll is an empty band to anyone who never
+  // triggers it.
+  const reduceMotion = useReducedMotion();
+  const shown = isInView || Boolean(reduceMotion);
 
   return (
     <Box
@@ -59,13 +65,13 @@ export const MetricsStrip: FC<MetricsStripProps> = ({ metrics, className = '' })
           {metrics.map((metric, i) => (
             <motion.div
               key={metric.label}
-              initial={{ opacity: 0, y: 16 }}
-              animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+              animate={shown ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
               transition={{ duration: 0.5, delay: i * 0.12, ease: 'easeOut' }}
               className="text-center"
             >
               <Typography className="text-2xl md:text-3xl lg:text-4xl font-bold text-white tracking-tight">
-                <AnimatedValue value={metric.value} animate={isInView} />
+                <AnimatedValue value={metric.value} animate={shown && !reduceMotion} />
               </Typography>
               <Typography className="text-xs md:text-sm text-[#666] mt-1.5 font-medium uppercase tracking-wider">
                 {metric.label}

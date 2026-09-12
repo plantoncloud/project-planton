@@ -97,15 +97,11 @@ func (r *Runner) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sche
 		return Result{}, fmt.Errorf("checking runner readiness: %w", err)
 	}
 	if !ready {
-		if msg, ok := r.ExplainPendingStorage(ctx, c, planton.Namespace,
-			resources.RunnerStatePVCName(planton.Name)); ok {
-			return Result{Ready: false, Message: msg}, nil
-		}
 		log.Info("Runner not ready")
 		// Readiness is the worker-poll probe: "not ready" after boot means
 		// the worker is not polling its Temporal queue yet.
-		return Result{Ready: false,
-			Message: "Waiting for the runner worker to start polling for deploys"}, nil
+		return r.NotReady(ctx, c, planton.Namespace, DeploymentRef(resources.RunnerDeploymentName(planton.Name)),
+			"Waiting for the runner worker to start polling for deploys"), nil
 	}
 
 	log.Info("Runner ready")

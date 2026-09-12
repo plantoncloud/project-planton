@@ -45,7 +45,31 @@ import (
 // origin root, and every front door this operator renders routes that
 // namespace. An older control plane answers only at the root, so under this
 // operator every console API call would 404.
-const MinimumSupported = "v0.0.50"
+//
+// v0.0.56: the front door is the keyless identity issuer and declares its
+// reachability, and the operator renders every internet-facing posture from
+// it. Three reasons, any one of which moves the floor: the meaning of the
+// keyless availability value changed (it used to be a literal "unavailable"
+// with the catalog's generic sentence; it is now the door's verdict with the
+// door's own reason, and an older catalog would show a reason it cannot
+// explain); the control plane reads OIDC_ISSUER_URL and the per-cloud OAuth
+// enabled flags only from this release, so an older one would keep minting
+// the hosted issuer and offering sign-ins it has no app for; and the webhook
+// receiver this operator advertises lives under the control plane's webhook
+// namespace (resources.WebhooksPathPrefix), which an older control plane does
+// not serve, so GitHub's deliveries would 404 at the door.
+//
+// v0.0.60: email is a declared capability, and invitations are links. The
+// operator stops handing the control plane placeholder email credentials
+// (RESEND_API_KEY and the two SENDGRID names) and the invitation URL base
+// path, and renders PLANTON_EMAIL_PROVIDER=none instead; the control plane
+// composes every invitation link from PLANTON_CONSOLE_URL. The same release
+// accepts invitations as one synchronous write, so the operator also stops
+// rendering the acceptance workflow's task queue
+// (TEMPORAL_TASK_QUEUE_USER_INVITATION). An older control plane requires the
+// placeholder key, the base path, and the queue name to boot at all, so under
+// this operator it would never come up.
+const MinimumSupported = "v0.0.60"
 
 // releaseForm is the only shape spec.version may take: a full semantic
 // version with the "v" prefix, optionally with a pre-release suffix and build

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/plantonhq/planton/pkg/cloudflare/r2"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v6/go/cloudflare"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -257,13 +258,17 @@ func bucket(
 		}
 	}
 
-	// 9. Export stack outputs.
+	// 9. Export stack outputs. The S3 endpoint is the jurisdiction's host: a
+	// bucket created in "eu" (or "fedramp", "us") is served ONLY through
+	// <account>.<jurisdiction>.r2.cloudflarestorage.com -- the default host
+	// fails rather than redirects -- so every URL this stack hands out is
+	// composed from the shared host table, never from the default host.
+	s3Endpoint := r2.S3Endpoint(spec.GetAccountId(), spec.GetJurisdiction())
 	ctx.Export(OpBucketName, createdBucket.Name)
-	ctx.Export(OpBucketUrl, pulumi.Sprintf(
-		"https://%s.r2.cloudflarestorage.com/%s",
-		spec.GetAccountId(),
-		spec.GetBucketName(),
-	))
+	ctx.Export(OpAccountId, pulumi.String(spec.GetAccountId()))
+	ctx.Export(OpJurisdiction, pulumi.String(r2.NormalizeJurisdiction(spec.GetJurisdiction())))
+	ctx.Export(OpS3Endpoint, pulumi.String(s3Endpoint))
+	ctx.Export(OpBucketUrl, pulumi.Sprintf("%s/%s", s3Endpoint, createdBucket.Name))
 	ctx.Export(OpCustomDomainUrls, customDomainUrls)
 	if managedDomain != nil {
 		ctx.Export(OpPublicUrl, managedDomain.Domain.ApplyT(func(d string) string {

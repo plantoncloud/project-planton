@@ -637,6 +637,7 @@ go_library(
         "//catalog/kubernetes/kubernetesclusterautoscaler/v1alpha1",
         "//catalog/kubernetes/kubernetesclusterissuer/v1alpha1",
         "//catalog/kubernetes/kubernetesclustersecretstore/v1alpha1",
+        "//catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1",
         "//catalog/kubernetes/kubernetesconfigmap/v1alpha1",
         "//catalog/kubernetes/kubernetescronjob/v1alpha1",
         "//catalog/kubernetes/kubernetesdaemonset/v1alpha1",

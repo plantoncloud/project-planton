@@ -44,6 +44,7 @@ spec:
             - "--leader-elect"
             {{- end }}
             - "--health-probe-bind-address=:{{ .Values.healthProbe.port }}"
+            - "--satellite-sweep-interval={{ .Values.janitor.sweepInterval }}"
           ports:
             - name: health
               containerPort: {{ .Values.healthProbe.port }}

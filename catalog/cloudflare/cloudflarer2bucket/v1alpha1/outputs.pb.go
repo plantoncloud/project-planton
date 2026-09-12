@@ -26,15 +26,33 @@ type CloudflareR2BucketStackOutputs struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The name of the bucket (same as spec.bucket_name)
 	BucketName string `protobuf:"bytes,1,opt,name=bucket_name,json=bucketName,proto3" json:"bucket_name,omitempty"`
-	// The S3-compatible API URL for the bucket
-	// (e.g., https://<account_id>.r2.cloudflarestorage.com/<bucket>)
+	// The path-style S3 API URL of the bucket: the account's S3 endpoint for the
+	// bucket's jurisdiction followed by the bucket name
+	// (e.g., https://<account_id>.r2.cloudflarestorage.com/<bucket>, or
+	// https://<account_id>.eu.r2.cloudflarestorage.com/<bucket> for an EU bucket).
 	BucketUrl string `protobuf:"bytes,2,opt,name=bucket_url,json=bucketUrl,proto3" json:"bucket_url,omitempty"`
 	// The custom-domain URLs configured for the bucket (one per enabled custom domain),
 	// e.g., ["https://media.example.com"].
 	CustomDomainUrls []string `protobuf:"bytes,3,rep,name=custom_domain_urls,json=customDomainUrls,proto3" json:"custom_domain_urls,omitempty"`
 	// The Cloudflare-managed public URL (r2.dev) when public_access is enabled,
 	// e.g., https://pub-<hash>.r2.dev. Empty when public access is disabled.
-	PublicUrl     string `protobuf:"bytes,4,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
+	PublicUrl string `protobuf:"bytes,4,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
+	// The Cloudflare account that owns the bucket (same as spec.account_id).
+	// Exported so a consumer that composes this bucket into an S3-compatible
+	// client can reference the account beside the bucket name instead of
+	// repeating it.
+	AccountId string `protobuf:"bytes,5,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// The bucket's data-residency jurisdiction, normalized: "default" when the
+	// spec left it empty, otherwise "eu", "fedramp", or "us" as declared. Part of
+	// the bucket's identity and the selector for its S3 endpoint host.
+	Jurisdiction string `protobuf:"bytes,6,opt,name=jurisdiction,proto3" json:"jurisdiction,omitempty"`
+	// The S3 API endpoint that serves this bucket -- the only host that does.
+	// https://<account_id>.r2.cloudflarestorage.com for the default jurisdiction,
+	// https://<account_id>.<jurisdiction>.r2.cloudflarestorage.com otherwise;
+	// requests for a jurisdictional bucket against the default host fail rather
+	// than redirect. An S3 client configures this as its endpoint URL with region
+	// "auto"; path-style and virtual-hosted addressing both work.
+	S3Endpoint    string `protobuf:"bytes,7,opt,name=s3_endpoint,json=s3Endpoint,proto3" json:"s3_endpoint,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -97,11 +115,32 @@ func (x *CloudflareR2BucketStackOutputs) GetPublicUrl() string {
 	return ""
 }
 
+func (x *CloudflareR2BucketStackOutputs) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *CloudflareR2BucketStackOutputs) GetJurisdiction() string {
+	if x != nil {
+		return x.Jurisdiction
+	}
+	return ""
+}
+
+func (x *CloudflareR2BucketStackOutputs) GetS3Endpoint() string {
+	if x != nil {
+		return x.S3Endpoint
+	}
+	return ""
+}
+
 var File_catalog_cloudflare_cloudflarer2bucket_v1alpha1_outputs_proto protoreflect.FileDescriptor
 
 const file_catalog_cloudflare_cloudflarer2bucket_v1alpha1_outputs_proto_rawDesc = "" +
 	"\n" +
-	"<catalog/cloudflare/cloudflarer2bucket/v1alpha1/outputs.proto\x122dev.planton.cloudflare.cloudflarer2bucket.v1alpha1\"\xad\x01\n" +
+	"<catalog/cloudflare/cloudflarer2bucket/v1alpha1/outputs.proto\x122dev.planton.cloudflare.cloudflarer2bucket.v1alpha1\"\x91\x02\n" +
 	"\x1eCloudflareR2BucketStackOutputs\x12\x1f\n" +
 	"\vbucket_name\x18\x01 \x01(\tR\n" +
 	"bucketName\x12\x1d\n" +
@@ -109,7 +148,12 @@ const file_catalog_cloudflare_cloudflarer2bucket_v1alpha1_outputs_proto_rawDesc 
 	"bucket_url\x18\x02 \x01(\tR\tbucketUrl\x12,\n" +
 	"\x12custom_domain_urls\x18\x03 \x03(\tR\x10customDomainUrls\x12\x1d\n" +
 	"\n" +
-	"public_url\x18\x04 \x01(\tR\tpublicUrlB\x9b\x03\n" +
+	"public_url\x18\x04 \x01(\tR\tpublicUrl\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x05 \x01(\tR\taccountId\x12\"\n" +
+	"\fjurisdiction\x18\x06 \x01(\tR\fjurisdiction\x12\x1f\n" +
+	"\vs3_endpoint\x18\a \x01(\tR\n" +
+	"s3EndpointB\x9b\x03\n" +
 	"6com.dev.planton.cloudflare.cloudflarer2bucket.v1alpha1B\fOutputsProtoP\x01Zfgithub.com/plantonhq/planton/catalog/cloudflare/cloudflarer2bucket/v1alpha1;cloudflarer2bucketv1alpha1\xa2\x02\x04DPCC\xaa\x022Dev.Planton.Cloudflare.Cloudflarer2bucket.V1alpha1\xca\x022Dev\\Planton\\Cloudflare\\Cloudflarer2bucket\\V1alpha1\xe2\x02>Dev\\Planton\\Cloudflare\\Cloudflarer2bucket\\V1alpha1\\GPBMetadata\xea\x026Dev::Planton::Cloudflare::Cloudflarer2bucket::V1alpha1b\x06proto3"
 
 var (

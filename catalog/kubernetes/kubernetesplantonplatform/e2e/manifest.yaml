@@ -39,8 +39,22 @@ spec:
       issuer:
         name: letsencrypt
         kind: ClusterIssuer
+    reachability: public
   gateway:
     local_port: 8080
+  email:
+    from:
+      address: no-reply@planton.example.com
+      name: Planton
+    reply_to: it-help@example.com
+    smtp:
+      host: smtp.office365.com
+      port: 587
+      security: starttls
+      credentials_secret_name: planton-email
+      ca_bundle_secret_ref:
+        name: corp-ca
+        key: ca.crt
   identity:
     realm: planton
     admin_email: admin@example.com
@@ -68,21 +82,11 @@ spec:
     init_mode: auto
     storage_size: 2Gi
   components:
-    authorization:
-      enabled: true
-    search:
-      enabled: true
-      mode: standalone
-      storage_size: 10Gi
-      zookeeper:
-        replicas: 1
-        storage_size: 5Gi
     graph:
       enabled: true
       storage_size: 10Gi
   prerequisites:
     postgres_operator: auto
-    solr_operator: auto
     tekton_pipelines: auto
   control_plane:
     replicas: 1

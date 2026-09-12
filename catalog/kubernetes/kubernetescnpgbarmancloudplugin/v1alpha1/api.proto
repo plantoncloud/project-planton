@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package dev.planton.kubernetes.kubernetescnpgbarmancloudplugin.v1alpha1;
+
+import "buf/validate/validate.proto";
+import "catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1/outputs.proto";
+import "catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1/spec.proto";
+import "shared/metadata.proto";
+
+// KubernetesCnpgBarmanCloudPlugin installs the Barman Cloud backup plugin
+// for CloudNativePG on a cluster from the official Helm chart, beside the
+// operator (the catalog's or a resident one). KubernetesPostgres backup
+// blocks and object-store recoveries run through it.
+message KubernetesCnpgBarmanCloudPlugin {
+  // api-version
+  string api_version = 1 [(buf.validate.field).string.const = 'kubernetes.planton.dev/v1alpha1'];
+
+  // resource-kind
+  string kind = 2 [(buf.validate.field).string.const = 'KubernetesCnpgBarmanCloudPlugin'];
+
+  // metadata
+  dev.planton.shared.CloudResourceMetadata metadata = 3 [(buf.validate.field).required = true];
+
+  // spec
+  KubernetesCnpgBarmanCloudPluginSpec spec = 4 [(buf.validate.field).required = true];
+
+  // status
+  KubernetesCnpgBarmanCloudPluginStatus status = 5;
+}
+
+// KubernetesCnpgBarmanCloudPluginStatus holds the deployment status and outputs.
+message KubernetesCnpgBarmanCloudPluginStatus {
+  // stack-outputs
+  KubernetesCnpgBarmanCloudPluginStackOutputs outputs = 1;
+}

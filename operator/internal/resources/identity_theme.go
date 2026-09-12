@@ -34,15 +34,17 @@ func IdentityThemeConfigMapName(crName string) string {
 
 // IdentityThemeHash fingerprints the theme content for the pod-restart
 // annotation.
-func IdentityThemeHash() string {
-	return keycloaklogintheme.Hash()
+func IdentityThemeHash(facts keycloaklogintheme.EmailFacts) string {
+	return keycloaklogintheme.Hash(facts)
 }
 
 // identityThemeFilePaths returns the theme's file paths (relative to the
 // theme root) in deterministic order -- the shared iteration order for the
 // ConfigMap keys and the volume mounts, which must agree.
 func identityThemeFilePaths() []string {
-	files := keycloaklogintheme.Files()
+	// The set of paths does not depend on the install's facts (they render
+	// INTO a file that always ships), so the zero facts list them.
+	files := keycloaklogintheme.Files(keycloaklogintheme.EmailFacts{})
 	paths := make([]string, 0, len(files))
 	for p := range files {
 		paths = append(paths, p)
@@ -51,14 +53,22 @@ func identityThemeFilePaths() []string {
 	return paths
 }
 
-// IdentityThemeConfigMap builds the ConfigMap carrying every theme file.
-// ConfigMap keys cannot contain path separators, so each file is keyed by
-// its base name (unique within the theme -- enforced here) and the
-// Deployment mounts each key at its full theme path via subPath. Text
-// files go in Data (legible in kubectl describe); the font goes in
-// BinaryData.
-func IdentityThemeConfigMap(crName, namespace string, ownerRef *metav1.OwnerReference) (*corev1.ConfigMap, error) {
-	files := keycloaklogintheme.Files()
+// identityThemeConfigMapKey flattens a theme path into a ConfigMap key:
+// keys cannot contain path separators, so "login/theme.properties" becomes
+// "login__theme.properties". Keying by the WHOLE path is what lets two theme
+// types (login, email) each carry their own theme.properties -- a base-name
+// key would collide -- and the Deployment mounts each key back at its full
+// theme path via subPath.
+func identityThemeConfigMapKey(themePath string) string {
+	return strings.ReplaceAll(themePath, "/", "__")
+}
+
+// IdentityThemeConfigMap builds the ConfigMap carrying every theme file,
+// keyed by its flattened path (identityThemeConfigMapKey), with the email
+// manifest rendered for this install (facts). Text files go in Data
+// (legible in kubectl describe); the font goes in BinaryData.
+func IdentityThemeConfigMap(crName, namespace string, facts keycloaklogintheme.EmailFacts, ownerRef *metav1.OwnerReference) (*corev1.ConfigMap, error) {
+	files := keycloaklogintheme.Files(facts)
 
 	cm := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
@@ -77,13 +87,7 @@ func IdentityThemeConfigMap(crName, namespace string, ownerRef *metav1.OwnerRefe
 	}
 
 	for _, p := range identityThemeFilePaths() {
-		key := path.Base(p)
-		if _, clash := cm.Data[key]; clash {
-			return nil, fmt.Errorf("identity theme file names must be unique across directories: %q repeats", key)
-		}
-		if _, clash := cm.BinaryData[key]; clash {
-			return nil, fmt.Errorf("identity theme file names must be unique across directories: %q repeats", key)
-		}
+		key := identityThemeConfigMapKey(p)
 		if strings.HasSuffix(p, ".woff2") {
 			cm.BinaryData[key] = files[p]
 		} else {
@@ -119,7 +123,7 @@ func identityThemeVolume(crName string) (corev1.Volume, []corev1.VolumeMount) {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      volume.Name,
 			MountPath: path.Join(identityThemeMountRoot, keycloaklogintheme.ThemeName, p),
-			SubPath:   path.Base(p),
+			SubPath:   identityThemeConfigMapKey(p),
 			ReadOnly:  true,
 		})
 	}

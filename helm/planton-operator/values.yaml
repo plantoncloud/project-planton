@@ -41,6 +41,15 @@ healthProbe:
   # -- Port for health check endpoints (/healthz and /readyz).
   port: 8081
 
+janitor:
+  # -- How often the operator re-checks for cluster-scoped objects it installed
+  # that no platform needs any more: a deleted platform's cluster RBAC, and the
+  # shared database operator, its backup plugin, and the build engine once no
+  # platform remains on the cluster (kept, and explained on their definitions,
+  # while anything else still uses them). Deleting a platform sweeps immediately; this tick converges what an
+  # operator restart or a slow garbage collection left behind. A Go duration.
+  sweepInterval: 10m
+
 resources:
   requests:
     cpu: 10m

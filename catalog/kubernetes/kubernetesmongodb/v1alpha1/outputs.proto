@@ -51,9 +51,19 @@ message KubernetesMongodbStackOutputs {
 
   /**
    * The Kubernetes Secret key holding the database-admin password (the
-   * operator-managed `<name>-secrets` system-users Secret, key
+   * system-users Secret — the operator-managed `<name>-secrets`, or the
+   * one `system_users_secret_name` brought — key
    * MONGODB_DATABASE_ADMIN_PASSWORD; the paired username key is
    * MONGODB_DATABASE_ADMIN_USER).
    */
   dev.planton.kubernetes.KubernetesSecretKey admin_password_secret = 7;
+
+  /**
+   * Name of the PerconaServerMongoDBRestore object rendered for the spec's
+   * `restore` declaration (`<name>-restore-<8 hex>`, the suffix hashing
+   * the declaration) — the run whose status tells whether the restore
+   * reached ready: `kubectl get psmdb-restore <this> -n <namespace>`.
+   * Empty when no restore is declared.
+   */
+  string restore_name = 8;
 }

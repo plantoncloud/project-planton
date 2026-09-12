@@ -25,10 +25,11 @@ spec:
   namespace:
     value: cnpg-system
   createNamespace: true
-  # The Barman Cloud backup plugin is deliberately NOT enabled here: it
-  # requires cert-manager on the cluster (its internal TLS certificates are
-  # cert-manager Certificates, and the install fails without it), and this
-  # chart makes no such assumption. Enable it — and declare a backup block
-  # on the database — once cert-manager is present; the README's day-2
-  # notes walk through it.
+  # The Barman Cloud backup plugin is deliberately NOT part of this chart:
+  # it is its own kind (KubernetesCnpgBarmanCloudPlugin, installed into
+  # this operator's namespace) and requires cert-manager on the cluster
+  # (its internal TLS certificates are cert-manager Certificates, and the
+  # install fails without it) — an assumption this chart does not make.
+  # Declare it — and a backup block on the database — once cert-manager is
+  # present; the README's day-2 notes walk through it.
 {% endif %}

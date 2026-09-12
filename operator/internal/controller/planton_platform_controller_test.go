@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	resource_ "k8s.io/apimachinery/pkg/api/resource"
@@ -31,10 +32,14 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
+	"github.com/plantonhq/planton/operator/internal/component"
+	"github.com/plantonhq/planton/operator/internal/janitor"
 	"github.com/plantonhq/planton/operator/internal/platformversion"
+	"github.com/plantonhq/planton/operator/internal/resources"
 	"github.com/plantonhq/planton/operator/internal/status"
 )
 
@@ -117,9 +122,9 @@ var _ = Describe("PlantonPlatform Controller", func() {
 			Expect(updated.Status.Components.PostgreSQL.Phase).To(Equal(plantonaiv1.ComponentPhasePending))
 			Expect(updated.Status.Components.Redis).NotTo(BeNil())
 			Expect(updated.Status.Components.Redis.Phase).To(Equal(plantonaiv1.ComponentPhasePending))
-			// OpenFGA is opt-in (policy-engine authorization); the minimal
-			// footprint runs the built-in allow-owner arm, so it stays nil.
-			Expect(updated.Status.Components.OpenFGA).To(BeNil())
+			// The policy engine is part of every platform, like its
+			// database: the minimal footprint carries its slot.
+			Expect(updated.Status.Components.OpenFGA).NotTo(BeNil(), "OpenFGA should be initialized on every platform")
 			// The bundled secrets manager is integral: the version-only
 			// manifest deploys it (opting out is the deliberate act).
 			Expect(updated.Status.Components.OpenBAO).NotTo(BeNil(), "OpenBAO should be initialized by default")
@@ -196,6 +201,65 @@ var _ = Describe("PlantonPlatform Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
 		})
+
+		// The deletion path on a real API server: a platform's cluster-scoped
+		// satellite (the token-reviewer pair, labelled with the platform's
+		// UID) cannot be garbage-collected by a namespaced owner, so the
+		// reconcile of the vanished resource hands it to the janitor. A
+		// second platform's pair -- same name shape, different UID -- stays.
+		It("should sweep the deleted platform's cluster-scoped satellites and leave a live platform's alone", func() {
+			departed := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "departing", Namespace: namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, departed)).To(Succeed())
+			staying := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: "staying", Namespace: namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, staying)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), staying) }()
+
+			pairFor := func(p *plantonaiv1.PlantonPlatform) (*rbacv1.ClusterRole, *rbacv1.ClusterRoleBinding) {
+				cfg := resources.ControlPlaneConfig{
+					CRName: p.Name, Namespace: p.Namespace,
+					OwnerRef: &metav1.OwnerReference{Kind: "PlantonPlatform", Name: p.Name, UID: p.UID},
+				}
+				return resources.ControlPlaneTokenReviewerClusterRole(cfg), resources.ControlPlaneTokenReviewerClusterRoleBinding(cfg)
+			}
+			for _, p := range []*plantonaiv1.PlantonPlatform{departed, staying} {
+				role, binding := pairFor(p)
+				Expect(k8sClient.Create(ctx, role)).To(Succeed())
+				Expect(k8sClient.Create(ctx, binding)).To(Succeed())
+			}
+			stayingRole, stayingBinding := pairFor(staying)
+			defer func() {
+				_ = k8sClient.Delete(context.Background(), stayingRole)
+				_ = k8sClient.Delete(context.Background(), stayingBinding)
+			}()
+
+			Expect(k8sClient.Delete(ctx, departed)).To(Succeed())
+
+			reconciler := &PlantonPlatformReconciler{
+				Client:  k8sClient,
+				Scheme:  k8sClient.Scheme(),
+				Janitor: &janitor.Janitor{Client: k8sClient, SubOperators: []component.SubOperatorOptions{}},
+			}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: departed.Name, Namespace: namespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			departedRole, departedBinding := pairFor(departed)
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: departedRole.Name}, &rbacv1.ClusterRole{}))).To(BeTrue(),
+				"the departed platform's ClusterRole must be swept")
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: departedBinding.Name}, &rbacv1.ClusterRoleBinding{}))).To(BeTrue(),
+				"the departed platform's ClusterRoleBinding must be swept")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stayingRole.Name}, &rbacv1.ClusterRole{})).To(Succeed(),
+				"a live platform's ClusterRole must stay")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stayingBinding.Name}, &rbacv1.ClusterRoleBinding{})).To(Succeed(),
+				"a live platform's ClusterRoleBinding must stay")
+		})
 	})
 
 	Context("When a data component's volume is stuck Pending", func() {
@@ -229,10 +293,13 @@ var _ = Describe("PlantonPlatform Controller", func() {
 
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					// The postgres component matches claims by its
-					// CloudNativePG Cluster name ({cluster}-N instance PVCs).
+					// A CloudNativePG instance claim carries the cluster
+					// label; that label, not the name, is how the postgres
+					// component knows the claim is its own before the
+					// instance pod exists.
 					Name:      "storage-explain-postgres-1",
 					Namespace: namespace,
+					Labels:    map[string]string{"cnpg.io/cluster": "storage-explain-postgres"},
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -374,7 +441,7 @@ var _ = Describe("PlantonPlatform Controller", func() {
 				Spec: plantonaiv1.PlantonPlatformSpec{
 					Version: "v1.0.0",
 					License: &plantonaiv1.LicenseSpec{
-						SecretKeyRef: &plantonaiv1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+						SecretKeyRef: &plantonaiv1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 					},
 				},
 			}
@@ -389,7 +456,7 @@ var _ = Describe("PlantonPlatform Controller", func() {
 					Version: "v1.0.0",
 					License: &plantonaiv1.LicenseSpec{
 						Key:          "plk1.1.claims.signature",
-						SecretKeyRef: &plantonaiv1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+						SecretKeyRef: &plantonaiv1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 					},
 				},
 			}
@@ -543,7 +610,164 @@ var _ = Describe("PlantonPlatform Controller", func() {
 		})
 	})
 
+	Context("When the platform release declares the operator it needs", func() {
+		// The other direction of the version contract: the release's own
+		// declaration (a label on its image, read through the reader) against
+		// this operator's stamped release. Best-effort by design: a reader
+		// that fails leaves the platform proceeding, and the answer is
+		// remembered per version.
+		It("refuses a release that needs a newer operator, in words, and proceeds when the registry cannot be read", func() {
+			previous := platformversion.OperatorRelease
+			platformversion.OperatorRelease = "v0.14.0"
+			defer func() { platformversion.OperatorRelease = previous }()
+
+			nn := types.NamespacedName{Name: "needs-newer-operator", Namespace: namespace}
+			resource := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), resource) }()
+
+			reader := &fakeRequirementReader{required: "v0.16.0"}
+			reconciler := &PlantonPlatformReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), RequirementReader: reader}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+
+			var updated plantonaiv1.PlantonPlatform
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			Expect(updated.Status.Phase).To(Equal(plantonaiv1.PhaseError))
+			supported := findCondition(updated.Status.Conditions, plantonaiv1.ConditionVersionSupported)
+			Expect(supported).NotTo(BeNil())
+			Expect(supported.Status).To(Equal(metav1.ConditionFalse))
+			Expect(supported.Reason).To(Equal(platformversion.ReasonRequiresNewerOperator))
+			Expect(supported.Message).To(ContainSubstring("needs operator v0.16.0 or newer"))
+			Expect(supported.Message).To(ContainSubstring("this operator is v0.14.0"))
+			Expect(supported.Message).To(ContainSubstring("helm upgrade planton-operator"))
+			Expect(updated.Status.RequiredOperatorVersion).To(Equal("v0.16.0"))
+			Expect(updated.Status.Components.PostgreSQL.Phase).To(Equal(plantonaiv1.ComponentPhasePending),
+				"nothing was rendered for a refused release")
+
+			// Remembered per version: a third reconcile reads nothing more.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(reader.calls).To(Equal(1), "the requirement is read once per version")
+
+			// A registry the operator cannot reach: the platform proceeds and
+			// VersionSupported stays True.
+			failing := &fakeRequirementReader{err: errors.NewServiceUnavailable("registry unreachable")}
+			offline := &PlantonPlatformReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), RequirementReader: failing}
+			_, err = offline.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			supported = findCondition(updated.Status.Conditions, plantonaiv1.ConditionVersionSupported)
+			Expect(supported.Status).To(Equal(metav1.ConditionTrue), "an unreadable registry never refuses: %s", supported.Message)
+		})
+	})
+
+	Context("When a component's pod cannot start", func() {
+		// The front-door gateway has no dependencies, so it is the one
+		// component the second reconcile actually runs on a minimal spec --
+		// the right seam to prove the whole path from a kubelet's verdict on
+		// a pod to the MESSAGE column and an Event. Envtest runs no
+		// scheduler or kubelet, so the pod and its status are planted by the
+		// test exactly as the kubelet would write them.
+		It("names the pod, the image, and the fix on the component, the Ready condition, and an Event -- once", func() {
+			nn := types.NamespacedName{Name: "pull-fails", Namespace: namespace}
+			resource := &plantonaiv1.PlantonPlatform{
+				ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: nn.Namespace},
+				Spec:       plantonaiv1.PlantonPlatformSpec{Version: "v1.0.0"},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), resource) }()
+
+			recorder := record.NewFakeRecorder(16)
+			reconciler := &PlantonPlatformReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: recorder}
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred(), "the second reconcile applies the gateway Deployment")
+
+			var deploy appsv1.Deployment
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: resources.GatewayDeploymentName(nn.Name), Namespace: namespace}, &deploy)).To(Succeed())
+
+			const image = "ghcr.io/plantonhq/planton-gateway:v9.9.9-missing"
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: resources.GatewayDeploymentName(nn.Name) + "-7d9f4-x1", Namespace: namespace,
+					Labels: deploy.Spec.Selector.MatchLabels,
+				},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "gateway", Image: image}}},
+			}
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(context.Background(), pod) }()
+			pod.Status = corev1.PodStatus{
+				Phase: corev1.PodPending,
+				ContainerStatuses: []corev1.ContainerStatus{{
+					Name: "gateway", Image: image,
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+						Reason: "ImagePullBackOff", Message: "Back-off pulling image \"" + image + "\": manifest unknown"}},
+				}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+
+			var updated plantonaiv1.PlantonPlatform
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			gw := updated.Status.Components.Gateway
+			Expect(gw).NotTo(BeNil())
+			Expect(gw.Reason).To(Equal(plantonaiv1.ComponentReasonImagePullFailed))
+			Expect(gw.Object).NotTo(BeNil())
+			Expect(gw.Object.Kind).To(Equal("Pod"))
+			Expect(gw.Object.Name).To(Equal(pod.Name))
+			Expect(gw.Message).To(ContainSubstring(image), "the status names the image, got: %s", gw.Message)
+			Expect(gw.Message).To(ContainSubstring("manifest unknown"), "the registry's own words are relayed, got: %s", gw.Message)
+			Expect(gw.Message).To(ContainSubstring("image override"), "the status names the fix, got: %s", gw.Message)
+			Expect(gw.LastTransitionTime.IsZero()).To(BeFalse())
+
+			ready := findCondition(updated.Status.Conditions, plantonaiv1.ConditionReady)
+			Expect(ready).NotTo(BeNil())
+			Expect(ready.Reason).To(Equal(string(plantonaiv1.ComponentReasonImagePullFailed)),
+				"the Ready condition carries the failing component's reason")
+			Expect(ready.Message).To(HavePrefix("gateway: image "+image),
+				"the MESSAGE column names the component and repeats its sentence, got: %s", ready.Message)
+			Expect(ready.ObservedGeneration).To(Equal(updated.Generation))
+
+			Eventually(recorder.Events, timeout, interval).Should(Receive(And(
+				ContainSubstring("Warning"), ContainSubstring("ImagePullFailed"), ContainSubstring("gateway:"), ContainSubstring(image))))
+
+			// The failure persists; the next reconcile changes nothing and
+			// records nothing more.
+			before := gw.LastTransitionTime
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
+			Expect(updated.Status.Components.Gateway.LastTransitionTime.Equal(&before)).To(BeTrue(),
+				"lastTransitionTime does not move while the same failure persists")
+			Consistently(recorder.Events, 300*time.Millisecond, 50*time.Millisecond).ShouldNot(Receive(),
+				"a persisting failure is one Event, not one per reconcile")
+		})
+	})
+
 })
+
+// fakeRequirementReader answers the operator requirement a release declares
+// without a registry, and counts its calls.
+type fakeRequirementReader struct {
+	required string
+	err      error
+	calls    int
+}
+
+func (f *fakeRequirementReader) RequiredOperator(_ context.Context, _ string) (string, error) {
+	f.calls++
+	return f.required, f.err
+}
 
 func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
 	for i := range conditions {

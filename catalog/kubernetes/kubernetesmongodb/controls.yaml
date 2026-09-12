@@ -44,7 +44,7 @@ spec:
       field_path: backup
       evidence:
         type: spec_default
-        reference: Omitting s3.access_keys makes the Percona Backup for MongoDB agents use the pods' ambient AWS identity (EKS IRSA or node instance profile) -- the keyless posture for real S3; likewise an empty gcs.service_account_key_json uses GKE Workload Identity. Declared static keys materialize as a Kubernetes Secret the agents read, never inline in the CR. S3-compatible endpoints (MinIO and friends) require static keys by necessity.
+        reference: Omitting s3.access_keys makes the Percona Backup for MongoDB agents use the pods' ambient AWS identity (EKS IRSA or node instance profile) -- the keyless posture for real S3, the only one that exists -- GCS always requires gcs.credentials (a service-account key, by reference to a GcpServiceAccount's key_base64 or an existing Secret -- Percona Backup for MongoDB has no Workload Identity path), and Cloudflare R2 always requires r2.credentials (the token's S3 key pair, by reference to a CloudflareAccountApiToken). Declared credentials materialize as a Kubernetes Secret the agents read, never inline in the CR. Other S3-compatible endpoints (MinIO and friends) require static keys by necessity.
     - control_id: no-legacy-auth
       status: not_applicable
       notes: Authentication is MongoDB SCRAM against operator-managed users over TLS; no legacy or weaker authentication path is modeled in this spec to disable. The plaintext posture (tls.mode disabled) is fenced behind the explicit unsafe.tls opt-in (see enc-in-transit).
@@ -62,7 +62,7 @@ spec:
       field_path: backup
       evidence:
         type: spec_default
-        reference: Omitted means no backups -- a deliberate choice, not a default. Configuring backup declares object-store destinations (S3/GCS/Azure), scheduled logical/physical/incremental tasks, and point-in-time recovery via continuously archived oplog chunks, all through Percona Backup for MongoDB.
+        reference: Omitted means no backups -- a deliberate choice, not a default. Configuring backup declares object-store destinations (S3, Cloudflare R2, GCS, Azure), scheduled logical/physical/incremental tasks, and point-in-time recovery via continuously archived oplog chunks, all through Percona Backup for MongoDB.
       notes: Neither preset declares backups; the 01-single-instance preset states the omission is a deliberate development choice. The e2e with-backup scenario exercises the full surface against MinIO.
     - control_id: backup-retention-policy
       status: configurable

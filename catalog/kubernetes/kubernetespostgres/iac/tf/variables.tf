@@ -1,17 +1,3 @@
-# Typed mirror of KubernetesPostgresSpec (spec.proto). The spec arrives from
-# the proto->tfvars converter in snake_case with every StringValueOrRef
-# foreign key -- `namespace` (KubernetesNamespace), `storage.storage_class`
-# (KubernetesStorageClass), `certificates.server_tls_secret`
-# (KubernetesCertificate), and the workload-identity references -- resolved
-# to a literal string before Terraform runs.
-#
-# optional() defaults mirror the proto's (dev.planton.shared.options.default)
-# annotations, so the module renders the same resource whether or not the
-# platform's defaulting middleware ran. Fields whose ABSENCE is meaningful
-# (enable_pdb, resize_in_use_volumes, connection_limit) carry NO default:
-# the module renders them only on explicit divergence from the upstream
-# default, exactly like the Pulumi module's *OrNil helpers.
-
 variable "metadata" {
   description = "Cloud resource metadata"
   type = object({
@@ -30,21 +16,18 @@ variable "spec" {
   type = object({
     namespace        = string
     create_namespace = optional(bool, false)
-    instances        = optional(number, 1)
+    instances        = optional(number)
     image_name       = optional(string, "")
-
     storage = object({
       size                  = string
       storage_class         = optional(string, "")
       resize_in_use_volumes = optional(bool)
     })
-
     wal_storage = optional(object({
       size                  = string
       storage_class         = optional(string, "")
       resize_in_use_volumes = optional(bool)
     }))
-
     resources = optional(object({
       limits = optional(object({
         cpu    = optional(string, "")
@@ -55,27 +38,25 @@ variable "spec" {
         memory = optional(string, "")
       }))
     }))
-
     postgresql = optional(object({
       parameters               = optional(map(string), {})
       pg_hba                   = optional(list(string), [])
       pg_ident                 = optional(list(string), [])
       shared_preload_libraries = optional(list(string), [])
       synchronous = optional(object({
-        method          = optional(string, "any")
-        number          = number
-        data_durability = optional(string, "required")
+        method          = optional(string)
+        number          = optional(number, 0)
+        data_durability = optional(string)
       }))
       enable_alter_system = optional(bool, false)
     }))
-
     bootstrap = optional(object({
       initdb = optional(object({
-        database                  = optional(string, "app")
+        database                  = optional(string)
         owner                     = optional(string, "")
         owner_password            = optional(string, "")
         data_checksums            = optional(bool, false)
-        encoding                  = optional(string, "UTF8")
+        encoding                  = optional(string)
         locale_collate            = optional(string, "")
         locale_ctype              = optional(string, "")
         post_init_sql             = optional(list(string), [])
@@ -111,6 +92,14 @@ variable "spec" {
             storage_account   = optional(string, "")
             storage_key       = optional(string, "")
           }))
+          r2 = optional(object({
+            account_id   = string
+            jurisdiction = optional(string, "")
+            credentials = object({
+              access_key_id     = string
+              secret_access_key = string
+            })
+          }))
           wal = optional(object({
             compression  = optional(string, "")
             max_parallel = optional(number)
@@ -129,27 +118,27 @@ variable "spec" {
           target_immediate = optional(bool, false)
           backup_id        = optional(string, "")
         }))
+        database          = optional(string, "")
+        owner             = optional(string, "")
+        owner_secret_name = optional(string, "")
       }))
       pg_basebackup = optional(object({
         source = string
       }))
     }))
-
     external_clusters = optional(list(object({
       name                  = string
       connection_parameters = optional(map(string), {})
       password              = optional(string, "")
     })), [])
-
     superuser = optional(object({
       enabled  = optional(bool, false)
       password = optional(string, "")
     }))
-
     roles = optional(list(object({
       name             = string
       comment          = optional(string, "")
-      ensure           = optional(string, "present")
+      ensure           = optional(string)
       password         = optional(string, "")
       disable_password = optional(bool, false)
       login            = optional(bool, false)
@@ -161,7 +150,6 @@ variable "spec" {
       in_roles         = optional(list(string), [])
       connection_limit = optional(number)
     })), [])
-
     backup = optional(object({
       object_store = object({
         destination_path = string
@@ -185,6 +173,14 @@ variable "spec" {
           storage_account   = optional(string, "")
           storage_key       = optional(string, "")
         }))
+        r2 = optional(object({
+          account_id   = string
+          jurisdiction = optional(string, "")
+          credentials = object({
+            access_key_id     = string
+            secret_access_key = string
+          })
+        }))
         wal = optional(object({
           compression  = optional(string, "")
           max_parallel = optional(number)
@@ -201,10 +197,9 @@ variable "spec" {
         schedule  = string
         immediate = optional(bool, false)
         suspend   = optional(bool, false)
-        target    = optional(string, "prefer-standby")
+        target    = optional(string)
       })), [])
     }))
-
     workload_identity = optional(object({
       gke = optional(object({
         service_account_email = string
@@ -214,23 +209,20 @@ variable "spec" {
       }))
       aks = optional(object({
         client_id = string
-        tenant_id = optional(string, "")
+        tenant_id = optional(string)
       }))
     }))
-
     certificates = optional(object({
       server_tls_secret    = optional(string, "")
       server_ca_secret     = optional(string, "")
       server_alt_dns_names = optional(list(string), [])
     }))
-
     monitoring = optional(object({
       tls_enabled             = optional(bool, false)
       disable_default_queries = optional(bool, false)
     }))
-
     scheduling = optional(object({
-      anti_affinity_type = optional(string, "preferred")
+      anti_affinity_type = optional(string)
       topology_key       = optional(string, "")
       node_selector      = optional(map(string), {})
       tolerations = optional(list(object({
@@ -242,12 +234,10 @@ variable "spec" {
       })), [])
       priority_class_name = optional(string, "")
     }))
-
     update_strategy = optional(object({
-      primary_update_strategy = optional(string, "unsupervised")
-      primary_update_method   = optional(string, "restart")
+      primary_update_strategy = optional(string)
+      primary_update_method   = optional(string)
     }))
-
     enable_pdb         = optional(bool)
     image_pull_secrets = optional(list(string), [])
   })

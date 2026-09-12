@@ -38,9 +38,12 @@ a TCP route on a Gateway) — this component never creates one.
 BACKUPS ARE PLUGIN-BASED: the backup block renders a Barman Cloud
 `ObjectStore` resource plus the Cluster's plugin wiring (WAL archiving
 starts immediately) and one `ScheduledBackup` per declared schedule.
-The operator must be installed with `barman_cloud_plugin.enabled` —
-CloudNativePG's built-in object-store support is deprecated upstream
-and deliberately not modeled here.
+The Barman Cloud plugin must be on the cluster, in the operator's
+namespace (KubernetesCnpgBarmanCloudPlugin) — without it the operator
+parks a backup-declaring Cluster in the phase "Cluster cannot proceed
+to reconciliation due to an unknown plugin being required" and never
+creates its instances. CloudNativePG's built-in object-store support is
+deprecated upstream and deliberately not modeled here.
 
 ## Example
 
@@ -229,6 +232,12 @@ spec:
 | `spec.bootstrap.recovery.objectStore.azureBlob.connectionString` | `string` (sensitive) |  |  |  |
 | `spec.bootstrap.recovery.objectStore.azureBlob.storageAccount` | `string` |  |  |  |
 | `spec.bootstrap.recovery.objectStore.azureBlob.storageKey` | `string` (sensitive) |  |  |  |
+| `spec.bootstrap.recovery.objectStore.r2` | `KubernetesPostgresR2ObjectStore` |  |  |  |
+| `spec.bootstrap.recovery.objectStore.r2.accountId` | `string \| valueFrom` | yes |  | CloudflareR2Bucket (`status.outputs.account_id`) |
+| `spec.bootstrap.recovery.objectStore.r2.jurisdiction` | `string \| valueFrom` |  |  | CloudflareR2Bucket (`status.outputs.jurisdiction`) |
+| `spec.bootstrap.recovery.objectStore.r2.credentials` | `KubernetesPostgresR2Credentials` | yes |  |  |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId` | `string \| valueFrom` | yes |  | CloudflareAccountApiToken (`status.outputs.r2_access_key_id`) |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey` | `string \| valueFrom` (sensitive) | yes |  | CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`) |
 | `spec.bootstrap.recovery.objectStore.wal` | `KubernetesPostgresWalTuning` |  |  |  |
 | `spec.bootstrap.recovery.objectStore.wal.compression` | `string` |  |  |  |
 | `spec.bootstrap.recovery.objectStore.wal.maxParallel` | `int32` |  |  |  |
@@ -243,6 +252,9 @@ spec:
 | `spec.bootstrap.recovery.recoveryTarget.targetName` | `string` |  |  |  |
 | `spec.bootstrap.recovery.recoveryTarget.targetImmediate` | `bool` |  |  |  |
 | `spec.bootstrap.recovery.recoveryTarget.backupId` | `string` |  |  |  |
+| `spec.bootstrap.recovery.database` | `string` |  |  |  |
+| `spec.bootstrap.recovery.owner` | `string` |  |  |  |
+| `spec.bootstrap.recovery.ownerSecretName` | `string` |  |  |  |
 | `spec.bootstrap.pgBasebackup` | `KubernetesPostgresBootstrapPgBaseBackup` |  |  |  |
 | `spec.bootstrap.pgBasebackup.source` | `string` | yes |  |  |
 | `spec.externalClusters` | `[]KubernetesPostgresExternalCluster` |  |  |  |
@@ -285,6 +297,12 @@ spec:
 | `spec.backup.objectStore.azureBlob.connectionString` | `string` (sensitive) |  |  |  |
 | `spec.backup.objectStore.azureBlob.storageAccount` | `string` |  |  |  |
 | `spec.backup.objectStore.azureBlob.storageKey` | `string` (sensitive) |  |  |  |
+| `spec.backup.objectStore.r2` | `KubernetesPostgresR2ObjectStore` |  |  |  |
+| `spec.backup.objectStore.r2.accountId` | `string \| valueFrom` | yes |  | CloudflareR2Bucket (`status.outputs.account_id`) |
+| `spec.backup.objectStore.r2.jurisdiction` | `string \| valueFrom` |  |  | CloudflareR2Bucket (`status.outputs.jurisdiction`) |
+| `spec.backup.objectStore.r2.credentials` | `KubernetesPostgresR2Credentials` | yes |  |  |
+| `spec.backup.objectStore.r2.credentials.accessKeyId` | `string \| valueFrom` | yes |  | CloudflareAccountApiToken (`status.outputs.r2_access_key_id`) |
+| `spec.backup.objectStore.r2.credentials.secretAccessKey` | `string \| valueFrom` (sensitive) | yes |  | CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`) |
 | `spec.backup.objectStore.wal` | `KubernetesPostgresWalTuning` |  |  |  |
 | `spec.backup.objectStore.wal.compression` | `string` |  |  |  |
 | `spec.backup.objectStore.wal.maxParallel` | `int32` |  |  |  |
@@ -748,18 +766,24 @@ it restored from.
 - rule: the s3 backend stores at an s3:// destination path (also for S3-compatible stores like MinIO and R2)
 - rule: the gcs backend stores at a gs:// destination path
 - rule: the azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)
+- rule: the r2 backend stores at an s3:// destination path (s3://<bucket>/<path> — R2 is addressed through its S3 API; the bucket name is the CloudflareR2Bucket's bucket_name)
 
 ### spec.bootstrap.recovery.objectStore.destinationPath
 
 `string` · required
 
 Where in the store the data lives — the backend's native URI form:
-`s3://bucket/path` for S3 and every S3-compatible store,
-`gs://bucket/path` for GCS, and
+`s3://bucket/path` for S3, Cloudflare R2, and every S3-compatible
+store, `gs://bucket/path` for GCS, and
 `https://<account>.blob.core.windows.net/<container>/<path>` for
 Azure Blob. WAL and base backups are stored under separate folders
-beneath it. One path per PostgreSQL cluster — two clusters writing
-the same path corrupt each other's archives.
+beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
+to archive into a path already holding another cluster's WAL (a
+cluster recreated under the same path after a failed attempt, or a
+recovered cluster backing up to the path it restored from), and the
+failure is quiet — the cluster reports healthy while the
+ContinuousArchiving condition stays false and no backup ever lands
+(live-caught). A recovered cluster's own backups go to a NEW path.
 
 - rule: {"required":true}
 
@@ -767,8 +791,10 @@ the same path corrupt each other's archives.
 
 `KubernetesPostgresS3ObjectStore`
 
-AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, Cloudflare
-R2, DigitalOcean Spaces, ...) via the endpoint_url override.
+AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, DigitalOcean
+Spaces, ...) via the endpoint_url override. Cloudflare R2 has its
+own arm (`r2`) that composes the catalog's Cloudflare kinds; this
+arm still reaches R2 for a hand-carried endpoint and key pair.
 
 - rule: keyless and access_keys are alternative credential postures — set exactly one
 - rule: an S3-compatible endpoint (endpoint_url) authenticates with access_keys — the keyless posture only mints AWS credentials
@@ -778,17 +804,17 @@ R2, DigitalOcean Spaces, ...) via the endpoint_url override.
 `string`
 
 AWS region of the bucket. Required for real S3; for S3-compatible
-stores use the store's expected value (MinIO accepts any, "auto"
-for Cloudflare R2).
+stores use the store's expected value (MinIO accepts any; the `r2`
+arm pins Cloudflare R2's `auto` itself).
 
 ### spec.bootstrap.recovery.objectStore.s3.endpointUrl
 
 `string`
 
 S3-COMPATIBLE ARM: endpoint URL of the store (e.g.
-http://minio.minio-system.svc:9000 for in-cluster MinIO,
-https://<account>.r2.cloudflarestorage.com for R2). Empty = real
-AWS S3.
+http://minio.minio-system.svc:9000 for in-cluster MinIO). Empty =
+real AWS S3. For Cloudflare R2 prefer the `r2` arm, which composes
+the endpoint from the bucket's account and jurisdiction.
 
 - rule: endpoint_url must be an http(s) URL (e.g. http://minio.minio-system.svc:9000)
 
@@ -851,6 +877,17 @@ Identity via the cluster's workload_identity field) authenticates
 to GCS — no stored key. Mutually exclusive with
 service_account_key_json.
 
+THE IDENTITY NEEDS TWO ROLES ON THE BUCKET, not one: Barman Cloud
+verifies the archive destination with a bucket-level read
+(`storage.buckets.get`) before every WAL archive, and
+`roles/storage.objectAdmin` does not carry it — an identity granted
+objectAdmin alone fails every archive with "does not have
+storage.buckets.get access", the cluster reports
+ContinuousArchivingFailing, and never becomes Ready. Grant
+`roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader`
+(a GcpGcsBucket's `iam_members`, one entry each). Live-verified on
+GKE.
+
 ### spec.bootstrap.recovery.objectStore.gcs.serviceAccountKeyJson
 
 `string` · sensitive
@@ -897,6 +934,79 @@ keyless (the account identifies the storage endpoint).
 `string` · sensitive
 
 Storage-account access key, paired with storage_account.
+
+### spec.bootstrap.recovery.objectStore.r2
+
+`KubernetesPostgresR2ObjectStore`
+
+Cloudflare R2, in R2's own vocabulary: the owning account, the
+bucket's jurisdiction, and a Cloudflare credential — each a
+reference onto the catalog's CloudflareR2Bucket and
+CloudflareAccountApiToken by default. The module performs the S3
+translation R2 needs (the jurisdiction's endpoint host, region
+`auto`, the token as an S3 key pair); nothing S3-shaped is typed
+here.
+
+### spec.bootstrap.recovery.objectStore.r2.accountId
+
+`string | valueFrom` · required
+
+The Cloudflare account that owns the bucket (32 hex characters). By
+reference to the bucket resource's `account_id` output, so the arm
+follows the bucket; a literal names an account outside the catalog.
+
+- references: CloudflareR2Bucket (`status.outputs.account_id`)
+- rule: account_id is the 32-hex-character Cloudflare account id
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.account_id}} -- a bare string does not parse
+
+### spec.bootstrap.recovery.objectStore.r2.jurisdiction
+
+`string | valueFrom`
+
+The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+`fedramp`, or `us`. It selects the S3 host the module composes — a
+bucket created in a jurisdiction is unreachable through any other
+host — so it must match the bucket exactly; by reference to the
+bucket resource's `jurisdiction` output it cannot drift.
+
+- references: CloudflareR2Bucket (`status.outputs.jurisdiction`)
+- rule: jurisdiction must be one of "default", "eu", "fedramp", "us" (or empty for default)
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.jurisdiction}} -- a bare string does not parse
+
+### spec.bootstrap.recovery.objectStore.r2.credentials
+
+`KubernetesPostgresR2Credentials` · required
+
+The Cloudflare credential, as the S3 key pair R2's S3 API
+authenticates. Materialized as a Kubernetes Secret the plugin reads;
+never plaintext in the rendered resource.
+
+- rule: {"required":true}
+
+### spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId
+
+`string | valueFrom` · required
+
+The S3 access key id: the API token's id. By reference to the token
+resource's `r2_access_key_id` output.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_access_key_id`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_access_key_id}} -- a bare string does not parse
+
+### spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey
+
+`string | valueFrom` · required · sensitive
+
+The S3 secret access key: the SHA-256 of the API token's value. By
+reference to the token resource's `r2_secret_access_key` output. Rotates
+with the token: a rotated token is a new key pair, and the Secret this
+arm materializes follows the reference on the next apply.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_secret_access_key}} -- a bare string does not parse
 
 ### spec.bootstrap.recovery.objectStore.wal
 
@@ -1005,6 +1115,40 @@ recovery.
 
 Restore from this specific backup ID instead of auto-selecting the
 closest one before the target.
+
+### spec.bootstrap.recovery.database
+
+`string`
+
+Name of the application database inside the recovered instance —
+the one the `<name>-app` credential and the `uri` outputs point
+at. Set it to the SOURCE cluster's application database (its
+initdb `database`). Empty = the upstream default, `app`.
+
+### spec.bootstrap.recovery.owner
+
+`string`
+
+Name of the role that owns the application database. Set it to the
+source cluster's owner role. Empty = same as `database` (the
+upstream default).
+
+### spec.bootstrap.recovery.ownerSecretName
+
+`string`
+
+CREDENTIAL CONTINUITY: the recovered data carries the source
+cluster's roles and their passwords, so the application credential
+this cluster hands out must be the source's. Name an existing
+basic-auth Secret in this namespace (`username` + `password` keys —
+exactly the shape of the source's `<source>-app` Secret, so keeping
+that Secret alive through a KubernetesSecret, an ExternalSecret, or
+the secret backend is the whole backup of the credential). The
+operator adopts it as this cluster's app Secret and the outputs
+point at it. Empty = the operator generates a fresh `<name>-app`
+with a NEW password and resets the owner role to match — fine for
+a clone that will get its own consumers, wrong for a recovery that
+must serve the source's.
 
 ### spec.bootstrap.pgBasebackup
 
@@ -1198,8 +1342,12 @@ Maximum concurrent connections for the role. Upstream default: -1
 
 Continuous backup: WAL archiving plus scheduled base backups to an
 object store, via the Barman Cloud plugin. Omitted = no backups (a
-deliberate choice to make, not a default to forget). Requires the
-operator installed with barman_cloud_plugin.enabled.
+deliberate choice to make, not a default to forget). Requires
+KubernetesCnpgBarmanCloudPlugin installed in the operator's namespace
+BEFORE this block is declared: the Cluster is rendered against that
+plugin and the operator will not reconcile it until the plugin is
+discovered (phase "unknown plugin being required" in `kubectl get
+cluster`).
 
 ### spec.backup.objectStore
 
@@ -1214,18 +1362,24 @@ below add the periodic base backups PITR needs.
 - rule: the s3 backend stores at an s3:// destination path (also for S3-compatible stores like MinIO and R2)
 - rule: the gcs backend stores at a gs:// destination path
 - rule: the azure_blob backend stores at an https:// destination path (https://<account>.blob.core.windows.net/<container>/<path>)
+- rule: the r2 backend stores at an s3:// destination path (s3://<bucket>/<path> — R2 is addressed through its S3 API; the bucket name is the CloudflareR2Bucket's bucket_name)
 
 ### spec.backup.objectStore.destinationPath
 
 `string` · required
 
 Where in the store the data lives — the backend's native URI form:
-`s3://bucket/path` for S3 and every S3-compatible store,
-`gs://bucket/path` for GCS, and
+`s3://bucket/path` for S3, Cloudflare R2, and every S3-compatible
+store, `gs://bucket/path` for GCS, and
 `https://<account>.blob.core.windows.net/<container>/<path>` for
 Azure Blob. WAL and base backups are stored under separate folders
-beneath it. One path per PostgreSQL cluster — two clusters writing
-the same path corrupt each other's archives.
+beneath it. One path per PostgreSQL cluster, FOREVER: Barman refuses
+to archive into a path already holding another cluster's WAL (a
+cluster recreated under the same path after a failed attempt, or a
+recovered cluster backing up to the path it restored from), and the
+failure is quiet — the cluster reports healthy while the
+ContinuousArchiving condition stays false and no backup ever lands
+(live-caught). A recovered cluster's own backups go to a NEW path.
 
 - rule: {"required":true}
 
@@ -1233,8 +1387,10 @@ the same path corrupt each other's archives.
 
 `KubernetesPostgresS3ObjectStore`
 
-AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, Cloudflare
-R2, DigitalOcean Spaces, ...) via the endpoint_url override.
+AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, DigitalOcean
+Spaces, ...) via the endpoint_url override. Cloudflare R2 has its
+own arm (`r2`) that composes the catalog's Cloudflare kinds; this
+arm still reaches R2 for a hand-carried endpoint and key pair.
 
 - rule: keyless and access_keys are alternative credential postures — set exactly one
 - rule: an S3-compatible endpoint (endpoint_url) authenticates with access_keys — the keyless posture only mints AWS credentials
@@ -1244,17 +1400,17 @@ R2, DigitalOcean Spaces, ...) via the endpoint_url override.
 `string`
 
 AWS region of the bucket. Required for real S3; for S3-compatible
-stores use the store's expected value (MinIO accepts any, "auto"
-for Cloudflare R2).
+stores use the store's expected value (MinIO accepts any; the `r2`
+arm pins Cloudflare R2's `auto` itself).
 
 ### spec.backup.objectStore.s3.endpointUrl
 
 `string`
 
 S3-COMPATIBLE ARM: endpoint URL of the store (e.g.
-http://minio.minio-system.svc:9000 for in-cluster MinIO,
-https://<account>.r2.cloudflarestorage.com for R2). Empty = real
-AWS S3.
+http://minio.minio-system.svc:9000 for in-cluster MinIO). Empty =
+real AWS S3. For Cloudflare R2 prefer the `r2` arm, which composes
+the endpoint from the bucket's account and jurisdiction.
 
 - rule: endpoint_url must be an http(s) URL (e.g. http://minio.minio-system.svc:9000)
 
@@ -1317,6 +1473,17 @@ Identity via the cluster's workload_identity field) authenticates
 to GCS — no stored key. Mutually exclusive with
 service_account_key_json.
 
+THE IDENTITY NEEDS TWO ROLES ON THE BUCKET, not one: Barman Cloud
+verifies the archive destination with a bucket-level read
+(`storage.buckets.get`) before every WAL archive, and
+`roles/storage.objectAdmin` does not carry it — an identity granted
+objectAdmin alone fails every archive with "does not have
+storage.buckets.get access", the cluster reports
+ContinuousArchivingFailing, and never becomes Ready. Grant
+`roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader`
+(a GcpGcsBucket's `iam_members`, one entry each). Live-verified on
+GKE.
+
 ### spec.backup.objectStore.gcs.serviceAccountKeyJson
 
 `string` · sensitive
@@ -1363,6 +1530,79 @@ keyless (the account identifies the storage endpoint).
 `string` · sensitive
 
 Storage-account access key, paired with storage_account.
+
+### spec.backup.objectStore.r2
+
+`KubernetesPostgresR2ObjectStore`
+
+Cloudflare R2, in R2's own vocabulary: the owning account, the
+bucket's jurisdiction, and a Cloudflare credential — each a
+reference onto the catalog's CloudflareR2Bucket and
+CloudflareAccountApiToken by default. The module performs the S3
+translation R2 needs (the jurisdiction's endpoint host, region
+`auto`, the token as an S3 key pair); nothing S3-shaped is typed
+here.
+
+### spec.backup.objectStore.r2.accountId
+
+`string | valueFrom` · required
+
+The Cloudflare account that owns the bucket (32 hex characters). By
+reference to the bucket resource's `account_id` output, so the arm
+follows the bucket; a literal names an account outside the catalog.
+
+- references: CloudflareR2Bucket (`status.outputs.account_id`)
+- rule: account_id is the 32-hex-character Cloudflare account id
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.account_id}} -- a bare string does not parse
+
+### spec.backup.objectStore.r2.jurisdiction
+
+`string | valueFrom`
+
+The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+`fedramp`, or `us`. It selects the S3 host the module composes — a
+bucket created in a jurisdiction is unreachable through any other
+host — so it must match the bucket exactly; by reference to the
+bucket resource's `jurisdiction` output it cannot drift.
+
+- references: CloudflareR2Bucket (`status.outputs.jurisdiction`)
+- rule: jurisdiction must be one of "default", "eu", "fedramp", "us" (or empty for default)
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareR2Bucket, name: <that resource's name>, fieldPath: status.outputs.jurisdiction}} -- a bare string does not parse
+
+### spec.backup.objectStore.r2.credentials
+
+`KubernetesPostgresR2Credentials` · required
+
+The Cloudflare credential, as the S3 key pair R2's S3 API
+authenticates. Materialized as a Kubernetes Secret the plugin reads;
+never plaintext in the rendered resource.
+
+- rule: {"required":true}
+
+### spec.backup.objectStore.r2.credentials.accessKeyId
+
+`string | valueFrom` · required
+
+The S3 access key id: the API token's id. By reference to the token
+resource's `r2_access_key_id` output.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_access_key_id`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_access_key_id}} -- a bare string does not parse
+
+### spec.backup.objectStore.r2.credentials.secretAccessKey
+
+`string | valueFrom` · required · sensitive
+
+The S3 secret access key: the SHA-256 of the API token's value. By
+reference to the token resource's `r2_secret_access_key` output. Rotates
+with the token: a rotated token is a new key pair, and the Secret this
+arm materializes follows the reference on the next apply.
+
+- references: CloudflareAccountApiToken (`status.outputs.r2_secret_access_key`)
+- rule: {"required":true}
+- rule: write as {value: <literal>} or {valueFrom: {kind: CloudflareAccountApiToken, name: <that resource's name>, fieldPath: status.outputs.r2_secret_access_key}} -- a bare string does not parse
 
 ### spec.backup.objectStore.wal
 
@@ -1468,7 +1708,8 @@ field is seconds.
 
 Take the first backup immediately on creation instead of waiting
 for the first cron tick — recommended: the cluster is unprotected
-until its first base backup exists.
+until its first base backup exists. WAL archiving alone restores
+nothing — a recovery needs a base backup to replay WAL onto.
 
 ### spec.backup.schedules[].suspend
 
@@ -1496,7 +1737,15 @@ instance).
 Keyless cloud identity for the instance pods' ServiceAccount —
 annotates it so backups reach S3 (EKS IRSA), GCS (GKE Workload
 Identity), or Azure Blob (AKS Workload Identity) without stored
-keys. Pair with the backup block's keyless arm.
+keys. Pair with the backup block's keyless arm. The ServiceAccount
+the operator creates is named after the cluster (`metadata.name`,
+in `namespace`), so the cloud-side binding names exactly that pair —
+on GKE a GcpGkeWorkloadIdentityBinding with `ksa_name` = this
+cluster's name and `ksa_namespace` = its namespace, one per cluster
+(a recovery target is another cluster and needs its own). On GKE the
+GCP service account needs `roles/storage.objectAdmin` AND
+`roles/storage.legacyBucketReader` on the bucket (live-proven; see
+the gcs.keyless field).
 
 ### spec.workloadIdentity.gke
 
@@ -1640,7 +1889,12 @@ selection, tolerations, and scheduling priority.
 How strongly instances avoid sharing a node: "preferred" (the
 upstream default — best effort, still schedules on a small
 cluster) or "required" (hard rule — instances stay Pending unless
-separate nodes exist; the production posture).
+separate nodes exist; the production posture). On an autoscaled
+cluster (GKE, EKS) "required" makes the autoscaler add a node per
+instance — expect ~4 minutes per instance for the node to join and
+pull the ~270 MB image before the cluster is Ready (live-measured);
+on a fixed-size cluster with fewer nodes than instances it never
+schedules.
 
 - default: `preferred`
 - rule: anti_affinity_type must be 'preferred' (best effort) or 'required' (hard rule)
@@ -1787,6 +2041,14 @@ Fields that can point at another resource's outputs:
 | `spec.namespace` | KubernetesNamespace | `spec.name` |
 | `spec.storage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
 | `spec.walStorage.storageClass` | KubernetesStorageClass | `status.outputs.storage_class_name` |
+| `spec.bootstrap.recovery.objectStore.r2.accountId` | CloudflareR2Bucket | `status.outputs.account_id` |
+| `spec.bootstrap.recovery.objectStore.r2.jurisdiction` | CloudflareR2Bucket | `status.outputs.jurisdiction` |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId` | CloudflareAccountApiToken | `status.outputs.r2_access_key_id` |
+| `spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey` | CloudflareAccountApiToken | `status.outputs.r2_secret_access_key` |
+| `spec.backup.objectStore.r2.accountId` | CloudflareR2Bucket | `status.outputs.account_id` |
+| `spec.backup.objectStore.r2.jurisdiction` | CloudflareR2Bucket | `status.outputs.jurisdiction` |
+| `spec.backup.objectStore.r2.credentials.accessKeyId` | CloudflareAccountApiToken | `status.outputs.r2_access_key_id` |
+| `spec.backup.objectStore.r2.credentials.secretAccessKey` | CloudflareAccountApiToken | `status.outputs.r2_secret_access_key` |
 | `spec.workloadIdentity.gke.serviceAccountEmail` | GcpServiceAccount | `status.outputs.email` |
 | `spec.workloadIdentity.eks.roleArn` | AwsIamRole | `status.outputs.role_arn` |
 | `spec.workloadIdentity.aks.clientId` | AzureUserAssignedIdentity | `status.outputs.client_id` |

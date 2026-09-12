@@ -35,13 +35,13 @@ func (i *Ingress) reconcileIngressEdge(ctx context.Context, c client.Client, pla
 		return Result{}, err
 	}
 	if preflightMsg != "" {
-		return Result{Ready: false, Message: preflightMsg}, nil
+		return Refused(preflightMsg), nil
 	}
 
 	if msg, err := i.preflightTLS(ctx, c, planton); err != nil {
 		return Result{}, err
 	} else if msg != "" {
-		return Result{Ready: false, Message: msg}, nil
+		return Refused(msg), nil
 	}
 
 	cfg := resources.IngressConfig{
@@ -92,7 +92,7 @@ func (i *Ingress) reconcileIngressEdge(ctx context.Context, c client.Client, pla
 	// depends on the ingress being Ready, only on the URL existing, so the
 	// rest of the platform converges while the person points their DNS.
 	url := resources.PublicURL(cfg.Hostname, spec.TLS != nil)
-	planton.Status.ConsoleURL = url
+	publishFrontDoor(planton, url)
 
 	// A cert-manager-issued certificate gates readiness: until it is
 	// actually issued, the advertised HTTPS door answers with the ingress
@@ -113,6 +113,9 @@ func (i *Ingress) reconcileIngressEdge(ctx context.Context, c client.Client, pla
 	msg := fmt.Sprintf("Console at %s", url)
 	if spec.TLS == nil {
 		msg += " (unencrypted HTTP; set spec.ingress.tls for HTTPS)"
+	}
+	if reason := remoteRunnersClosedReason(planton); reason != "" {
+		msg += ". " + reason
 	}
 	log.Info("Ingress ready", "url", url)
 	return Result{Ready: true, Message: msg}, nil

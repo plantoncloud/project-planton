@@ -16,4 +16,12 @@ message KubernetesHttpRouteStackOutputs {
   // Cross-namespace parent and backend references from this route are subject
   // to ReferenceGrant rules relative to this value.
   string namespace = 2;
+
+  // The first hostname the route matches (spec.hostnames[0]) -- the address a
+  // request reaches this route at, exported exactly as the Ingress kind exports
+  // its first rule's host, so anything that reads a hostname off an Ingress
+  // (a dashboard, a smoke test, a DNS record, a deployment's URL discovery)
+  // reads it off a route the same way. Empty when the route declares no
+  // hostnames and matches every host its Gateway listener accepts.
+  string first_host = 3;
 }

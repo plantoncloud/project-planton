@@ -3,29 +3,17 @@ kind: ComponentImportMap
 metadata:
   name: kubernetescloudnativepgoperator
 spec:
-  # CloudNativePG installs as up to TWO Helm releases in one namespace — the
-  # operator ("cnpg", always) and the Barman Cloud plugin
-  # ("plugin-barman-cloud", present when barman_cloud_plugin.enabled) — plus
-  # the optional anchor namespace. Two helm_release resources share one
-  # id_format, so {release_name} is declared PER Terraform logical resource
-  # via tofu_resource_name scoping; {release_namespace} is the same for both.
+  # CloudNativePG installs as ONE Helm release ("cnpg") plus the optional
+  # anchor namespace. The Barman Cloud plugin is its own kind with its own
+  # release and its own import map.
   values:
     - name: release_name
-      tofu_resource_name: cloudnative_pg
       derivations:
         - from_stack_output: release_name
       where_to_find: >-
         Always "cnpg" — the module fixes the operator release name (one
         operator per cluster: cluster-scoped CRDs plus a fixed webhook
         service name). Confirm with `helm list -n <namespace>` (NAME column).
-    - name: release_name
-      tofu_resource_name: barman_cloud_plugin
-      derivations:
-        - literal: plugin-barman-cloud
-      where_to_find: >-
-        Always "plugin-barman-cloud" — the module fixes the plugin release
-        name (present only when barman_cloud_plugin.enabled). Confirm with
-        `helm list -n <namespace>` (NAME column).
     - name: release_namespace
       derivations:
         - from_stack_output: namespace

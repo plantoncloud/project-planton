@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -31,6 +33,7 @@ import (
 
 	plantonaiv1 "github.com/plantonhq/planton/operator/api/v1"
 	"github.com/plantonhq/planton/operator/internal/component"
+	"github.com/plantonhq/planton/operator/internal/janitor"
 	"github.com/plantonhq/planton/operator/internal/platformversion"
 	"github.com/plantonhq/planton/operator/internal/status"
 )
@@ -41,8 +44,30 @@ const requeueInterval = 30 * time.Second
 type PlantonPlatformReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// Janitor takes back what the operator installed cluster-wide once a
+	// platform is gone (its own satellites) or once no platform remains (the
+	// shared sub-operators). Optional: nil skips the sweep, which only tests
+	// that build a reconciler by hand rely on.
+	Janitor *janitor.Janitor
+	// Recorder writes an Event on the platform when a component's condition
+	// changes: a Warning the moment a component enters a failure, a Normal
+	// when it recovers -- once per change, never once per reconcile, so a
+	// stuck install shows one line under `kubectl describe` and a healthy
+	// one shows none. Optional: nil records nothing, which only tests that
+	// build a reconciler by hand rely on.
+	Recorder record.EventRecorder
+	// RequirementReader reads, from the registry, the oldest operator a
+	// declared platform release says it needs. Optional: nil skips the check
+	// (tests that build a reconciler by hand; a development build skips it
+	// regardless). Answers are remembered per version for the process's
+	// lifetime -- a release's requirement never changes once published.
+	RequirementReader platformversion.RequirementReader
+
+	requirementsMu sync.Mutex
+	requirements   map[string]string
 }
 
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=planton.ai,resources=plantonplatforms/finalizers,verbs=update
@@ -58,8 +83,14 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	var planton plantonaiv1.PlantonPlatform
 	if err := r.Get(ctx, req.NamespacedName, &planton); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("PlantonPlatform resource deleted, nothing to reconcile")
-			return ctrl.Result{}, nil
+			// The platform's own objects are already on their way out through
+			// owner-reference garbage collection (the operator has no
+			// finalizers, so this branch is the whole deletion path). What GC
+			// cannot reach -- the platform's cluster-scoped satellites and,
+			// when this was the last platform, the shared sub-operators -- the
+			// janitor takes back now, and asks to run again while anything is
+			// still draining.
+			return r.sweepAfterDeletion(ctx, req)
 		}
 		return ctrl.Result{}, err
 	}
@@ -83,10 +114,18 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// deleted, a running platform left exactly as it is -- and the reason is
 	// written where the person will look. No requeue: there is nothing to
 	// watch until the spec changes, and a spec change re-enqueues on its own.
-	if verdict := platformversion.Check(planton.Spec.Version); !verdict.Supported {
+	verdict := platformversion.Check(planton.Spec.Version)
+	if verdict.Supported {
+		// The other direction of the contract: the platform release names
+		// the oldest operator it needs. Best-effort -- a registry the
+		// operator cannot reach means proceeding as before, said in the log.
+		verdict = r.checkOperatorRequirement(ctx, &planton)
+	}
+	if !verdict.Supported {
 		log.Info("Refusing to reconcile: platform version unsupported",
 			"version", planton.Spec.Version,
 			"minimumSupported", platformversion.MinimumSupported,
+			"operatorRelease", platformversion.OperatorRelease,
 			"reason", verdict.Reason,
 		)
 		if status.RefuseVersion(&planton, verdict.Reason, verdict.Message) {
@@ -113,29 +152,42 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		ready, unreadyDep := component.DependenciesReady(&planton.Status.Components, comp.Dependencies(&planton))
 		if !ready {
-			status.SetComponentPhase(cs,
-				plantonaiv1.ComponentPhasePending,
-				"Waiting for dependency: "+unreadyDep)
+			r.recordComponent(&planton, comp.Name(), cs, plantonaiv1.ComponentPhasePending, status.ComponentState{
+				Reason:  plantonaiv1.ComponentReasonWaitingForDependency,
+				Message: "Waiting for dependency: " + unreadyDep,
+			})
 			continue
 		}
 
 		result, err := comp.Reconcile(ctx, r.Client, r.Scheme, &planton)
 		if err != nil {
 			log.Error(err, "Component reconciliation failed", "component", comp.Name())
-			status.SetComponentPhase(cs, plantonaiv1.ComponentPhaseError, err.Error())
+			// The error already names the object it failed on (every apply
+			// wraps kind and name); the reason says whose fault it is -- the
+			// operator's own read or apply, not the workload's.
+			r.recordComponent(&planton, comp.Name(), cs, plantonaiv1.ComponentPhaseError, status.ComponentState{
+				Reason:  plantonaiv1.ComponentReasonReconcileFailed,
+				Message: "the operator could not reconcile this component: " + err.Error(),
+			})
 			continue
 		}
 
+		phase := plantonaiv1.ComponentPhaseDeploying
 		if result.Ready {
-			status.SetComponentPhase(cs, plantonaiv1.ComponentPhaseReady, result.Message)
-		} else {
-			status.SetComponentPhase(cs, plantonaiv1.ComponentPhaseDeploying, result.Message)
+			phase = plantonaiv1.ComponentPhaseReady
 		}
+		r.recordComponent(&planton, comp.Name(), cs, phase, status.ComponentState{
+			Reason: result.Reason, Object: result.Object, Message: result.Message,
+		})
 	}
 
 	overallPhase := status.ComputeOverallPhase(&planton)
 	planton.Status.Phase = overallPhase
 	status.UpdateReadyCondition(&planton)
+	// The backup condition follows status.backup, which the PostgreSQL
+	// component wrote from the database operator's own signals; it is not an
+	// input to Ready (a failing backup never turns a working platform red).
+	status.SyncBackupCondition(&planton)
 
 	if err := r.Status().Update(ctx, &planton); err != nil {
 		return ctrl.Result{}, err
@@ -146,6 +198,84 @@ func (r *PlantonPlatformReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		"interval", requeueInterval,
 	)
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+// checkOperatorRequirement judges this operator against the oldest operator
+// the declared platform release says it needs. The requirement is read from
+// the registry once per declared version and remembered; a read that fails
+// is logged and the platform proceeds -- the guard must never make an
+// air-gapped install worse than it was without it. A development build
+// judges nothing: it cannot place itself on the release line.
+func (r *PlantonPlatformReconciler) checkOperatorRequirement(ctx context.Context, planton *plantonaiv1.PlantonPlatform) platformversion.Verdict {
+	supported := platformversion.Verdict{Supported: true, Reason: platformversion.ReasonSupported}
+	if r.RequirementReader == nil || !platformversion.IsReleaseBuild() {
+		return supported
+	}
+	version := planton.Spec.Version
+	r.requirementsMu.Lock()
+	required, known := r.requirements[version]
+	r.requirementsMu.Unlock()
+	if !known {
+		read, err := r.RequirementReader.RequiredOperator(ctx, version)
+		if err != nil {
+			logf.FromContext(ctx).Info("Could not read the operator requirement the platform release declares; proceeding without the check",
+				"version", version, "error", err.Error())
+			return supported
+		}
+		required = read
+		r.requirementsMu.Lock()
+		if r.requirements == nil {
+			r.requirements = map[string]string{}
+		}
+		r.requirements[version] = required
+		r.requirementsMu.Unlock()
+	}
+	planton.Status.RequiredOperatorVersion = required
+	return platformversion.CheckOperatorRequirement(version, required)
+}
+
+// recordComponent writes a component's phase and state and, when the
+// condition actually changed, tells the platform's Event stream about it: a
+// Warning when the component entered a failure, a Normal when it left one
+// for Ready. Changes between two in-progress conditions (Deploying to
+// StartingUp) are status-only -- they are the boot happening, not news.
+func (r *PlantonPlatformReconciler) recordComponent(planton *plantonaiv1.PlantonPlatform, name string, cs *plantonaiv1.ComponentStatus, phase plantonaiv1.ComponentPhase, state status.ComponentState) {
+	wasFailing := cs.Reason.IsFailure() || cs.Phase == plantonaiv1.ComponentPhaseError
+	if !status.SetComponentPhase(cs, phase, state) || r.Recorder == nil {
+		return
+	}
+	switch {
+	case cs.Reason.IsFailure():
+		r.Recorder.Eventf(planton, "Warning", string(cs.Reason), "%s: %s", name, cs.Message)
+	case wasFailing && cs.Phase == plantonaiv1.ComponentPhaseReady:
+		r.Recorder.Eventf(planton, "Normal", "ComponentRecovered", "%s: %s", name, cs.Message)
+	}
+}
+
+// sweepAfterDeletion runs the janitor for a platform that no longer exists
+// and turns its outcome into the reconcile's answer: requeue while garbage
+// collection is still draining an instance the teardown must wait for,
+// otherwise done.
+func (r *PlantonPlatformReconciler) sweepAfterDeletion(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	if r.Janitor == nil {
+		log.Info("PlantonPlatform resource deleted, nothing to reconcile")
+		return ctrl.Result{}, nil
+	}
+	outcome, err := r.Janitor.Sweep(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	log.Info("PlantonPlatform resource deleted; swept what garbage collection cannot reach",
+		"platform", req.String(),
+		"platformsRemaining", outcome.PlatformsRemaining,
+		"satellitesRemoved", outcome.SatellitesRemoved,
+		"subOperators", outcome.SortedVerdictNames(),
+	)
+	if outcome.Draining {
+		return ctrl.Result{RequeueAfter: janitor.DrainRequeue}, nil
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

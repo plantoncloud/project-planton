@@ -6,6 +6,7 @@ package verify
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -159,24 +160,52 @@ func manifestSpecInt(manifestPath, key string, fallback int64) int64 {
 	}
 }
 
-// manifestBarmanPluginEnabled reports whether the operator manifest enables
-// the Barman Cloud plugin (spec.barmanCloudPlugin.enabled) — the verifier
-// asserts the plugin deployment only when the spec asked for it.
-func manifestBarmanPluginEnabled(manifestPath string) bool {
+// manifestNestedRecoveryOwnerSecret reads spec.bootstrap.recovery.owner_secret_name
+// (either field-name convention) from a KubernetesPostgres manifest — "" when
+// the manifest declares no recovery or brings no Secret.
+func manifestNestedRecoveryOwnerSecret(manifestPath string) string {
+	spec := manifestSpecMap(manifestPath)
+	if spec == nil {
+		return ""
+	}
+	bootstrap, _ := spec["bootstrap"].(map[string]interface{})
+	recovery, _ := bootstrap["recovery"].(map[string]interface{})
+	for _, key := range []string{"ownerSecretName", "owner_secret_name"} {
+		if value, ok := recovery[key].(string); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+// manifestDeclaresBarmanPlugin reports whether a KubernetesPostgres manifest
+// renders the Barman Cloud plugin into its Cluster: a backup block or an
+// object-store recovery (either field-name convention). Both need the
+// plugin on the cluster before the Cluster can reconcile.
+func manifestDeclaresBarmanPlugin(manifestPath string) bool {
 	spec := manifestSpecMap(manifestPath)
 	if spec == nil {
 		return false
 	}
-	plugin, ok := spec["barmanCloudPlugin"].(map[string]interface{})
-	if !ok {
-		// Scenario manifests use the snake_case field convention.
-		plugin, ok = spec["barman_cloud_plugin"].(map[string]interface{})
-		if !ok {
-			return false
-		}
+	if _, ok := spec["backup"].(map[string]interface{}); ok {
+		return true
 	}
-	enabled, _ := plugin["enabled"].(bool)
-	return enabled
+	bootstrap, _ := spec["bootstrap"].(map[string]interface{})
+	if _, ok := bootstrap["recovery"].(map[string]interface{}); ok {
+		return true
+	}
+	return false
+}
+
+// scenarioMatches reports whether the scenario file's name (its basename
+// without the extension) starts with prefix and ends with suffix -- the
+// store-neutral form of the name-keyed dispatch, so `gke-gcs-recovery` and
+// `gke-r2-recovery` switch on the same proof. The runner keeps a scenario's
+// basename on the expanded copies it hands to verification, so the match
+// holds for those too.
+func scenarioMatches(manifestPath, prefix, suffix string) bool {
+	name := strings.TrimSuffix(filepath.Base(manifestPath), filepath.Ext(manifestPath))
+	return strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix)
 }
 
 // manifestAnnotation reads one metadata.annotations value, "" when absent or

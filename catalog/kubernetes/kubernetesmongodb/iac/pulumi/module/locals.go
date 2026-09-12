@@ -36,7 +36,11 @@ type Locals struct {
 
 	// UsersSecretName is the system-users Secret rendered explicitly as
 	// spec.secrets.users — per-cluster naming, not the operator's shared
-	// "percona-server-mongodb-users" fallback.
+	// "percona-server-mongodb-users" fallback. When the spec brings its
+	// own (system_users_secret_name — the disaster-recovery path, where
+	// the restored data carries the SOURCE cluster's users and the
+	// operator must log in with the source's passwords), that Secret is
+	// referenced instead and the operator generates nothing.
 	UsersSecretName string
 
 	ShardingEnabled     bool
@@ -84,13 +88,18 @@ func initializeLocals(_ *pulumi.Context, stackInput *kubernetesmongodbv1alpha1.K
 
 	kubeEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:%d", serviceName, namespace, vars.MongoDBPort)
 
+	usersSecretName := clusterName + "-secrets"
+	if spec.GetSystemUsersSecretName() != "" {
+		usersSecretName = spec.GetSystemUsersSecretName()
+	}
+
 	return &Locals{
 		KubernetesMongodb:   target,
 		Spec:                spec,
 		Labels:              labels,
 		Namespace:           namespace,
 		ClusterName:         clusterName,
-		UsersSecretName:     clusterName + "-secrets",
+		UsersSecretName:     usersSecretName,
 		ShardingEnabled:     shardingEnabled,
 		FirstReplicaSetName: firstReplicaSetName,
 		ServiceName:         serviceName,

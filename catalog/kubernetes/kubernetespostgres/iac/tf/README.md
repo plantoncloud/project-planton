@@ -9,8 +9,9 @@ apply), which needs no cluster connection at plan time — the database
 can be planned before CloudNativePG's CRDs exist.
 
 Prerequisites at apply time: the CloudNativePG operator
-(`KubernetesCloudNativePgOperator`) on the cluster, installed with
-`barman_cloud_plugin.enabled` when backups are declared.
+(`KubernetesCloudNativePgOperator`) on the cluster, and the Barman Cloud
+plugin (`KubernetesCnpgBarmanCloudPlugin`, in the operator's namespace)
+when backups or an object-store recovery are declared.
 
 ## Module Behavior
 
@@ -62,7 +63,7 @@ Prerequisites at apply time: the CloudNativePG operator
 | `kubernetes_secret_v1.role_password_secret[<role>]` | role declares a password |
 | `kubernetes_secret_v1.external_cluster_password_secret[<ext>]` | external cluster declares a password |
 | `kubernetes_secret_v1.backup_credentials_secret` / `recovery_credentials_secret` | declared-key backend arm |
-| `kubernetes_secret_v1.backup_region_secret` / `recovery_region_secret` | S3 arm with a region |
+| `kubernetes_secret_v1.backup_region_secret` / `recovery_region_secret` | S3 arm with a region; always for the R2 arm (`auto`) |
 | `kubernetes_secret_v1.backup_endpoint_ca_secret` / `recovery_endpoint_ca_secret` | S3-compatible arm with `endpoint_ca_pem` |
 | `kubectl_manifest.backup_object_store` | `spec.backup` |
 | `kubectl_manifest.recovery_object_store` | recovery bootstrap |

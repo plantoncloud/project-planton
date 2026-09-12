@@ -201,7 +201,7 @@ func explainKubernetesForbidden(text string) *Failure {
 // A create or update with strict field validation fails the decoder:
 // PlantonPlatform in version "v1" cannot be handled as a PlantonPlatform: strict decoding error: unknown field "spec.ingress.gatewayRef"
 var (
-	kubernetesFieldNotInSchemaPattern    = regexp.MustCompile(`failed to create typed patch object \([^;]+; [^,]+, Kind=(\w+)\): \.([\w.\[\]]+): field not declared in schema`)
+	kubernetesFieldNotInSchemaPattern   = regexp.MustCompile(`failed to create typed patch object \([^;]+; [^,]+, Kind=(\w+)\): \.([\w.\[\]]+): field not declared in schema`)
 	kubernetesStrictUnknownFieldPattern = regexp.MustCompile(`(\w+) in version "[^"]+" cannot be handled as a \w+: strict decoding error: unknown field "([^"]+)"`)
 )
 

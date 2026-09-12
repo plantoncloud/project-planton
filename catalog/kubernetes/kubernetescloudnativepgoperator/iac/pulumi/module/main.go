@@ -8,33 +8,24 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// Resources installs CloudNativePG from the official Helm charts as up to
-// TWO real Helm releases in the same namespace:
+// Resources installs CloudNativePG from the official Helm chart as ONE Helm
+// release, "cnpg". The release name is FIXED: the operator registers
+// cluster-scoped CRDs and webhooks whose service name is baked into the
+// chart (and into the webhook certificate) — one installation per cluster
+// is an upstream constraint.
 //
-//  1. "cnpg" — the operator chart (cloudnative-pg). The release name is
-//     FIXED: the operator registers cluster-scoped CRDs and webhooks whose
-//     service name is baked into the chart (and into the webhook
-//     certificate) — one installation per cluster is an upstream
-//     constraint.
-//  2. "plugin-barman-cloud" (when spec.barman_cloud_plugin.enabled) — the
-//     Barman Cloud CNPG-I plugin chart, the object-store backup path for
-//     every KubernetesPostgres on the cluster. A SEPARATE release in the
-//     SAME namespace: upstream forbids folding the plugin into the
-//     operator's release (Helm ownership of shared resources would
-//     conflict). Installed AFTER the operator so the plugin's CNPG-I
-//     registration always lands on a running operator.
+// BACKUPS LIVE IN A SIBLING KIND: object-store backups run through the
+// Barman Cloud CNPG-I plugin, which is a separate chart with its own pin
+// and its own cert-manager dependency, installed into THIS release's
+// namespace by KubernetesCnpgBarmanCloudPlugin. Upstream forbids folding
+// the plugin into the operator's release (Helm ownership of shared
+// resources would conflict), so this module never renders it — one kind
+// per release.
 //
-// CERT-MANAGER DEPENDENCY (deliberate, documented): the plugin chart
-// renders cert-manager Issuer/Certificate resources UNCONDITIONALLY — its
-// operator↔sidecar TLS is issued by cert-manager. Without cert-manager on
-// the cluster (KubernetesCertManager) the plugin release fails to install;
-// atomic rolls it back cleanly.
-//
-// The typed spec renders into operator-chart values (values.go); the
-// helm_values escape hatch merges last with Helm -f semantics — the exact
-// semantic twin of the Terraform module's helm_release with
-// values = [typed, helm_values]. helm_values scopes to the OPERATOR chart
-// only.
+// The typed spec renders into chart values (values.go); the helm_values
+// escape hatch merges last with Helm -f semantics — the exact semantic
+// twin of the Terraform module's helm_release with values = [typed,
+// helm_values].
 func Resources(ctx *pulumi.Context, stackInput *kubernetescloudnativepgoperatorv1alpha1.KubernetesCloudNativePgOperatorStackInput) error {
 	locals := initializeLocals(ctx, stackInput)
 
@@ -61,7 +52,7 @@ func Resources(ctx *pulumi.Context, stackInput *kubernetescloudnativepgoperatorv
 		return errors.Wrap(err, "failed to build helm values")
 	}
 
-	operatorRelease, err := helmv3.NewRelease(ctx, vars.ReleaseName, &helmv3.ReleaseArgs{
+	_, err = helmv3.NewRelease(ctx, vars.ReleaseName, &helmv3.ReleaseArgs{
 		Name:      pulumi.String(vars.ReleaseName),
 		Namespace: pulumi.String(locals.Namespace),
 		Chart:     pulumi.String(vars.HelmChartName),
@@ -87,43 +78,8 @@ func Resources(ctx *pulumi.Context, stackInput *kubernetescloudnativepgoperatorv
 		return errors.Wrap(err, "failed to install cloudnative-pg helm release")
 	}
 
-	// ------------------------------ plugin release ------------------------
-	// Ordered AFTER the operator release: the plugin registers itself with
-	// the operator over CNPG-I, so the operator (and its CRDs) must exist
-	// first. Uninstall unwinds in reverse for free.
-	barmanPluginReleaseName := ""
-	if locals.BarmanPluginEnabled {
-		_, err := helmv3.NewRelease(ctx, vars.PluginReleaseName, &helmv3.ReleaseArgs{
-			Name:      pulumi.String(vars.PluginReleaseName),
-			Namespace: pulumi.String(locals.Namespace),
-			Chart:     pulumi.String(vars.PluginChartName),
-			Version:   pulumi.String(locals.BarmanPluginChartVersion),
-			RepositoryOpts: &helmv3.RepositoryOptsArgs{
-				Repo: pulumi.String(vars.HelmChartRepo),
-			},
-			Values: pulumi.ToMap(buildPluginHelmValues(locals)),
-			// The module owns namespace creation (create_namespace flag).
-			CreateNamespace: pulumi.Bool(false),
-			// Same atomic/wait posture as the operator release. This is
-			// also where the cert-manager dependency surfaces: without
-			// cert-manager the plugin's Certificate resources never become
-			// ready and the release rolls back with a clear timeout.
-			Atomic:        pulumi.Bool(true),
-			CleanupOnFail: pulumi.Bool(true),
-			Timeout:       pulumi.Int(vars.HelmTimeoutSeconds),
-		}, pulumi.Provider(kubernetesProvider),
-			pulumi.DependsOn([]pulumi.Resource{operatorRelease}))
-		if err != nil {
-			return errors.Wrap(err, "failed to install plugin-barman-cloud helm release")
-		}
-		barmanPluginReleaseName = vars.PluginReleaseName
-	}
-
 	ctx.Export(OpNamespace, pulumi.String(locals.Namespace))
 	ctx.Export(OpReleaseName, pulumi.String(vars.ReleaseName))
-	// Empty when the plugin arm is off — KubernetesPostgres backup blocks
-	// key off this handle to know whether object-store backups can work.
-	ctx.Export(OpBarmanPluginReleaseName, pulumi.String(barmanPluginReleaseName))
 
 	return nil
 }

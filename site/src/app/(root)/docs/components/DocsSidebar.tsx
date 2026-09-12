@@ -88,15 +88,17 @@ const SidebarItem: FC<SidebarItemProps> = ({
             )}
             {renderBadge()}
           </Box>
-          <IconButton
-            size="small"
-            aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
-            aria-expanded={isExpanded}
-            onClick={() => onToggle(item.path)}
-            className={SIDEBAR_ITEM_CLASSES}
-          >
-            {isExpanded ? <ExpandIcon fontSize="small" /> : <CollapseIcon fontSize="small" />}
-          </IconButton>
+          {(item.children?.length ?? 0) > 0 && (
+            <IconButton
+              size="small"
+              aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
+              aria-expanded={isExpanded}
+              onClick={() => onToggle(item.path)}
+              className={SIDEBAR_ITEM_CLASSES}
+            >
+              {isExpanded ? <ExpandIcon fontSize="small" /> : <CollapseIcon fontSize="small" />}
+            </IconButton>
+          )}
         </Box>
         {isExpanded && (
           <Box className="ml-4">

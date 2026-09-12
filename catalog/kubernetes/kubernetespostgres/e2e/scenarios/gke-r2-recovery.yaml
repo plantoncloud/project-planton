@@ -1,0 +1,81 @@
+# THE RECOVERY PROOF on GKE from Cloudflare R2: a fresh three-instance cluster
+# bootstrapped from the SOURCE cluster's R2 archive (fixture-gke-r2-source.yaml)
+# through the `r2` arm — the account, jurisdiction, and the writer token's S3
+# pair, nothing S3-shaped typed — carrying the source's application database,
+# owner, and app Secret: the disaster-recovery shape a customer runs when the
+# original is gone and the backups live outside the cloud that ran it. The
+# seed script wrote marker A, forced a base backup, then wrote marker B: the
+# verifier (switched on by this scenario's name) reads BOTH back through the
+# recovered cluster with the SOURCE's credentials — B proves WAL replay past
+# the base backup — and asserts the three instances landed on three distinct
+# nodes.
+#
+# Lane declarations: CloudNativePG and cert-manager are RESIDENT (the cluster
+# already runs both), the Barman Cloud plugin is declared as a kind
+# prerequisite and lands beside the resident operator from its own install
+# profile, and the scenario JOINS the fixture's namespace (fixture-owns /
+# scenario-joins; the recovery reads the source's `-app` Secret there). The
+# seed script is the GCS lane's: it seeds the database, not the store.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesPostgres
+metadata:
+  name: e2e-pg-gke-dr
+  annotations:
+    planton.dev/e2e-cluster-profile: "gcp-gke"
+    planton.dev/e2e-prerequisites: "KubernetesCnpgBarmanCloudPlugin, catalog/kubernetes/kubernetespostgres/e2e/fixture-gke-r2-source.yaml"
+    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager, KubernetesCloudNativePgOperator"
+    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetespostgres/e2e/scenarios/gke-recovery-seed.setup.sh"
+spec:
+  namespace:
+    value: e2e-pg-gke
+  instances: 3
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  scheduling:
+    anti_affinity_type: required
+    topology_key: kubernetes.io/hostname
+  bootstrap:
+    recovery:
+      object_store:
+        destination_path: s3://${E2E_ENV:PLANTON_E2E_GKE_R2_BUCKET}/postgres/${E2E_RUN_ID}/e2e-pg-gke-src
+        r2:
+          account_id:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCOUNT_ID}
+          jurisdiction:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_JURISDICTION}
+          credentials:
+            access_key_id:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCESS_KEY_ID}
+            secret_access_key:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_R2_SECRET_ACCESS_KEY}
+      source_server_name: e2e-pg-gke-src
+      database: appdb
+      owner: appuser
+      owner_secret_name: e2e-pg-gke-src-app
+  # The recovered cluster archives its OWN WAL elsewhere in the bucket — never
+  # back into the path it restored from (two clusters on one path corrupt
+  # each other's archives).
+  backup:
+    object_store:
+      destination_path: s3://${E2E_ENV:PLANTON_E2E_GKE_R2_BUCKET}/postgres/${E2E_RUN_ID}/e2e-pg-gke-dr
+      r2:
+        account_id:
+          value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCOUNT_ID}
+        jurisdiction:
+          value: ${E2E_ENV:PLANTON_E2E_GKE_R2_JURISDICTION}
+        credentials:
+          access_key_id:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCESS_KEY_ID}
+          secret_access_key:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_SECRET_ACCESS_KEY}
+    retention_policy: 7d
+    schedules:
+      - name: nightly
+        schedule: "0 0 3 * * *"

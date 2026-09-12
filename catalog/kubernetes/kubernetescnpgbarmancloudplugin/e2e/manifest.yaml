@@ -1,0 +1,51 @@
+# Full-surface test manifest: exercises every typed arm of the spec so the
+# offline plan proofs cover what the live lanes may not. Not a realistic
+# production shape -- see presets for those.
+#
+# The namespace is a literal here (the offline plan/preview input has no
+# operator resource to resolve against); the install scenario proves the
+# reference form live.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: hack-barman-plugin
+spec:
+  namespace:
+    value: hack-cnpg-system
+  createNamespace: false
+  chartVersion: "0.7.0"
+  crds:
+    install: true
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  image:
+    repository: mirror.example.com/cloudnative-pg/plugin-barman-cloud
+    tag: v0.13.0
+  sidecarImage:
+    repository: mirror.example.com/cloudnative-pg/plugin-barman-cloud-sidecar
+    tag: v0.13.0
+  imagePullSecrets:
+    - hack-registry-credentials
+  priorityClassName: system-cluster-critical
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+    - key: dedicated
+      operator: Equal
+      value: databases
+      effect: NoExecute
+      tolerationSeconds: 300
+  helmValues: |
+    additionalArgs:
+      - --log-level=info
+    service:
+      name: renamed-by-mistake

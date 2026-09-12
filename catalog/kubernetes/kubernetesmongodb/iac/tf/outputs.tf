@@ -41,3 +41,10 @@ output "admin_password_secret" {
     key  = "MONGODB_DATABASE_ADMIN_PASSWORD"
   }
 }
+
+# The restore run's handle — empty when no restore is declared, so the output
+# is an honest "nothing to look at" rather than a phantom name.
+output "restore_name" {
+  description = "Name of the PerconaServerMongoDBRestore rendered for spec.restore (`<name>-restore-<8 hex>`); empty when no restore is declared"
+  value       = local.restore == null ? "" : local.restore_name
+}

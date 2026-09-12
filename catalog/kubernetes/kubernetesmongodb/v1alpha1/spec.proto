@@ -33,7 +33,18 @@ import "shared/options/options.proto";
  * (`<name>-<rs>-0..N`), the per-replica-set headless Services
  * (`<name>-<rs>`), the mongos Service (`<name>-mongos`, sharding only),
  * and the system-users Secret (`<name>-secrets`, operator-generated
- * passwords for the built-in accounts).
+ * passwords for the built-in accounts — unless `system_users_secret_name`
+ * points at one you bring).
+ *
+ * DISASTER RECOVERY IS TWO DECLARATIONS: `backup` on the cluster that
+ * writes (storages + scheduled tasks + PITR oplog archiving), and
+ * `restore` on the cluster that reads — a fresh cluster declares the
+ * same storage, names the backup to restore from, and comes up carrying
+ * the data. The restored data includes the SOURCE cluster's users and
+ * their passwords, so the restore target must also reference the
+ * source's system-users Secret (`system_users_secret_name`); back that
+ * Secret up alongside the data or the operator cannot log in to what it
+ * restored.
  *
  * EXPOSURE IS COMPOSED, never embedded: the cluster is in-cluster
  * plumbing reachable at the exported `kube_endpoint`. The per-set
@@ -104,6 +115,22 @@ message KubernetesMongodbSpec {
    * certificates (the upstream default). Point issuer at a cert-manager
    * (Cluster)Issuer for an organization-trusted chain; disabling TLS
    * REQUIRES unsafe.tls.
+   *
+   * The operator decides HOW it mints the certificates by probing the
+   * cluster for cert-manager, not by reading this block: with no
+   * cert-manager CRDs it generates the certificates itself; with
+   * cert-manager running it issues them through cert-manager even when no
+   * issuer is named here. A cluster that has cert-manager's CRDs but no
+   * cert-manager behind them — cert-manager uninstalled with its CRDs
+   * kept, the posture KubernetesCertManager's `crds.keep_on_uninstall`
+   * default leaves behind — fails the probe outright, and the cluster
+   * parks in error with "TLS secrets handler: check cert-manager: the
+   * cert-manager mutation webhook did not mutate the dry-run
+   * CertificateRequest object" before a single pod is created (verified
+   * at the pinned operator 1.22.0). The ways out: remove the orphaned
+   * cert-manager CRDs, reinstall cert-manager, or bring your own
+   * `<name>-ssl` and `<name>-ssl-internal` Secrets (the operator uses a
+   * pre-created TLS Secret without probing).
    */
   KubernetesMongodbTls tls = 6;
 
@@ -162,6 +189,47 @@ message KubernetesMongodbSpec {
    * pulling images from a private registry.
    */
   repeated string image_pull_secrets = 13 [(dev.planton.shared.options.sensitive_exempt_reason) = "Names of existing Kubernetes Secrets (references), not secret material"];
+
+  /**
+   * Restore this cluster from a backup — the disaster-recovery and
+   * clone path. Declared on the cluster that RECEIVES the data: the
+   * operator runs a PerconaServerMongoDBRestore against it once the
+   * members are up. Requires `backup` with the storage the backup lives
+   * in (the PBM agents that perform the restore ride the backup
+   * configuration), and — for a backup taken by ANOTHER cluster —
+   * `system_users_secret_name` pointing at that cluster's system-users
+   * Secret, because a restored database carries the source's users and
+   * passwords. Each distinct declaration runs exactly once; change it
+   * (a different backup, a different point in time) to restore again.
+   */
+  KubernetesMongodbRestore restore = 14;
+
+  /**
+   * Bring your own system-users Secret instead of letting the operator
+   * generate `<name>-secrets`: the name of an existing Secret in this
+   * namespace carrying the operator's built-in account keys
+   * (MONGODB_BACKUP_USER/PASSWORD, MONGODB_CLUSTER_ADMIN_USER/PASSWORD,
+   * MONGODB_CLUSTER_MONITOR_USER/PASSWORD, MONGODB_USER_ADMIN_USER/
+   * PASSWORD, MONGODB_DATABASE_ADMIN_USER/PASSWORD). The load-bearing
+   * use is disaster recovery: a cluster restoring another cluster's
+   * backup inherits that cluster's users, so it must authenticate with
+   * that cluster's passwords — point this at the source's
+   * `<source>-secrets` (kept alive by a KubernetesSecret, an
+   * ExternalSecret, or the secret backend). Empty = operator-generated.
+   */
+  string system_users_secret_name = 15;
+
+  option (buf.validate.message).cel = {
+    id: "spec.restore_requires_backup"
+    message: "a restore needs the backup block: the PBM agents that perform it are configured by spec.backup, and the restore's storage must be one of spec.backup.storages"
+    expression: "!has(this.restore) || has(this.backup)"
+  };
+
+  option (buf.validate.message).cel = {
+    id: "spec.restore_storage_declared"
+    message: "restore.backup_source.storage_name must name one of spec.backup.storages — the restore reads the backup through that storage's configuration and credentials"
+    expression: "!has(this.restore) || !has(this.restore.backup_source) || !has(this.backup) || this.backup.storages.exists(s, s.name == this.restore.backup_source.storage_name)"
+  };
 
   option (buf.validate.message).cel = {
     id: "spec.single_replset_without_sharding"
@@ -544,7 +612,12 @@ message KubernetesMongodbBackup {
   /**
    * Point-in-time recovery: continuously archive oplog chunks so a
    * restore can land between backups. Requires at least one completed
-   * base backup to be meaningful.
+   * base backup to be meaningful — PBM starts archiving only after the
+   * first backup succeeds, and a `restore.pitr` on the target replays
+   * exactly these chunks (live-proven: a write made after the backup came
+   * back through them). The recovery point is the last CLOSED chunk
+   * (`oplog_span_min`), so writes in the final span before a total loss
+   * may not be in the archive.
    */
   KubernetesMongodbPitr pitr = 3;
 
@@ -588,7 +661,9 @@ message KubernetesMongodbBackupStorage {
 
     /**
      * AWS S3 — or ANY S3-compatible store (MinIO, Ceph RGW, ...) via
-     * the endpoint_url override.
+     * the endpoint_url override. Cloudflare R2 has its own arm (`r2`)
+     * that composes the catalog's Cloudflare kinds; this arm still
+     * reaches R2 for a hand-carried endpoint and key pair.
      */
     KubernetesMongodbS3Storage s3 = 3;
 
@@ -601,6 +676,17 @@ message KubernetesMongodbBackupStorage {
      * Azure Blob Storage.
      */
     KubernetesMongodbAzureStorage azure = 5;
+
+    /**
+     * Cloudflare R2, in R2's own vocabulary: the bucket, the owning
+     * account, the bucket's jurisdiction, and a Cloudflare credential —
+     * each a reference onto the catalog's CloudflareR2Bucket and
+     * CloudflareAccountApiToken by default. The module performs the S3
+     * translation R2 needs (the jurisdiction's endpoint host, region
+     * `auto`, path-style addressing, the token as an S3 key pair);
+     * nothing S3-shaped is typed here.
+     */
+    KubernetesMongodbR2Storage r2 = 6;
   }
 }
 
@@ -621,7 +707,11 @@ message KubernetesMongodbS3Storage {
 
   /**
    * Key prefix inside the bucket (a folder for this cluster's
-   * backups).
+   * backups). One prefix per cluster: PBM keeps its
+   * backup and oplog metadata under the prefix, and a restore target
+   * declares this same prefix (as a storage of its own) to read the
+   * backups back — so two live clusters must never share one, while the
+   * source and its restore target deliberately do.
    */
   string prefix = 3;
 
@@ -686,17 +776,193 @@ message KubernetesMongodbGcsStorage {
   string bucket = 1 [(buf.validate.field).required = true];
 
   /**
-   * Key prefix inside the bucket.
+   * Key prefix inside the bucket. One prefix per cluster: PBM keeps its
+   * backup and oplog metadata under the prefix, and a restore target
+   * declares this same prefix (as a storage of its own) to read the
+   * backups back — so two live clusters must never share one, while the
+   * source and its restore target deliberately do.
    */
   string prefix = 2;
 
   /**
-   * GCP service-account key (the JSON key file's content),
-   * materialized as a Kubernetes Secret the PBM agents read. Empty =
-   * the pods' AMBIENT GCP identity (GKE Workload Identity) — the
-   * keyless posture.
+   * The credentials the PBM agents present to GCS. REQUIRED: there is
+   * no keyless posture for MongoDB backups on GCS. The operator's CRD
+   * requires a credentials Secret on every gcs storage, and Percona
+   * Backup for MongoDB refuses to build its Google client without a
+   * client email and private key — the pods' GKE Workload Identity is
+   * never consulted. (Both verified at the pinned operator 1.22.0.) The
+   * one identity-free path is HMAC keys over the S3 interoperability
+   * endpoint, which is the `s3` arm with `endpoint_url:
+   * https://storage.googleapis.com`.
    */
-  string service_account_key_json = 3 [(dev.planton.shared.options.sensitive) = true];
+  KubernetesMongodbGcsCredentials credentials = 3 [(buf.validate.field).required = true];
+}
+
+/**
+ * How the PBM agents authenticate to a GCS bucket. Exactly one source.
+ */
+message KubernetesMongodbGcsCredentials {
+  oneof source {
+    option (buf.validate.oneof).required = true;
+
+    /**
+     * A GCP service-account key: the JSON key file's content, either raw
+     * or base64-encoded — the shape a GcpServiceAccount resource exports
+     * as `key_base64` when it is declared with a `user_managed_key`, so
+     * a chart wires the identity and the database in one run. The module
+     * extracts `client_email` and `private_key` into the
+     * `<name>-backup-<storage>` Secret the operator reads; the key file
+     * itself is never rendered into the custom resource. Grant the
+     * account `roles/storage.objectAdmin` AND
+     * `roles/storage.legacyBucketReader` on the bucket (a GcpGcsBucket's
+     * `iam_members`, one entry each): the storage clients read the
+     * bucket's attributes (`storage.buckets.get`) before writing, and
+     * objectAdmin alone does not carry that permission.
+     */
+    dev.planton.shared.foreignkey.v1.StringValueOrRef service_account_key = 1 [
+      (dev.planton.shared.options.sensitive) = true,
+      (dev.planton.shared.foreignkey.v1.default_kind) = GcpServiceAccount,
+      (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_base64"
+    ];
+
+    /**
+     * The name of an existing Secret in this namespace already in the
+     * operator's shape: keys `GCS_CLIENT_EMAIL` + `GCS_PRIVATE_KEY` (a
+     * service-account key), or `AWS_ACCESS_KEY_ID` +
+     * `AWS_SECRET_ACCESS_KEY` (HMAC keys for the S3-compatible client).
+     * For credentials that already live in the cluster — synced by an
+     * ExternalSecret, or shared with a sibling cluster.
+     */
+    string existing_secret_name = 2;
+  }
+}
+
+/**
+ * Cloudflare R2 backup storage, composed from the catalog's Cloudflare
+ * kinds.
+ *
+ * R2 speaks S3, so Percona Backup for MongoDB reaches it through its S3
+ * client — but nothing S3-shaped is declared here. The module composes the
+ * endpoint from the account and the bucket's jurisdiction
+ * (`https://<account>.r2.cloudflarestorage.com`, or
+ * `https://<account>.<jurisdiction>.r2.cloudflarestorage.com` for an eu,
+ * fedramp, or us bucket — a jurisdictional bucket is served ONLY through
+ * its own host; the default host fails rather than redirects), pins the
+ * region to `auto` (the only region R2 accepts) and path-style addressing,
+ * and hands the agents the credential as an S3 key pair. There is NO
+ * keyless posture for R2 from any cluster: R2 has no equivalent of IRSA or
+ * Workload Identity, so a credential is always declared — by reference to
+ * a CloudflareAccountApiToken by default.
+ *
+ * A backup taken into this storage reports its destination as
+ * `s3://<bucket>/<prefix>/<backup-name>` (the operator composes the
+ * `s3://` form for every S3-API store), which is what a restore target's
+ * `restore.backup_source.destination` carries. Logical backups, PITR
+ * oplog chunks, and a point-in-time restore into a fresh replica set are
+ * live-proven on GKE with a token scoped to the single bucket (`Workers R2
+ * Storage Bucket Item Write`); no account-level Cloudflare permission is
+ * needed. Emptying the bucket is not the module's job — R2 refuses to
+ * delete a non-empty bucket, so a CloudflareR2Bucket that has ever held a
+ * backup must be emptied over the S3 API before it can be destroyed.
+ */
+message KubernetesMongodbR2Storage {
+  /**
+   * Bucket name. By reference to the bucket resource's `bucket_name`
+   * output, so the storage follows the bucket; a literal names a bucket
+   * outside the catalog.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef bucket = 1 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareR2Bucket,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.bucket_name"
+  ];
+
+  /**
+   * Key prefix inside the bucket. One prefix per cluster: PBM keeps its
+   * backup and oplog metadata under the prefix, and a restore target
+   * declares this same prefix (as a storage of its own) to read the
+   * backups back — so two live clusters must never share one, while the
+   * source and its restore target deliberately do.
+   */
+  string prefix = 2;
+
+  /**
+   * The Cloudflare account that owns the bucket (32 hex characters). By
+   * reference to the bucket resource's `account_id` output.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef account_id = 3 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareR2Bucket,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.account_id",
+    (buf.validate.field).cel = {
+      id: "spec.backup.r2.account_id_format"
+      message: "account_id is the 32-hex-character Cloudflare account id"
+      expression: "!has(this.value) || this.value.matches('^[0-9a-fA-F]{32}$')"
+    }
+  ];
+
+  /**
+   * The bucket's data-residency jurisdiction: `default` (or empty), `eu`,
+   * `fedramp`, or `us`. It selects the S3 host the module composes — a
+   * bucket created in a jurisdiction is unreachable through any other
+   * host — so it must match the bucket exactly; by reference to the
+   * bucket resource's `jurisdiction` output it cannot drift.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef jurisdiction = 4 [
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareR2Bucket,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.jurisdiction",
+    (buf.validate.field).cel = {
+      id: "spec.backup.r2.jurisdiction_valid"
+      message: "jurisdiction must be one of \"default\", \"eu\", \"fedramp\", \"us\" (or empty for default)"
+      expression: "!has(this.value) || this.value == '' || this.value in ['default', 'eu', 'fedramp', 'us']"
+    }
+  ];
+
+  /**
+   * The Cloudflare credential, as the S3 key pair R2's S3 API
+   * authenticates. Materialized as the `<name>-backup-<storage>` Secret
+   * the PBM agents read; never plaintext in the rendered resource.
+   */
+  KubernetesMongodbR2Credentials credentials = 5 [(buf.validate.field).required = true];
+}
+
+/**
+ * The S3 key pair for Cloudflare R2. Cloudflare defines it from an account
+ * API token: the access key id is the token's id and the secret access key
+ * is the SHA-256 of the token's value — the two values a CloudflareAccountApiToken
+ * exports as `r2_access_key_id` and `r2_secret_access_key`, and the two the
+ * dashboard shows as "Access Key ID" / "Secret Access Key" when the same
+ * token is created there. Reference the catalog token (the default kind)
+ * or paste a dashboard-minted pair as literals; both are the same shape.
+ *
+ * The token needs an R2 permission group: `Workers R2 Storage Bucket Item
+ * Write` scoped to this bucket (least privilege — read, write, list objects)
+ * or `Workers R2 Storage Write` on the account. A token without one
+ * authenticates and then fails every backup with AccessDenied.
+ */
+message KubernetesMongodbR2Credentials {
+  /**
+   * The S3 access key id: the API token's id. By reference to the token
+   * resource's `r2_access_key_id` output.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef access_key_id = 1 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareAccountApiToken,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.r2_access_key_id"
+  ];
+
+  /**
+   * The S3 secret access key: the SHA-256 of the API token's value. By
+   * reference to the token resource's `r2_secret_access_key` output. Rotates
+   * with the token: a rotated token is a new key pair, and the Secret the
+   * module materializes follows the reference on the next apply.
+   */
+  dev.planton.shared.foreignkey.v1.StringValueOrRef secret_access_key = 2 [
+    (buf.validate.field).required = true,
+    (dev.planton.shared.options.sensitive) = true,
+    (dev.planton.shared.foreignkey.v1.default_kind) = CloudflareAccountApiToken,
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.r2_secret_access_key"
+  ];
 }
 
 /**
@@ -709,7 +975,11 @@ message KubernetesMongodbAzureStorage {
   string container = 1 [(buf.validate.field).required = true];
 
   /**
-   * Key prefix inside the container.
+   * Key prefix inside the container. One prefix per cluster: PBM keeps its
+   * backup and oplog metadata under the prefix, and a restore target
+   * declares this same prefix (as a storage of its own) to read the
+   * backups back — so two live clusters must never share one, while the
+   * source and its restore target deliberately do.
    */
   string prefix = 2;
 
@@ -849,6 +1119,151 @@ message KubernetesMongodbPitr {
       expression: "this == '' || this in ['gzip', 'snappy', 'lz4', 'pgzip', 'zstd', 's2', 'none']"
     }
   ];
+}
+
+/**
+ * Restore from a backup — rendered as a `psmdb.percona.com/v1`
+ * PerconaServerMongoDBRestore against this cluster, created only after
+ * the cluster reports ready. The operator then replays the backup (and,
+ * with `pitr`, the archived oplog after it) INTO the running cluster,
+ * replacing its data. Every distinct declaration renders a distinctly
+ * named Restore object, so a restore runs exactly once per declaration
+ * and re-runs only when the declaration changes. A restore that fails
+ * stays failed (the operator never retries an errored Restore) — read
+ * `kubectl get psmdb-restore` for the error, fix the cause, and change
+ * the declaration (or delete the Restore object) to run again. Declaring
+ * this on a brand-new cluster together with `backup` is the intended DR
+ * shape, and the apply waits for the new cluster to be ready before the
+ * Restore exists: the operator's own "agents are up" check passes while a
+ * fresh cluster's backup agents are still restarting through the replica
+ * set's first authentication, and a Restore created that early is parked
+ * in a terminal "get backup meta: not found" (its one resync reaches no
+ * listening agent and the operator gives it 30 seconds) — live-caught on
+ * a three-member target. Readiness is the state after which every agent
+ * listens and the store's metadata is already synced; the restore then
+ * validates and runs — live-proven end to end on GKE, on GCS and on R2.
+ */
+message KubernetesMongodbRestore {
+  /**
+   * Where the backup is. Exactly one source.
+   */
+  oneof source {
+    option (buf.validate.oneof).required = true;
+
+    /**
+     * The name of a PerconaServerMongoDBBackup object in this namespace
+     * — a backup THIS cluster (or a sibling in the namespace) took, whose
+     * record the operator still holds. The same-cluster rollback path.
+     */
+    string backup_name = 1;
+
+    /**
+     * A backup addressed by its location in the store — the path for a
+     * backup ANOTHER cluster took (disaster recovery into a fresh
+     * cluster, cloning an environment), where no Backup object exists
+     * here. Percona's "storage defined on target" recipe: the storage's
+     * configuration and credentials come from this cluster's own
+     * `backup.storages` entry.
+     */
+    KubernetesMongodbRestoreBackupSource backup_source = 2;
+  }
+
+  /**
+   * Point-in-time recovery: after replaying the base backup, replay the
+   * archived oplog chunks up to a moment. Requires the source cluster to
+   * have archived oplog (`backup.pitr.enabled`) into the same storage.
+   * Omitted = the base backup alone.
+   */
+  KubernetesMongodbRestorePitr pitr = 3;
+
+  /**
+   * Restore into replica sets named differently from the source's — a
+   * map of source replica-set name to this cluster's replica-set name.
+   * Omitted = names must match (the operator refuses a mismatch).
+   */
+  map<string, string> replset_remapping = 4;
+}
+
+/**
+ * A backup addressed by its location in a declared storage.
+ */
+message KubernetesMongodbRestoreBackupSource {
+  /**
+   * The name of the entry in this cluster's `backup.storages` that holds
+   * the backup — the restore reads through that storage's bucket, prefix,
+   * and credentials. The module copies that storage's definition into the
+   * restore object itself: the operator resolves a backup-source restore's
+   * storage from the restore object (not the cluster) when it syncs the
+   * store's metadata into a fresh cluster — which every disaster-recovery
+   * restore needs — so declaring the storage once here is enough.
+   */
+  string storage_name = 1 [(buf.validate.field).required = true];
+
+  /**
+   * Full path of the backup inside the store, in the store's native URI
+   * form with the backup name as the LAST segment:
+   * `s3://<bucket>/<prefix>/<backup-name>`, `gs://<bucket>/<prefix>/
+   * <backup-name>`, or `azure://<container>/<prefix>/<backup-name>`.
+   * The backup name is the timestamp PBM stamped when the backup
+   * started (e.g. 2026-09-09T12:00:00Z) — read it from the DESTINATION
+   * column of `kubectl get psmdb-backup` on the source cluster, or list
+   * the store.
+   */
+  string destination = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "spec.restore.backup_source.destination_uri"
+      message: "destination is the backup's full path in the store: s3://<bucket>/<prefix>/<backup-name> (S3, R2, and every S3-API store), gs://..., or azure://... — the backup name (PBM's start timestamp) is the last segment"
+      expression: "this.matches('^(s3|gs|azure)://[^/]+/.+$')"
+    }
+  ];
+
+  /**
+   * The backup's type — it must match how the source took it: logical
+   * (the default) or physical. A physical restore additionally requires
+   * this cluster to match the source's topology (same replica-set
+   * count and member count) and, if the source encrypted data at rest,
+   * the same encryption key.
+   */
+  optional string type = 3 [
+    (dev.planton.shared.options.default) = "logical",
+    (buf.validate.field).cel = {
+      id: "spec.restore.backup_source.type_enum"
+      message: "restore type must be logical or physical (incremental chains restore through their physical base)"
+      expression: "this == '' || this in ['logical', 'physical']"
+    }
+  ];
+}
+
+/**
+ * The point in time a restore replays the archived oplog up to.
+ */
+message KubernetesMongodbRestorePitr {
+  /**
+   * `latest` replays every archived oplog chunk (the smallest possible
+   * data loss); `date` stops at the moment in `date`.
+   */
+  string type = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "spec.restore.pitr.type_enum"
+      message: "pitr type must be latest (replay everything archived) or date (stop at the moment in `date`)"
+      expression: "this in ['latest', 'date']"
+    }
+  ];
+
+  /**
+   * The moment to recover to, `YYYY-MM-DD HH:MM:SS` in UTC — the
+   * operator's own format. Required with type `date`; must not be set
+   * with `latest`.
+   */
+  string date = 2;
+
+  option (buf.validate.message).cel = {
+    id: "spec.restore.pitr.date_pairing"
+    message: "pitr type date needs `date` as 'YYYY-MM-DD HH:MM:SS' (UTC); type latest takes no date"
+    expression: "(this.type == 'date' && this.date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$')) || (this.type == 'latest' && this.date == '')"
+  };
 }
 
 /**

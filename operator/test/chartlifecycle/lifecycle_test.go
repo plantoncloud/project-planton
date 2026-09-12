@@ -138,7 +138,8 @@ var _ = Describe("the operator chart owns its definitions", Ordered, func() {
 		operator := newHelm(platformNamespace)
 
 		By("installing the last platform chart that bundled the operator")
-		Expect(platform.install(platformRelease, publishedChart("planton", lastBundlingPlatformChart), map[string]any{"planton-operator": scaledToZero})).To(Succeed())
+		bundling := publishedChart("planton", lastBundlingPlatformChart)
+		Expect(platform.install(platformRelease, bundling, map[string]any{"planton-operator": scaledToZero})).To(Succeed())
 		_, err := kubectl("get", "plantonplatform", platformRelease, "-n", platformNamespace)
 		Expect(err).NotTo(HaveOccurred(), "the bundled install declares a platform")
 		Expect(deploymentsLabelled(platformNamespace, "app.kubernetes.io/name=planton-operator")).To(Equal(1), "the bundled install carries an operator")
@@ -150,8 +151,12 @@ var _ = Describe("the operator chart owns its definitions", Ordered, func() {
 		_, err = kubectl("annotate", "crd", platformCRD, "meta.helm.sh/release-name="+operatorRelease, "meta.helm.sh/release-namespace="+platformNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("step 2: upgrading the platform release removes the bundled operator and keeps the platform")
-		Expect(platform.upgrade(platformRelease, platformChart, nil)).To(Succeed())
+		By("step 2: upgrading the platform release removes the bundled operator and keeps the platform at the version it runs")
+		// The bundling chart defaulted spec.version to its appVersion; the
+		// pin-free chart requires the version named, so the move passes the
+		// one the platform already runs and changes the release shape only.
+		runningVersion := map[string]any{"platform": map[string]any{"spec": map[string]any{"version": bundling.Metadata.AppVersion}}}
+		Expect(platform.upgrade(platformRelease, platformChart, runningVersion)).To(Succeed())
 		Eventually(func() int { return deploymentsLabelled(platformNamespace, "app.kubernetes.io/name=planton-operator") }, time.Minute, time.Second).Should(Equal(0))
 		_, err = kubectl("get", "plantonplatform", platformRelease, "-n", platformNamespace)
 		Expect(err).NotTo(HaveOccurred(), "the platform resource must survive the move")

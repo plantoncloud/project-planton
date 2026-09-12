@@ -88,10 +88,15 @@ locals {
   backup        = try(var.spec.backup, null)
 
   # Where the application credential actually lives: the operator-generated
-  # `<name>-app` normally, or the module-provided secret when initdb
-  # declares an owner password (the operator then adopts it instead of
-  # generating its own).
-  effective_app_secret_name = try(local.initdb.owner_password, "") != "" ? local.provided_app_secret_name : local.app_secret_name
+  # `<name>-app` normally, the module-provided secret when initdb declares
+  # an owner password, or the brought Secret when a recovery names the
+  # source's app Secret (credential continuity) — in both latter cases the
+  # operator adopts the Secret instead of generating its own.
+  effective_app_secret_name = (
+    try(local.recovery.owner_secret_name, "") != "" ? local.recovery.owner_secret_name :
+    try(local.initdb.owner_password, "") != "" ? local.provided_app_secret_name :
+    local.app_secret_name
+  )
 
   # basic-auth username for the provided app secret: the OWNER's name —
   # falling back to the database name and then the upstream initdb default
@@ -156,12 +161,48 @@ locals {
     } : {}
   )
 
+  # Cloudflare R2 arms, translated into what Barman Cloud's S3 code path
+  # needs. The spec is in R2's own vocabulary (account, jurisdiction, a
+  # Cloudflare credential); this local derives the S3 endpoint from the
+  # account and the bucket's jurisdiction -- an eu/fedramp/us bucket is
+  # served ONLY through <account>.<jurisdiction>.r2.cloudflarestorage.com,
+  # the default host fails rather than redirects. The host table mirrors
+  # the Go helper package pkg/cloudflare/r2 (the source of truth both
+  # engines follow). The jurisdiction is an optional scalar inside a
+  # present block, so it is read null-safely (tfvars carries null for an
+  # unset optional; coalesce rejects it and try() turns that into "").
+  object_store_r2 = {
+    for key, ctx in local.object_store_contexts : key => (
+      try(ctx.object_store.r2, null) == null ? null : {
+        jurisdiction = coalesce(try(coalesce(ctx.object_store.r2.jurisdiction), ""), "default")
+        endpoint = (
+          coalesce(try(coalesce(ctx.object_store.r2.jurisdiction), ""), "default") == "default"
+          ? "https://${ctx.object_store.r2.account_id}.r2.cloudflarestorage.com"
+          : "https://${ctx.object_store.r2.account_id}.${ctx.object_store.r2.jurisdiction}.r2.cloudflarestorage.com"
+        )
+      }
+    )
+  }
+
+  # The region each store's S3 credentials carry: "auto" for R2 (the only
+  # region it accepts -- Cloudflare aliases "" and us-east-1 to it, but the
+  # plugin needs an explicit value to set AWS_DEFAULT_REGION), the declared
+  # region for the s3 arm, "" (no region Secret) otherwise.
+  object_store_region = {
+    for key, ctx in local.object_store_contexts : key => (
+      local.object_store_r2[key] != null ? "auto" : try(coalesce(ctx.object_store.s3.region), "")
+    )
+  }
+
   # Declared credentials for each store, materialized as one deterministic
   # Opaque Secret per store (`<name>-backup-creds` / `<name>-recovery-creds`)
   # whose keys depend on the backend arm. Keyless arms render the backend's
   # ambient-identity flag instead and need NO creds Secret — except Azure
   # keyless, where the storage account still identifies the endpoint and
-  # rides the Secret (AZURE_STORAGE_ACCOUNT) even without a key.
+  # rides the Secret (AZURE_STORAGE_ACCOUNT) even without a key. The r2
+  # arm's pair is the CloudflareAccountApiToken's r2_access_key_id /
+  # r2_secret_access_key outputs as declared (that kind derives them; no
+  # hashing happens here).
   # All values are strings, so this chained ternary unifies safely to
   # map(string) — no number/bool stringification risk here.
   object_store_creds_data = {
@@ -169,6 +210,9 @@ locals {
       try(ctx.object_store.s3.access_keys, null) != null ? {
         ACCESS_KEY_ID     = ctx.object_store.s3.access_keys.access_key_id
         SECRET_ACCESS_KEY = ctx.object_store.s3.access_keys.secret_access_key
+        } : local.object_store_r2[key] != null ? {
+        ACCESS_KEY_ID     = ctx.object_store.r2.credentials.access_key_id
+        SECRET_ACCESS_KEY = ctx.object_store.r2.credentials.secret_access_key
         } : try(ctx.object_store.gcs, null) != null && !try(ctx.object_store.gcs.keyless, false) ? {
         APPLICATION_CREDENTIALS = ctx.object_store.gcs.service_account_key_json
         } : try(ctx.object_store.azure_blob, null) == null ? null : (
@@ -191,8 +235,18 @@ locals {
   #
   # The CRD models the S3 region as a SecretKeySelector (not a plain
   # string), so the literal region rides its own deterministic single-key
-  # Secret (`<store>-region`, key AWS_REGION) — works identically for the
-  # keyless and declared-key postures.
+  # Secret (`<store>-region`, key AWS_REGION). barman-cloud reads it ONLY
+  # on the declared-key path (its credential resolver returns before the
+  # region on inheritFromIAMRole, and the AWS SDK derives the region from
+  # the pod's IRSA environment there), so on a keyless store the Secret is
+  # rendered but inert -- kept for a uniform shape, not for effect.
+  #
+  # The r2 arm rides s3Credentials too (R2 speaks S3): the same creds and
+  # region Secrets, the endpoint from object_store_r2, and the plugin
+  # sidecar told to add data-integrity checksums only when an operation
+  # requires them (barman-cloud's boto3 attaches them by default, which
+  # S3-compatible stores may reject; the plugin's documented posture for
+  # them, and free on a store that accepts the checksums).
   object_store_manifests = {
     for key, ctx in local.object_store_contexts : key => {
       apiVersion = "barmancloud.cnpg.io/v1"
@@ -207,15 +261,18 @@ locals {
           configuration = {
             for ck, cv in {
               destinationPath = ctx.object_store.destination_path
-              endpointURL     = try(ctx.object_store.s3.endpoint_url, "") != "" ? ctx.object_store.s3.endpoint_url : null
+              endpointURL     = try(ctx.object_store.s3.endpoint_url, "") != "" ? ctx.object_store.s3.endpoint_url : (local.object_store_r2[key] != null ? local.object_store_r2[key].endpoint : null)
               endpointCA      = try(ctx.object_store.s3.endpoint_ca_pem, "") != "" ? { name = ctx.endpoint_ca_secret_name, key = "ca.crt" } : null
 
-              s3Credentials = try(ctx.object_store.s3, null) == null ? null : {
+              # One object literal carrying both S3-API arms' keys (s3 and
+              # r2), each gated on its arm and null-pruned -- never a
+              # per-arm ternary between differently shaped objects.
+              s3Credentials = try(ctx.object_store.s3, null) == null && local.object_store_r2[key] == null ? null : {
                 for k, v in {
                   inheritFromIAMRole = try(ctx.object_store.s3.keyless, false) ? true : null
-                  accessKeyId        = try(ctx.object_store.s3.access_keys, null) != null ? { name = ctx.creds_secret_name, key = "ACCESS_KEY_ID" } : null
-                  secretAccessKey    = try(ctx.object_store.s3.access_keys, null) != null ? { name = ctx.creds_secret_name, key = "SECRET_ACCESS_KEY" } : null
-                  region             = try(ctx.object_store.s3.region, "") != "" ? { name = "${ctx.store_name}-region", key = "AWS_REGION" } : null
+                  accessKeyId        = try(ctx.object_store.s3.access_keys, null) != null || local.object_store_r2[key] != null ? { name = ctx.creds_secret_name, key = "ACCESS_KEY_ID" } : null
+                  secretAccessKey    = try(ctx.object_store.s3.access_keys, null) != null || local.object_store_r2[key] != null ? { name = ctx.creds_secret_name, key = "SECRET_ACCESS_KEY" } : null
+                  region             = local.object_store_region[key] != "" ? { name = "${ctx.store_name}-region", key = "AWS_REGION" } : null
                 } : k => v if v != null
               }
 
@@ -254,6 +311,13 @@ locals {
           # retentionPolicy only ever renders on the BACKUP store (the
           # recovery context pins it empty above).
           retentionPolicy = ctx.retention_policy != "" ? ctx.retention_policy : null
+          # The r2 arm's sidecar posture (see the comment above this local).
+          instanceSidecarConfiguration = local.object_store_r2[key] == null ? null : {
+            env = [
+              { name = "AWS_REQUEST_CHECKSUM_CALCULATION", value = "when_required" },
+              { name = "AWS_RESPONSE_CHECKSUM_VALIDATION", value = "when_required" },
+            ]
+          }
         } : sk => sv if sv != null
       }
     }
@@ -294,9 +358,15 @@ locals {
   # the module renders below, whose plugin block points at the
   # `<name>-recovery-source` ObjectStore with the SOURCE cluster's
   # serverName.
+  # Credential continuity: the recovered roles keep the SOURCE's passwords,
+  # so when the spec names the source's app Secret the operator adopts it
+  # (`secret`) instead of generating a fresh `<name>-app`.
   recovery_body = local.recovery == null ? null : {
     for k, v in {
-      source = local.recovery_source_external_cluster_name
+      source   = local.recovery_source_external_cluster_name
+      database = try(local.recovery.database, "") != "" ? local.recovery.database : null
+      owner    = try(local.recovery.owner, "") != "" ? local.recovery.owner : null
+      secret   = try(local.recovery.owner_secret_name, "") != "" ? { name = local.recovery.owner_secret_name } : null
       recoveryTarget = try(local.recovery.recovery_target, null) == null ? null : {
         for tk, tv in {
           targetTime      = try(local.recovery.recovery_target.target_time, "") != "" ? local.recovery.recovery_target.target_time : null
@@ -403,10 +473,15 @@ locals {
       pg_hba                   = length(try(var.spec.postgresql.pg_hba, [])) > 0 ? var.spec.postgresql.pg_hba : null
       pg_ident                 = length(try(var.spec.postgresql.pg_ident, [])) > 0 ? var.spec.postgresql.pg_ident : null
       shared_preload_libraries = length(try(var.spec.postgresql.shared_preload_libraries, [])) > 0 ? var.spec.postgresql.shared_preload_libraries : null
+      # The spec's declared defaults (method any, data_durability
+      # required) are applied HERE, not in variables.tf: that file is
+      # generator-produced and carries no defaults for optional-with-
+      # default fields, so the module renders the same body whether or
+      # not the platform's defaulting middleware ran.
       synchronous = try(var.spec.postgresql.synchronous, null) == null ? null : {
-        method         = var.spec.postgresql.synchronous.method
+        method         = coalesce(try(var.spec.postgresql.synchronous.method, null), "any")
         number         = var.spec.postgresql.synchronous.number
-        dataDurability = var.spec.postgresql.synchronous.data_durability
+        dataDurability = coalesce(try(var.spec.postgresql.synchronous.data_durability, null), "required")
       }
       enableAlterSystem = try(var.spec.postgresql.enable_alter_system, false) ? true : null
     } : k => v if v != null
@@ -500,7 +575,9 @@ locals {
     }
     spec = {
       for k, v in {
-        instances = var.spec.instances
+        # The spec's declared default (1) applied here — variables.tf is
+        # generator-produced and carries no default for the optional field.
+        instances = coalesce(try(var.spec.instances, null), 1)
         imageName = try(var.spec.image_name, "") != "" ? var.spec.image_name : null
 
         storage    = local.storage_body

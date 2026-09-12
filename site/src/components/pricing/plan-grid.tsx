@@ -13,9 +13,11 @@ import {
   SecondaryButton,
 } from '@/components/landing-page/v3-2026-01-02-1000/shared';
 import { useMarket } from '@/components/market';
+import { useHandoffEmail, withHandoffEmail } from '@/components/handoff';
 import {
   BUY_LICENSE_URL,
   EVALUATION_DAYS,
+  EVALUATION_URL,
   COMMUNITY_SEAT_LIMIT,
   FREE_TIER_SEATS,
 } from '@/data/pricing';
@@ -36,7 +38,8 @@ interface PlanCardData {
   priceUnit?: string;
   priceSub?: string;
   tagline: string;
-  bullets: string[];
+  /** Plain text, or text that is itself a door (a linked bullet renders as a link). */
+  bullets: Array<string | { text: string; href: string }>;
   /**
    * The card's AI story — per-plan data, never a shared constant. The
    * assistant is deployment-capability-gated: Planton.ai plans include it
@@ -129,16 +132,25 @@ const PlanCard: FC<PlanCardData> = ({
       </Box>
       <Typography className="text-sm text-[#b0b0b0] min-h-[2.5rem]">{tagline}</Typography>
       <Stack className="gap-2 flex-1">
-        {bullets.map((bullet) => (
-          <Box key={bullet} className="flex items-start gap-2">
-            <Box className="mt-1 flex-shrink-0">
-              <CheckIcon />
+        {bullets.map((bullet) => {
+          const text = typeof bullet === 'string' ? bullet : bullet.text;
+          return (
+            <Box key={text} className="flex items-start gap-2">
+              <Box className="mt-1 flex-shrink-0">
+                <CheckIcon />
+              </Box>
+              <Typography className="text-xs text-[#c0c0c0] leading-relaxed">
+                {typeof bullet === 'string' ? (
+                  bullet
+                ) : (
+                  <Link href={bullet.href} className="underline underline-offset-2 hover:text-white">
+                    {bullet.text}
+                  </Link>
+                )}
+              </Typography>
             </Box>
-            <Typography className="text-xs text-[#c0c0c0] leading-relaxed">
-              {bullet}
-            </Typography>
-          </Box>
-        ))}
+          );
+        })}
       </Stack>
       <AiLine ai={ai} />
       <Link href={cta.href} target={cta.external ? '_blank' : '_self'} className="mt-2">
@@ -167,6 +179,9 @@ const AI_COMING_SELF_HOSTED: PlanCardData['ai'] = {
 
 export const PlanGrid: FC = () => {
   const { market } = useMarket();
+  // A console that already knows the buyer hands their email to this tab;
+  // both doors into the store carry it so the form opens prefilled.
+  const handoffEmail = useHandoffEmail();
 
   const sizeLow = market.licenses[0];
   const sizeHigh = market.licenses[market.licenses.length - 1];
@@ -211,7 +226,12 @@ export const PlanGrid: FC = () => {
       bullets: [
         `Up to ${COMMUNITY_SEAT_LIMIT} seats — no license key, no time limit`,
         'Runs fully offline; nothing ever expires',
-        `${EVALUATION_DAYS}-day full-experience evaluation key — no card, no call`,
+        // The evaluation is a door, not a promise: the bullet itself opens
+        // the claim section on the console's public buy page.
+        {
+          text: `${EVALUATION_DAYS}-day full-experience evaluation key — no card, no call`,
+          href: withHandoffEmail(EVALUATION_URL, handoffEmail),
+        },
       ],
       ai: AI_COMING_SELF_HOSTED,
       cta: { label: 'Run It Yourself', href: '/features/open-source', primary: false },
@@ -230,7 +250,7 @@ export const PlanGrid: FC = () => {
         'No sales call, no account required',
       ],
       ai: AI_COMING_SELF_HOSTED,
-      cta: { label: 'Buy a License', href: BUY_LICENSE_URL, primary: true },
+      cta: { label: 'Buy a License', href: withHandoffEmail(BUY_LICENSE_URL, handoffEmail), primary: true },
     },
   ];
 

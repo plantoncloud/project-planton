@@ -1976,6 +1976,12 @@ const (
 	// cert-manager must be running before the operator installs.
 	CloudResourceKind_KubernetesRabbitMqOperator CloudResourceKind = 4125
 	CloudResourceKind_KubernetesRabbitMq         CloudResourceKind = 4126
+	// The Barman Cloud plugin is CloudNativePG's object-store backup path,
+	// installed as its own Helm release beside the operator. It registers
+	// with the operator over CNPG-I and issues its TLS through cert-manager,
+	// so both are prerequisites: nothing to register with, or no
+	// certificates, and the release never becomes ready.
+	CloudResourceKind_KubernetesCnpgBarmanCloudPlugin CloudResourceKind = 4127
 	// 4130–4149: Kubernetes analytics and ML
 	// KubernetesPostgres is a prerequisite because Airflow's metadata
 	// database composes a KubernetesPostgres by default (the spec's FK
@@ -2942,6 +2948,7 @@ var (
 		4124: "KubernetesQdrant",
 		4125: "KubernetesRabbitMqOperator",
 		4126: "KubernetesRabbitMq",
+		4127: "KubernetesCnpgBarmanCloudPlugin",
 		4130: "KubernetesAirflow",
 		4131: "KubernetesSparkOperator",
 		4132: "KubernetesKubeRayOperator",
@@ -3665,6 +3672,7 @@ var (
 		"KubernetesQdrant":                               4124,
 		"KubernetesRabbitMqOperator":                     4125,
 		"KubernetesRabbitMq":                             4126,
+		"KubernetesCnpgBarmanCloudPlugin":                4127,
 		"KubernetesAirflow":                              4130,
 		"KubernetesSparkOperator":                        4131,
 		"KubernetesKubeRayOperator":                      4132,
@@ -3892,8 +3900,9 @@ type CloudResourceKindMeta struct {
 	// components that must be deployed before this component can function.
 	// order matters: index 0 is deployed first. the E2E framework installs these
 	// (resolved transitively) before the component under test and tears them down
-	// in reverse order; a component may pin a prerequisite's exact config via an
-	// e2e/fixtures/ override, which wins over the registry entry. this is also
+	// in reverse order; a consumer may pin a prerequisite's exact install shape
+	// via an e2e/prerequisites/<kind>.yaml override, which wins over the
+	// prerequisite's own e2e/prerequisite.yaml install profile. this is also
 	// used by the platform for dependency ordering in infra charts.
 	// example: KubernetesPostgres needs KubernetesCloudNativePgOperator
 	// because it creates postgresql.cnpg.io/v1 Cluster resources.
@@ -4196,7 +4205,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\x96\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\xdf\xdb\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4862,7 +4871,8 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x13KubernetesSeaweedFs\x10\x9b \x1a\x1c\xa2\xf7\x04\x18\b\x13\x12\bv1alpha1\"\ak8sswfsP\x92\x03\x123\n" +
 	"\x10KubernetesQdrant\x10\x9c \x1a\x1c\xa2\xf7\x04\x18\b\x13\x12\bv1alpha1\"\ak8sqdrtP\x92\x03\x12B\n" +
 	"\x1aKubernetesRabbitMqOperator\x10\x9d \x1a!\xa2\xf7\x04\x1d\b\x13\x12\bv1alpha1\"\bk8srmqop:\x02\xbe\x1fP\x91\x03\x128\n" +
-	"\x12KubernetesRabbitMq\x10\x9e \x1a\x1f\xa2\xf7\x04\x1b\b\x13\x12\bv1alpha1\"\x06k8srmq:\x02\x9d P\x92\x03\x128\n" +
+	"\x12KubernetesRabbitMq\x10\x9e \x1a\x1f\xa2\xf7\x04\x1b\b\x13\x12\bv1alpha1\"\x06k8srmq:\x02\x9d P\x92\x03\x12G\n" +
+	"\x1fKubernetesCnpgBarmanCloudPlugin\x10\x9f \x1a!\xa2\xf7\x04\x1d\b\x13\x12\bv1alpha1\"\x06k8sbcp:\x04\xbe\x1f\x84 P\x91\x03\x128\n" +
 	"\x11KubernetesAirflow\x10\xa2 \x1a \xa2\xf7\x04\x1c\b\x13\x12\bv1alpha1\"\ak8saflw:\x02\x85 P\x92\x03\x12<\n" +
 	"\x17KubernetesSparkOperator\x10\xa3 \x1a\x1e\xa2\xf7\x04\x1a\b\x13\x12\bv1alpha1\"\tk8ssprkopP\x91\x03\x12>\n" +
 	"\x19KubernetesKubeRayOperator\x10\xa4 \x1a\x1e\xa2\xf7\x04\x1a\b\x13\x12\bv1alpha1\"\tk8skrayopP\x91\x03\x12<\n" +

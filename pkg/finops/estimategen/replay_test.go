@@ -188,8 +188,15 @@ func TestPresetReplayHonesty(t *testing.T) {
 		// footprints -- summed replicas, merged data+WAL storage, no
 		// priced lines, and the honesty exclusion on every preset.
 		presets := generatedPresets(t, summary, "kubernetespostgres")
-		if len(presets) != 3 {
-			t.Fatalf("kubernetespostgres: want all 3 presets, got %d", len(presets))
+		// Every shipped preset replays -- counted from the preset directory,
+		// not pinned, so a new preset cannot leave this assertion stale (it
+		// sat at 3 while the kind shipped 4).
+		shipped, err := filepath.Glob(filepath.Join(root, "catalog/kubernetes/kubernetespostgres/presets/*.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(presets) != len(shipped) {
+			t.Fatalf("kubernetespostgres: want all %d shipped presets, got %d", len(shipped), len(presets))
 		}
 		ha, ok := presets["02-production-ha"]
 		if !ok {

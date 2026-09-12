@@ -140,6 +140,14 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 			}
 			ingress["tls"] = tls
 		}
+		// The reachability declaration renders on presence, like every
+		// defaulted three-state string: an omitted value is left to the
+		// CRD's own default (auto) rather than spelled out here, so a
+		// manifest that never mentions reachability produces the same CR
+		// before and after the field existed.
+		if i.Reachability != nil && i.GetReachability() != "" {
+			ingress["reachability"] = i.GetReachability()
+		}
 		if len(ingress) > 0 {
 			out["ingress"] = ingress
 		}
@@ -250,6 +258,76 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 		}
 	}
 
+	// ---- remote runners --------------------------------------------------------
+	// Renders on presence, like build: a manifest that never mentions remote
+	// runners produces the same CR as before the field existed (the operator's
+	// default is off).
+	if rr := spec.GetRemoteRunners(); rr != nil && rr.Enabled != nil {
+		out["remoteRunners"] = map[string]interface{}{
+			"enabled": rr.GetEnabled(),
+		}
+	}
+
+	// ---- email -----------------------------------------------------------------
+	// One declaration for both senders. The two provider arms render only
+	// when declared (the spec's CEL already holds exactly one); defaulted
+	// scalars (port, security, from.name) render on presence only, so an
+	// omitted value is left to the CRD's own default. Credentials are Secret
+	// names and Secret key references — never values.
+	if e := spec.GetEmail(); e != nil {
+		email := map[string]interface{}{}
+		if from := e.GetFrom(); from != nil {
+			fromBody := map[string]interface{}{}
+			if from.GetAddress() != "" {
+				fromBody["address"] = from.GetAddress()
+			}
+			if from.Name != nil && from.GetName() != "" {
+				fromBody["name"] = from.GetName()
+			}
+			if len(fromBody) > 0 {
+				email["from"] = fromBody
+			}
+		}
+		if e.GetReplyTo() != "" {
+			email["replyTo"] = e.GetReplyTo()
+		}
+		if s := e.GetSmtp(); s != nil {
+			smtp := map[string]interface{}{
+				"host": s.GetHost(),
+			}
+			if s.Port != nil {
+				smtp["port"] = int(s.GetPort())
+			}
+			if s.Security != nil && s.GetSecurity() != "" {
+				smtp["security"] = s.GetSecurity()
+			}
+			if s.GetCredentialsSecretName() != "" {
+				smtp["credentialsSecretName"] = s.GetCredentialsSecretName()
+			}
+			if o := s.GetOauth2(); o != nil {
+				smtp["oauth2"] = map[string]interface{}{
+					"user":            o.GetUser(),
+					"tokenUrl":        o.GetTokenUrl(),
+					"scope":           o.GetScope(),
+					"clientId":        o.GetClientId(),
+					"clientSecretRef": secretKeyRefMap(o.GetClientSecretRef()),
+				}
+			}
+			if ref := s.GetCaBundleSecretRef(); ref != nil {
+				smtp["caBundleSecretRef"] = secretKeyRefMap(ref)
+			}
+			email["smtp"] = smtp
+		}
+		if r := e.GetResend(); r != nil {
+			email["resend"] = map[string]interface{}{
+				"apiKeySecretRef": secretKeyRefMap(r.GetApiKeySecretRef()),
+			}
+		}
+		if len(email) > 0 {
+			out["email"] = email
+		}
+	}
+
 	// ---- vault -----------------------------------------------------------------
 	if v := spec.GetVault(); v != nil {
 		vault := map[string]interface{}{}
@@ -273,44 +351,6 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 	// ---- components ------------------------------------------------------------
 	if c := spec.GetComponents(); c != nil {
 		components := map[string]interface{}{}
-		if a := c.GetAuthorization(); a != nil && a.GetEnabled() {
-			components["authorization"] = map[string]interface{}{
-				"enabled": true,
-			}
-		}
-		if s := c.GetSearch(); s != nil {
-			search := map[string]interface{}{}
-			if s.GetEnabled() {
-				search["enabled"] = true
-			}
-			if s.Mode != nil && s.GetMode() != "" {
-				search["mode"] = s.GetMode()
-			}
-			if s.GetStorageSize() != "" {
-				search["storageSize"] = s.GetStorageSize()
-			}
-			if s.GetStorageClassName() != "" {
-				search["storageClassName"] = s.GetStorageClassName()
-			}
-			if z := s.GetZookeeper(); z != nil {
-				zookeeper := map[string]interface{}{}
-				if z.Replicas != nil {
-					zookeeper["replicas"] = int(z.GetReplicas())
-				}
-				if z.GetStorageSize() != "" {
-					zookeeper["storageSize"] = z.GetStorageSize()
-				}
-				if z.GetStorageClassName() != "" {
-					zookeeper["storageClassName"] = z.GetStorageClassName()
-				}
-				if len(zookeeper) > 0 {
-					search["zookeeper"] = zookeeper
-				}
-			}
-			if len(search) > 0 {
-				components["search"] = search
-			}
-		}
 		if g := c.GetGraph(); g != nil {
 			graph := map[string]interface{}{}
 			if g.GetEnabled() {
@@ -336,9 +376,6 @@ func platformSpecBody(locals *Locals) map[string]interface{} {
 		prerequisites := map[string]interface{}{}
 		if p.PostgresOperator != nil && p.GetPostgresOperator() != "" {
 			prerequisites["postgresOperator"] = p.GetPostgresOperator()
-		}
-		if p.SolrOperator != nil && p.GetSolrOperator() != "" {
-			prerequisites["solrOperator"] = p.GetSolrOperator()
 		}
 		if p.TektonPipelines != nil && p.GetTektonPipelines() != "" {
 			prerequisites["tektonPipelines"] = p.GetTektonPipelines()
@@ -402,6 +439,21 @@ func imageMap(img *kubernetesplantonplatformv1alpha1.KubernetesPlantonPlatformIm
 		return nil
 	}
 	return out
+}
+
+// secretKeyRefMap renders a by-reference credential as the CR's
+// {name, key} pair. Nil in, nil out, so a caller can assign it under an
+// optional key without a presence check of its own; the required references
+// (the OAuth2 client secret, the Resend API key) are held non-nil by the
+// spec's validation before this runs.
+func secretKeyRefMap(ref *kubernetesplantonplatformv1alpha1.KubernetesPlantonPlatformSecretKeyRef) map[string]interface{} {
+	if ref == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"name": ref.GetName(),
+		"key":  ref.GetKey(),
+	}
 }
 
 // stringMapToInterface converts a map[string]string into the

@@ -8,9 +8,10 @@ import "catalog/kubernetes/kubernetescloudnativepgoperator/v1alpha1/spec.proto";
 import "shared/metadata.proto";
 
 // KubernetesCloudNativePgOperator installs CloudNativePG — the CNCF
-// PostgreSQL operator — on a cluster from the official Helm chart,
-// optionally with the Barman Cloud backup plugin. KubernetesPostgres
-// resources declare the databases the operator reconciles.
+// PostgreSQL operator — on a cluster from the official Helm chart.
+// KubernetesPostgres resources declare the databases the operator
+// reconciles; KubernetesCnpgBarmanCloudPlugin adds object-store backups
+// beside it.
 message KubernetesCloudNativePgOperator {
   // api-version
   string api_version = 1 [(buf.validate.field).string.const = 'kubernetes.planton.dev/v1alpha1'];

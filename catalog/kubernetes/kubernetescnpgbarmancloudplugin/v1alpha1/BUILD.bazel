@@ -1,0 +1,37 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "v1alpha1",
+    srcs = [
+        "api.pb.go",
+        "input.pb.go",
+        "outputs.pb.go",
+        "spec.pb.go",
+    ],
+    importpath = "github.com/plantonhq/planton/catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//catalog/kubernetes",
+        "//shared",
+        "//shared/foreignkey/v1:foreignkey",
+        "//shared/options",
+        "@build_buf_gen_go_bufbuild_protovalidate_protocolbuffers_go//buf/validate",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+        "@org_golang_google_protobuf//runtime/protoimpl",
+    ],
+)
+
+go_test(
+    name = "v1alpha1_test",
+    srcs = ["spec_test.go"],
+    embed = [":v1alpha1"],
+    deps = [
+        "//catalog/kubernetes",
+        "//shared",
+        "//shared/cloudresourcekind",
+        "//shared/foreignkey/v1:foreignkey",
+        "@build_buf_go_protovalidate//:protovalidate",
+        "@com_github_onsi_ginkgo_v2//:ginkgo",
+        "@com_github_onsi_gomega//:gomega",
+    ],
+)

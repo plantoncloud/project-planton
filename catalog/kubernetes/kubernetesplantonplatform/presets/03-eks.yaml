@@ -24,6 +24,14 @@ spec:
       # certificate, so no `tls` block here.
       alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/REPLACE
       alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    # The ALB scheme above is the controller's word for the same fact the
+    # platform reads from `reachability`. With no in-cluster tls block the
+    # default (auto) resolves to private, so an internet-facing ALB that
+    # terminates TLS at the load balancer must say so explicitly for keyless
+    # cloud connections and GitHub webhook delivery to be offered. An
+    # `internal` scheme keeps the default. Requires operator chart 0.11.0
+    # or newer.
+    reachability: public
   runner:
     # IRSA: the runner deploys to AWS with a role, never stored keys.
     service_account_annotations:

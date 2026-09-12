@@ -155,6 +155,29 @@ no network? The explain report alone is sufficient for correct composition.
    `…/v1alpha1/outputs.proto`. Same field names and the same comments — the
    explain report is generated from these files, so the report normally
    suffices.
+6. **The module that applies it** — the last rung, and the only absolute
+   truth: the Terraform module at `catalog/<provider>/<component>/iac/tf/`
+   and the Pulumi module at `…/iac/pulumi/module/` are the code that turns
+   the manifest into cloud resources. Read them when the question is what a
+   field DOES rather than what it is named — which provider argument it
+   feeds, what a blank value falls back to, which output is written from
+   which resource attribute, whether two fields interact. The explain
+   report and the reference page describe the contract; the module is the
+   contract's implementation, and when the two disagree the module is what
+   will run. Take a sparse checkout rather than the whole repository:
+
+   ```
+   git clone --depth 1 --filter=blob:none --sparse --branch <release> \
+     https://github.com/plantonhq/planton <dir>
+   git -C <dir> sparse-checkout set catalog/<provider>/<component>
+   ```
+
+   `<release>` is the version whose pack you resolved — the tag in the
+   release-artifact URL, or the tag of the skills release you installed
+   from — because the runner applies the module BINARY published for that
+   release, not `main`. When the release is not knowable, read `main` and
+   say so: a module newer than the one that will run can describe a field
+   the deployment does not have yet.
 
 ## Composition doctrine (per-component knowledge)
 

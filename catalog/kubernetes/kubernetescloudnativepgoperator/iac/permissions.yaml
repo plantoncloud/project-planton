@@ -39,7 +39,7 @@ spec:
           - delete
         cluster_scoped: false
         provenance: derived
-        notes: Chart-rendered objects applied by helm_release.cloudnative_pg and helm_release.barman_cloud_plugin -- the operator ServiceAccount, the cnpg-webhook-service (its name is baked into the webhook certificate), the operator-config ConfigMap (config.data plus maxConcurrentReconciles), the Grafana dashboard ConfigMap (when monitoring.grafana_dashboard), and the plugin's ServiceAccount and internal gRPC Service (when barman_cloud_plugin.enabled). Secret coverage is for chart-managed certificate material where the charts render it.
+        notes: Chart-rendered objects applied by helm_release.cloudnative_pg -- the operator ServiceAccount, the cnpg-webhook-service (its name is baked into the webhook certificate), the operator-config ConfigMap (config.data plus maxConcurrentReconciles), and the Grafana dashboard ConfigMap (when monitoring.grafana_dashboard). Secret coverage is for the chart-managed webhook certificate material.
       - api_groups:
           - apps
         resources:
@@ -53,7 +53,7 @@ spec:
           - delete
         cluster_scoped: false
         provenance: derived
-        notes: The operator Deployment (replicas from spec.replicas) applied by helm_release.cloudnative_pg, and the plugin Deployment applied by helm_release.barman_cloud_plugin when barman_cloud_plugin.enabled.
+        notes: The operator Deployment (replicas from spec.replicas) applied by helm_release.cloudnative_pg.
       - api_groups:
           - rbac.authorization.k8s.io
         resources:
@@ -81,7 +81,7 @@ spec:
           - delete
         cluster_scoped: false
         provenance: derived
-        notes: Namespaced RBAC the charts render -- the operator's leader-election Role in its own namespace, the namespace-fenced watch posture (watch.cluster_wide false), and the plugin's namespaced RBAC when barman_cloud_plugin.enabled.
+        notes: Namespaced RBAC the chart renders -- the operator's leader-election Role in its own namespace and the namespace-fenced watch posture (watch.cluster_wide false).
       - api_groups:
           - apiextensions.k8s.io
         resources:
@@ -93,7 +93,7 @@ spec:
           - patch
         cluster_scoped: true
         provenance: derived
-        notes: "The CloudNativePG CRDs (Cluster, ScheduledBackup, Backup, Pooler, Database, ...) templated by the operator chart while crds.install is true (the default), plus the plugin's CRDs (ObjectStore) with the plugin release. No delete -- the chart stamps helm.sh/resource-policy: keep on every CRD unconditionally, so Helm never deletes them on uninstall."
+        notes: "The CloudNativePG CRDs (Cluster, ScheduledBackup, Backup, Pooler, Database, ...) templated by the chart while crds.install is true (the default). No delete -- the chart stamps helm.sh/resource-policy: keep on every CRD unconditionally, so Helm never deletes them on uninstall."
       - api_groups:
           - admissionregistration.k8s.io
         resources:
@@ -121,17 +121,3 @@ spec:
         cluster_scoped: false
         provenance: derived
         notes: The operator's PodMonitor -- rendered only when spec.monitoring.pod_monitor_enabled is true, and requires the Prometheus operator CRDs on the cluster (the release fails to install without them).
-      - api_groups:
-          - cert-manager.io
-        resources:
-          - issuers
-          - certificates
-        verbs:
-          - get
-          - create
-          - update
-          - patch
-          - delete
-        cluster_scoped: false
-        provenance: derived
-        notes: The Barman Cloud plugin chart renders its cert-manager Issuer and Certificate UNCONDITIONALLY (the plugin's operator-to-sidecar TLS) -- applied by helm_release.barman_cloud_plugin when barman_cloud_plugin.enabled, and the reason the plugin arm requires cert-manager on the cluster.

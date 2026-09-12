@@ -67,3 +67,4 @@ Gateway stays yours and is never modified.
 
 - **02-ingress-tls** — the same URL through an Ingress controller
 - **01-zero-config** — no front door; the port-forward door
+- **05-email-smtp** — outbound email through your own relay

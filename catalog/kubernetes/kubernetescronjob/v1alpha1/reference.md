@@ -1905,6 +1905,7 @@ Allowed values (use exactly as shown):
 - `KubernetesQdrant`
 - `KubernetesRabbitMqOperator` -- The RabbitMQ Cluster Operator's release manifest ships admission webhooks whose serving certificate is a cert-manager Certificate — cert-manager must be running before the operator installs.
 - `KubernetesRabbitMq`
+- `KubernetesCnpgBarmanCloudPlugin` -- The Barman Cloud plugin is CloudNativePG's object-store backup path, installed as its own Helm release beside the operator. It registers with the operator over CNPG-I and issues its TLS through cert-manager, so both are prerequisites: nothing to register with, or no certificates, and the release never becomes ready.
 - `KubernetesAirflow` -- 4130–4149: Kubernetes analytics and ML KubernetesPostgres is a prerequisite because Airflow's metadata database composes a KubernetesPostgres by default (the spec's FK defaults resolve onto its outputs) and the migration Job needs the database reachable before the server components start.
 - `KubernetesSparkOperator`
 - `KubernetesKubeRayOperator`
@@ -2791,6 +2792,7 @@ Allowed values (use exactly as shown):
 - `KubernetesQdrant`
 - `KubernetesRabbitMqOperator` -- The RabbitMQ Cluster Operator's release manifest ships admission webhooks whose serving certificate is a cert-manager Certificate — cert-manager must be running before the operator installs.
 - `KubernetesRabbitMq`
+- `KubernetesCnpgBarmanCloudPlugin` -- The Barman Cloud plugin is CloudNativePG's object-store backup path, installed as its own Helm release beside the operator. It registers with the operator over CNPG-I and issues its TLS through cert-manager, so both are prerequisites: nothing to register with, or no certificates, and the release never becomes ready.
 - `KubernetesAirflow` -- 4130–4149: Kubernetes analytics and ML KubernetesPostgres is a prerequisite because Airflow's metadata database composes a KubernetesPostgres by default (the spec's FK defaults resolve onto its outputs) and the migration Job needs the database reachable before the server components start.
 - `KubernetesSparkOperator`
 - `KubernetesKubeRayOperator`
@@ -4863,6 +4865,7 @@ Allowed values (use exactly as shown):
 - `KubernetesQdrant`
 - `KubernetesRabbitMqOperator` -- The RabbitMQ Cluster Operator's release manifest ships admission webhooks whose serving certificate is a cert-manager Certificate — cert-manager must be running before the operator installs.
 - `KubernetesRabbitMq`
+- `KubernetesCnpgBarmanCloudPlugin` -- The Barman Cloud plugin is CloudNativePG's object-store backup path, installed as its own Helm release beside the operator. It registers with the operator over CNPG-I and issues its TLS through cert-manager, so both are prerequisites: nothing to register with, or no certificates, and the release never becomes ready.
 - `KubernetesAirflow` -- 4130–4149: Kubernetes analytics and ML KubernetesPostgres is a prerequisite because Airflow's metadata database composes a KubernetesPostgres by default (the spec's FK defaults resolve onto its outputs) and the migration Job needs the database reachable before the server components start.
 - `KubernetesSparkOperator`
 - `KubernetesKubeRayOperator`
@@ -5749,6 +5752,7 @@ Allowed values (use exactly as shown):
 - `KubernetesQdrant`
 - `KubernetesRabbitMqOperator` -- The RabbitMQ Cluster Operator's release manifest ships admission webhooks whose serving certificate is a cert-manager Certificate — cert-manager must be running before the operator installs.
 - `KubernetesRabbitMq`
+- `KubernetesCnpgBarmanCloudPlugin` -- The Barman Cloud plugin is CloudNativePG's object-store backup path, installed as its own Helm release beside the operator. It registers with the operator over CNPG-I and issues its TLS through cert-manager, so both are prerequisites: nothing to register with, or no certificates, and the release never becomes ready.
 - `KubernetesAirflow` -- 4130–4149: Kubernetes analytics and ML KubernetesPostgres is a prerequisite because Airflow's metadata database composes a KubernetesPostgres by default (the spec's FK defaults resolve onto its outputs) and the migration Job needs the database reachable before the server components start.
 - `KubernetesSparkOperator`
 - `KubernetesKubeRayOperator`
@@ -7935,6 +7939,7 @@ Allowed values (use exactly as shown):
 - `KubernetesQdrant`
 - `KubernetesRabbitMqOperator` -- The RabbitMQ Cluster Operator's release manifest ships admission webhooks whose serving certificate is a cert-manager Certificate — cert-manager must be running before the operator installs.
 - `KubernetesRabbitMq`
+- `KubernetesCnpgBarmanCloudPlugin` -- The Barman Cloud plugin is CloudNativePG's object-store backup path, installed as its own Helm release beside the operator. It registers with the operator over CNPG-I and issues its TLS through cert-manager, so both are prerequisites: nothing to register with, or no certificates, and the release never becomes ready.
 - `KubernetesAirflow` -- 4130–4149: Kubernetes analytics and ML KubernetesPostgres is a prerequisite because Airflow's metadata database composes a KubernetesPostgres by default (the spec's FK defaults resolve onto its outputs) and the migration Job needs the database reachable before the server components start.
 - `KubernetesSparkOperator`
 - `KubernetesKubeRayOperator`
@@ -8821,6 +8826,7 @@ Allowed values (use exactly as shown):
 - `KubernetesQdrant`
 - `KubernetesRabbitMqOperator` -- The RabbitMQ Cluster Operator's release manifest ships admission webhooks whose serving certificate is a cert-manager Certificate — cert-manager must be running before the operator installs.
 - `KubernetesRabbitMq`
+- `KubernetesCnpgBarmanCloudPlugin` -- The Barman Cloud plugin is CloudNativePG's object-store backup path, installed as its own Helm release beside the operator. It registers with the operator over CNPG-I and issues its TLS through cert-manager, so both are prerequisites: nothing to register with, or no certificates, and the release never becomes ready.
 - `KubernetesAirflow` -- 4130–4149: Kubernetes analytics and ML KubernetesPostgres is a prerequisite because Airflow's metadata database composes a KubernetesPostgres by default (the spec's FK defaults resolve onto its outputs) and the migration Job needs the database reachable before the server components start.
 - `KubernetesSparkOperator`
 - `KubernetesKubeRayOperator`

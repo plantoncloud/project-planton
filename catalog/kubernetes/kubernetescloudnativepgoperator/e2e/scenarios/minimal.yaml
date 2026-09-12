@@ -1,6 +1,7 @@
 # The baseline install: the operator alone, chart defaults, cluster-wide
-# watch — the shape most clusters run. No Barman Cloud plugin (backups are
-# opt-in), so the lane needs no cert-manager and proves the leanest path.
+# watch — the shape most clusters run. Backups are a sibling kind
+# (KubernetesCnpgBarmanCloudPlugin, which chains cert-manager itself), so
+# this lane needs no cert-manager and proves the leanest path.
 apiVersion: kubernetes.planton.dev/v1alpha1
 kind: KubernetesCloudNativePgOperator
 metadata:

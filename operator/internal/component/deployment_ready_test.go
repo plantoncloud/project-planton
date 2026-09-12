@@ -14,16 +14,16 @@ import (
 func TestDeploymentRolloutComplete(t *testing.T) {
 	type counts struct{ observed, total, updated, available int64 }
 	deployment := func(generation int64, replicas *int64, c *counts) *unstructured.Unstructured {
-		status := map[string]interface{}{}
+		status := map[string]any{}
 		if c != nil {
-			status = map[string]interface{}{
+			status = map[string]any{
 				"observedGeneration": c.observed,
 				"replicas":           c.total,
 				"updatedReplicas":    c.updated,
 				"availableReplicas":  c.available,
 			}
 		}
-		d := &unstructured.Unstructured{Object: map[string]interface{}{"spec": map[string]interface{}{}, "status": status}}
+		d := &unstructured.Unstructured{Object: map[string]any{"spec": map[string]any{}, "status": status}}
 		d.SetGeneration(generation)
 		if replicas != nil {
 			_ = unstructured.SetNestedField(d.Object, *replicas, "spec", "replicas")

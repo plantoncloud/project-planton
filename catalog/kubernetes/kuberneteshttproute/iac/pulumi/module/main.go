@@ -25,6 +25,7 @@ func Resources(ctx *pulumi.Context, stackInput *kuberneteshttproutev1alpha1.Kube
 
 	ctx.Export(OpRouteName, pulumi.String(locals.RouteName))
 	ctx.Export(OpNamespace, pulumi.String(locals.Namespace))
+	ctx.Export(OpFirstHost, pulumi.String(locals.FirstHost))
 
 	return nil
 }

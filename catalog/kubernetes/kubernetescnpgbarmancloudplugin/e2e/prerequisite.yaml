@@ -1,0 +1,19 @@
+# Install profile used when a consumer (KubernetesPostgres's backup and
+# object-store recovery scenarios) declares this plugin as a prerequisite
+# and ships no consumer-scoped override.
+#
+# The namespace is the LITERAL "cnpg-system" rather than a reference to an
+# operator resource, deliberately: on a real-cluster lane the operator is
+# RESIDENT (installed by another hand, declared through the scenario's
+# resident-prerequisites annotation) and there is no operator resource for
+# a reference to resolve against. "cnpg-system" is both the upstream
+# convention and the namespace the operator kind's own install profile
+# owns, so the same manifest serves the laptop chain (cert-manager ->
+# operator -> plugin) and the resident-operator cluster alike.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: e2e-barman-plugin-fixture
+spec:
+  namespace:
+    value: cnpg-system

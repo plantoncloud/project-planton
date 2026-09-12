@@ -17,7 +17,7 @@ var cloudNativePGFS embed.FS
 //go:embed manifests/tekton-pipelines/release.yaml
 var tektonPipelinesFS embed.FS
 
-//go:embed manifests/openfga-chart/openfga-0.2.12.tgz
+//go:embed manifests/openfga-chart/openfga-0.3.13.tgz
 var openfgaChartData []byte
 
 //go:embed manifests/temporal/temporal-0.62.0.tgz
@@ -31,6 +31,13 @@ var openbaoChartData []byte
 
 //go:embed manifests/neo4j-chart/neo4j-2026.1.4.tgz
 var neo4jChartData []byte
+
+// The Barman Cloud plugin chart is rendered by LoadBarmanCloudPluginManifests
+// (barman_plugin_helm.go) into a sub-operator release, not a platform-owned
+// component -- see that file for why it lives beside CloudNativePG.
+//
+//go:embed manifests/barman-plugin-chart/plugin-barman-cloud-0.7.0.tgz
+var barmanPluginChartData []byte
 
 // LoadCloudNativePGManifests parses the embedded CloudNativePG operator
 // release manifest (namespace, CRDs, controller deployment, webhook

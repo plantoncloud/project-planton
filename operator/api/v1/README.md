@@ -20,7 +20,7 @@ A user should be able to apply a CR with only `spec.version` set and get a worki
 - Cache (Valkey, redis-protocol): 1Gi
 - Ingress: disabled (use port-forward)
 - Runner and builds (Tekton): enabled -- deploying and building are the product; opting out is the explicit act
-- Optional components (Search, Graph): disabled
+- Optional components (Graph): disabled
 
 ### Status Structure
 

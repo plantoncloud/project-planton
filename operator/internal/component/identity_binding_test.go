@@ -54,7 +54,7 @@ func testIdentityProvider(name string, created time.Time, ref string) *v1.Planto
 	idp.Spec.OIDC = &v1.OIDCBrokerSpec{
 		IssuerURL:       "https://login.microsoftonline.com/tenant/v2.0",
 		ClientID:        "client",
-		ClientSecretRef: v1.IdentitySecretKeyRef{Name: "secret", Key: "client-secret"},
+		ClientSecretRef: v1.SecretKeyRef{Name: "secret", Key: "client-secret"},
 	}
 	return idp
 }

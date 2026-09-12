@@ -31,11 +31,28 @@ namespace.
   `GCS_CLIENT_EMAIL`/`GCS_PRIVATE_KEY`,
   `AZURE_STORAGE_ACCOUNT_NAME`/`AZURE_STORAGE_ACCOUNT_KEY`)
   materialize as `kubernetes_secret_v1` resources; the CR carries only
-  references. Keyless S3/GCS arms create no Secret — the PBM agents use
-  the pods' ambient cloud identity. The GCS arm extracts
-  `client_email`/`private_key` from the declared service-account key
-  JSON (the operator reads the two fields, not the file) — malformed
-  JSON fails the plan loudly.
+  references. The keyless S3 arm creates no Secret — the PBM agents use
+  the pods' ambient AWS identity. The Cloudflare R2 arm rides the
+  operator's `s3` block with the same two `AWS_*` keys: the module
+  composes the endpoint from the bucket's account and jurisdiction (the
+  host table mirrors `pkg/cloudflare/r2`), pins region `auto` and
+  path-style addressing, and materializes the token's key pair as
+  declared. GCS has no keyless arm: the module
+  extracts `client_email`/`private_key` from the declared
+  service-account key (raw JSON or the base64 form a GcpServiceAccount
+  exports; the operator reads the two fields, not the file — a
+  malformed key fails the plan loudly), or renders the user's
+  `existing_secret_name` and creates nothing.
+- **A restore is a run with a stable name** — `spec.restore` renders a
+  `PerconaServerMongoDBRestore` named `<name>-restore-<8 hex>`, the
+  suffix hashing the declaration; an unchanged declaration is a no-op
+  on every apply and a changed one is a new object and a new run. The
+  module never waits on the run itself (no `wait_for` on the Restore),
+  but a manifest that declares a restore makes the CLUSTER manifest wait
+  for `status.state == ready` first: the operator's own agent check
+  passes while a fresh cluster's backup agents are still restarting, and a
+  Restore created that early is parked in a terminal "get backup meta: not
+  found" (its one resync reaches no listening agent).
 - **Unset optionals are omitted** — the rendered CR body is null-pruned
   so the operator applies its own defaults; `sharding` is omitted
   entirely unless enabled, `logcollector` is omitted when the spec

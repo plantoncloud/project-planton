@@ -26,6 +26,13 @@ the runner keyless AWS identity.
 - **ALB annotations instead of `tls`** — the certificate lives in ACM at
   the edge; `tls` is for in-cluster termination (bring-your-own Secret or
   cert-manager)
+- **`ingress.reachability: public`** — with no in-cluster `tls` block the
+  platform's default (`auto`) would read this door as private and keep the
+  doors that need an inbound path from the internet (keyless cloud
+  connections, GitHub webhook delivery) honestly closed. The
+  `internet-facing` ALB scheme is the same fact in the controller's
+  words, so the preset declares it. An `internal` ALB drops the line.
+  Requires operator chart 0.11.0 or newer
 - **IRSA over stored keys** — `runner.service_account_annotations` is the
   keyless path; `runner.cloud_credentials_secret_name` exists when static
   keys are the only option (the platform stores nothing either way)
@@ -40,3 +47,5 @@ the runner keyless AWS identity.
 - **01-zero-config** — start here when the cluster addons are not ready
 - **02-ingress-tls** — in-cluster TLS via cert-manager (nginx-style
   ingress controllers)
+- **05-email-smtp** — outbound email through your own relay (SES's SMTP
+  endpoint included)

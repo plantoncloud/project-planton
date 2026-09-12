@@ -155,9 +155,9 @@ OpenBao waits only for the namespace — it has no database seam.
   present. The chart's default posture is TLS at the composed exposure.
 - **Backups:** the database deploys without object-store backups because
   the backup path (CloudNativePG's Barman Cloud plugin) requires
-  cert-manager. Once present, enable `barman_cloud_plugin` on the
-  operator and declare a `backup` block on the KubernetesPostgres
-  resource. For OpenBao, enable its snapshot-agent arm (S3-compatible
+  cert-manager. Once present, declare a `KubernetesCnpgBarmanCloudPlugin`
+  referencing the operator's namespace and a `backup` block on the
+  KubernetesPostgres resource. For OpenBao, enable its snapshot-agent arm (S3-compatible
   target) after creating the snapshot auth role inside OpenBao.
 - **Scaling OpenFGA:** the servers are stateless — raise `replicas` on
   the deployed resource; the database is the shared truth. Its `3`

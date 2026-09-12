@@ -100,12 +100,18 @@ var _ = Describe("PlantonPlatform ingress", func() {
 			Expect(ing.Spec.Rules).To(HaveLen(1))
 			Expect(ing.Spec.Rules[0].Host).To(Equal("planton.example.com"))
 			paths := ing.Spec.Rules[0].HTTP.Paths
-			Expect(paths).To(HaveLen(4))
+			Expect(paths).To(HaveLen(7))
 			Expect(paths[0].Path).To(Equal(resources.APIPathPrefix), "one plain prefix rule covers the whole API surface")
 			Expect(paths[0].Backend.Service.Port.Name).To(Equal("grpc-web"), "the browser dialect port, never raw gRPC")
 			Expect(paths[1].Path).To(Equal("/storage"), "the storage relay rides the control plane's API port")
 			Expect(paths[2].Path).To(Equal("/idp"), "the identity server rides the same hostname")
-			Expect(paths[3].Path).To(Equal("/"))
+			Expect(paths[3].Path).To(Equal(resources.OIDCDiscoveryPath), "the keyless issuer's discovery document at the door's root")
+			Expect(paths[4].Path).To(Equal(resources.OIDCJWKSPath), "and its keys")
+			Expect(paths[5].Path).To(Equal(resources.WebhooksPathPrefix), "inbound webhooks under their own namespace")
+			for _, idx := range []int{3, 4, 5} {
+				Expect(paths[idx].Backend.Service.Port.Name).To(Equal("webhook"), "path %s reaches the control plane's webhook port", paths[idx].Path)
+			}
+			Expect(paths[6].Path).To(Equal("/"))
 			Expect(ing.Annotations).To(HaveKeyWithValue(
 				"nginx.ingress.kubernetes.io/proxy-buffering", "off"),
 				"nginx detected via the IngressClass controller value")
@@ -113,6 +119,8 @@ var _ = Describe("PlantonPlatform ingress", func() {
 			var updated plantonaiv1.PlantonPlatform
 			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
 			Expect(updated.Status.ConsoleURL).To(Equal("http://planton.example.com"))
+			Expect(updated.Status.Reachability).To(Equal(plantonaiv1.IngressReachabilityPrivate),
+				"auto reads a plain-HTTP door as private: no cloud accepts it as an issuer")
 			Expect(updated.Status.Components.Ingress).NotTo(BeNil())
 			Expect(updated.Status.Components.Ingress.Phase).To(Equal(plantonaiv1.ComponentPhaseReady))
 			Expect(updated.Status.Components.Ingress.Message).To(ContainSubstring("unencrypted"),
@@ -245,6 +253,8 @@ var _ = Describe("PlantonPlatform ingress", func() {
 			Expect(k8sClient.Get(ctx, nn, &updated)).To(Succeed())
 			Expect(updated.Status.Components.Ingress.Phase).NotTo(Equal(plantonaiv1.ComponentPhaseReady))
 			Expect(updated.Status.Components.Ingress.Message).To(ContainSubstring("cert-manager"))
+			Expect(updated.Status.Reachability).To(Equal(plantonaiv1.IngressReachabilityPublic),
+				"auto on an HTTPS hostname resolves public the moment the URL is published, before the certificate is issued")
 			Expect(updated.Status.ConsoleURL).To(Equal("https://planton.example.com"),
 				"the URL must publish during the certificate wait -- the platform converges while the person points DNS")
 
@@ -330,6 +340,8 @@ var _ = Describe("PlantonPlatform ingress", func() {
 			// port-forward URL everything else derives from.
 			Expect(updated.Status.Components.Gateway).NotTo(BeNil())
 			Expect(updated.Status.ConsoleURL).To(Equal("http://localhost:8080"))
+			Expect(updated.Status.Reachability).To(Equal(plantonaiv1.IngressReachabilityPrivate),
+				"the port-forward door is private; the discovery it serves is honest about localhost")
 			// Sign-in is unconditional: the identity slot exists without
 			// ingress, held at its database dependency gate in envtest.
 			Expect(updated.Status.Components.Identity).NotTo(BeNil())
@@ -384,6 +396,8 @@ var _ = Describe("PlantonPlatform ingress", func() {
 			// The advertised URL is now the gateway's, republished in the
 			// same pass that retired the ingress URL.
 			Expect(updated.Status.ConsoleURL).To(Equal("http://localhost:8080"))
+			Expect(updated.Status.Reachability).To(Equal(plantonaiv1.IngressReachabilityPrivate),
+				"the port-forward door is private; the discovery it serves is honest about localhost")
 		})
 	})
 })

@@ -37,3 +37,8 @@ spec:
       namespace:
         value: istio-ingress
       section_name: https
+    # reachability is left at its default (auto): the HTTPS listener makes
+    # the door public in the platform's eyes, which is what keyless cloud
+    # connections and GitHub webhook delivery need. A Gateway only your
+    # network reaches (split DNS, an internal load balancer) says so with
+    # `reachability: private`. Requires operator chart 0.11.0 or newer.

@@ -92,6 +92,8 @@ The behavior of ingress depends on the deployment target. When ingress is enable
 
 The specific infrastructure provisioned is handled by the deployment component for each target kind. The Service's ingress configuration is the same regardless of the deployment target — the abstraction is intentional.
 
+Two things to know when the hostname is yours rather than composed. A route or ingress you author with its own hostname is an address the platform discovers after it applies (see [How the URL Is Found](/docs/ci-cd/deployment-stage#how-the-url-is-found)) — so it appears on the service page and in `planton service urls` and is probed like any other. And `deploy.hostname` is one label for every environment on purpose: environments differ by the serving DOMAIN they declare, so `api` under `dev.example.com` and `api` under `example.com` are the dev and production addresses of one service, while two environments sharing a domain would collide and are refused at save.
+
 ## Related Documentation
 
 - [What is a Service?](/docs/ci-cd/what-is-a-service) — Service configuration overview

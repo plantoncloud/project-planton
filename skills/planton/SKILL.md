@@ -431,8 +431,7 @@ mode inferred from its inputs. The complete offline journey -- authoring offline
 
 ## References
 
-Read the file whose "Read when" matches the moment; never answer from
-memory what a reference answers precisely.
+Read the file whose "Read when" matches the moment; never answer from memory what a reference answers precisely.
 
 ### Infrastructure (`infra.*`, `cloud.*`)
 
@@ -465,6 +464,7 @@ memory what a reference answers precisely.
 | `references/service.push-to-register.md` | Registering by committing a `service.yaml`; why a pushed manifest did or didn't land; the default-branch and own-repository laws |
 | `references/service.external-ci.md` | Keyless CI: workload identity bindings, the `planton iam federate` exchange, registering and deploying from a CI step, the Planton GitHub Action, walking a federation refusal |
 | `references/service.offline-deploy.md` | Deploying services with NO Planton backend: offline-clean kustomize authoring, the offline deploy verb and its exit codes, the GitHub Action's offline mode, the gh-driven CI/CD setup journey, verify-before-ready |
+| `references/service.building-on-your-laptop.md` | A service on a LOCAL instance (Planton Desktop): the build cluster and its `planton local build-cluster` verbs and how to read each status line, the repository watch as why a laptop run starts, the sign-in as the only credential, the commit status (never a check), the desktop banner, the measured costs, every laptop failure sentence with its next step, what never to propose on a laptop |
 | `references/service.reading-a-run.md` | Reading one run and reporting it in the user's words: build vs delivery shapes, status vocabulary, per-task errors, gates, mirrored external CI runs |
 | `references/service.briefing-a-service.md` | "Brief me" on a service the person is looking at (standing context says `Surface: a service's detail page`), or "how is my service doing": the room's facts and what they save, the read order, attention-first shape, calibration, when to leave the records for the repository, and what each surface can do with the files |
 | `references/service.build-failures.md` | A build failed or is stuck: the six failure classes by where they surface (compile verdicts, a connection before any pod, no runner, a task that ran, never finalized), who fixes each, the exact edit, when a rerun is wrong |

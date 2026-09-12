@@ -25,13 +25,27 @@ and mutating/validating webhooks whose service name is fixed by the chart
 would fight over both. The Helm release name is therefore fixed to
 "cnpg".
 
-BACKUPS ARE PLUGIN-BASED: CloudNativePG delegates object-store backups to
-the Barman Cloud plugin (its built-in object-store support is deprecated
-upstream and scheduled for removal). Enable `barman_cloud_plugin` here to
-install the plugin alongside the operator; KubernetesPostgres backup
-blocks then declare WHERE backups land. The plugin's internal TLS is
-issued by cert-manager, so the plugin arm requires cert-manager on the
-cluster (KubernetesCertManager).
+BACKUPS ARE A SEPARATE BLOCK: CloudNativePG delegates object-store
+backups to the Barman Cloud plugin (its built-in object-store support is
+deprecated upstream and scheduled for removal). The plugin is its own
+chart, pin, and dependency set, and the catalog installs it with its own
+kind -- KubernetesCnpgBarmanCloudPlugin, declared in THIS operator's
+namespace (reference this resource). KubernetesPostgres backup blocks
+then declare WHERE backups land. Without the plugin on the cluster a
+backup-declaring database never reconciles (the operator parks it in an
+unknown-plugin phase), so install the plugin before the first backup
+block, not after.
+
+A CLUSTER THAT ALREADY RUNS CLOUDNATIVEPG -- installed by a platform
+operator, by Helm, by GitOps -- cannot take a second copy (see above);
+declare only what that cluster is missing (typically the plugin kind).
+Beware the reverse case too: a CloudNativePG that was UNINSTALLED by a
+non-Helm owner can leave its cluster-scoped CRDs, webhooks, and RBAC
+behind with that owner's labels, and an install here then fails at the
+Helm ownership check ("managed-by must equal Helm") -- delete the
+leftovers first; nothing here adopts them. Deciding which case applies:
+`kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg` -- a hit
+means an operator is resident.
 
 The typed fields below cover the chart's meaningful configuration
 surface; `helm_values` remains as the escape hatch for chart values
@@ -75,15 +89,6 @@ spec:
     INHERITED_LABELS: environment,workload
     WATCH_NAMESPACE: stripped-by-typed-watch
   maxConcurrentReconciles: 20
-  barmanCloudPlugin:
-    enabled: true
-    chartVersion: "0.7.0"
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        memory: 256Mi
   monitoring:
     podMonitorEnabled: true
     grafanaDashboard: true
@@ -132,16 +137,6 @@ spec:
 | `spec.watch.namespaces` | `[]string` |  |  |  |
 | `spec.operatorConfig` | `map<string, string>` |  |  |  |
 | `spec.maxConcurrentReconciles` | `int32` |  | `10` |  |
-| `spec.barmanCloudPlugin` | `KubernetesCloudNativePgOperatorBarmanPlugin` |  |  |  |
-| `spec.barmanCloudPlugin.enabled` | `bool` |  |  |  |
-| `spec.barmanCloudPlugin.chartVersion` | `string` |  | `0.7.0` |  |
-| `spec.barmanCloudPlugin.resources` | `ContainerResources` |  |  |  |
-| `spec.barmanCloudPlugin.resources.limits` | `CpuMemory` |  |  |  |
-| `spec.barmanCloudPlugin.resources.limits.cpu` | `string` |  |  |  |
-| `spec.barmanCloudPlugin.resources.limits.memory` | `string` |  |  |  |
-| `spec.barmanCloudPlugin.resources.requests` | `CpuMemory` |  |  |  |
-| `spec.barmanCloudPlugin.resources.requests.cpu` | `string` |  |  |  |
-| `spec.barmanCloudPlugin.resources.requests.memory` | `string` |  |  |  |
 | `spec.monitoring` | `KubernetesCloudNativePgOperatorMonitoring` |  |  |  |
 | `spec.monitoring.podMonitorEnabled` | `bool` |  |  |  |
 | `spec.monitoring.grafanaDashboard` | `bool` |  |  |  |
@@ -309,72 +304,6 @@ default: 10. Raise on control planes managing many databases.
 - default: `10`
 - rule: {"int32":{"gte":1}}
 
-### spec.barmanCloudPlugin
-
-`KubernetesCloudNativePgOperatorBarmanPlugin`
-
-The Barman Cloud backup plugin — the object-store backup path for
-every KubernetesPostgres on the cluster. Deployed as its own set of
-resources beside the operator release (upstream forbids folding the
-plugin into the operator's Helm release — the two would fight over
-shared resource ownership).
-
-### spec.barmanCloudPlugin.enabled
-
-`bool`
-
-Deploy the plugin. REQUIRES cert-manager on the cluster
-(KubernetesCertManager): the plugin's operator↔sidecar TLS
-certificates are cert-manager Certificates, and the install fails
-without it. Without the plugin, KubernetesPostgres backup blocks
-cannot function.
-
-### spec.barmanCloudPlugin.chartVersion
-
-`string` · optional (explicit presence)
-
-Plugin chart version to install (e.g. "0.7.0", which ships plugin
-v0.13.0). Pin deliberately.
-
-- default: `0.7.0`
-
-### spec.barmanCloudPlugin.resources
-
-`ContainerResources`
-
-Plugin container resources. Empty = no requests/limits (the chart
-ships none by default).
-
-### spec.barmanCloudPlugin.resources.limits
-
-`CpuMemory`
-
-The resource limits for the container.
-Specify the maximum amount of CPU and memory that the container can use.
-
-### spec.barmanCloudPlugin.resources.limits.cpu
-
-`string`
-
-### spec.barmanCloudPlugin.resources.limits.memory
-
-`string`
-
-### spec.barmanCloudPlugin.resources.requests
-
-`CpuMemory`
-
-The resource requests for the container.
-Specify the minimum amount of CPU and memory that the container is guaranteed.
-
-### spec.barmanCloudPlugin.resources.requests.cpu
-
-`string`
-
-### spec.barmanCloudPlugin.resources.requests.memory
-
-`string`
-
 ### spec.monitoring
 
 `KubernetesCloudNativePgOperatorMonitoring`
@@ -497,9 +426,8 @@ Reference an output from another manifest as `valueFrom: {kind: KubernetesCloudN
 
 | Output | Type | Description |
 |---|---|---|
-| `status.outputs.namespace` | `string` | Namespace the operator (and the plugin, when enabled) runs in. |
+| `status.outputs.namespace` | `string` | Namespace the operator runs in. The Barman Cloud plugin (KubernetesCnpgBarmanCloudPlugin) must be installed into this same namespace -- reference this output from its `namespace` field. |
 | `status.outputs.release_name` | `string` | Helm release name of the operator (fixed: "cnpg" — one installation per cluster). |
-| `status.outputs.barman_plugin_release_name` | `string` | Helm release name of the Barman Cloud plugin when enabled; empty otherwise. KubernetesPostgres backup blocks depend on this plugin being present. |
 
 ## References
 
@@ -508,6 +436,14 @@ Fields that can point at another resource's outputs:
 | Field | Kind | Output |
 |---|---|---|
 | `spec.namespace` | KubernetesNamespace | `spec.name` |
+
+## Referenced By
+
+Fields on other kinds that can point at this resource:
+
+| Kind | Field | Reads |
+|---|---|---|
+| KubernetesCnpgBarmanCloudPlugin | `spec.namespace` | `status.outputs.namespace` |
 
 ## See Also
 

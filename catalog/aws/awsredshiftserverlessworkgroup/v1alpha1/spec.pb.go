@@ -78,6 +78,12 @@ type AwsRedshiftServerlessWorkgroupSpec struct {
 	// base capacity. Empty lets AWS use the account's default VPC (only
 	// meaningful in accounts that still have one). Reference AwsSubnet
 	// subnet_id outputs or pass literal subnet IDs.
+	//
+	// Containment-exempt: on a diagram the workgroup lives inside the
+	// namespace it serves (the box AWS's own model draws around its
+	// workgroups); the subnets are where its network interfaces land, and
+	// the workgroup reaches into that VPC by lines -- the same verdict an
+	// ECS service carries for its subnets while its cluster places it.
 	SubnetIds []*v1.StringValueOrRef `protobuf:"bytes,6,rep,name=subnet_ids,json=subnetIds,proto3" json:"subnet_ids,omitempty"`
 	// Security groups attached to the workgroup's endpoint. Empty uses
 	// the VPC's default security group (the AWS default). Reference
@@ -457,6 +463,9 @@ type AwsRedshiftServerlessWorkgroupEndpointAccess struct {
 	// subnet_ids (which must then be set -- CEL-enforced). Reference
 	// AwsSubnet subnet_id outputs or pass literal subnet IDs. Changing
 	// the list replaces the endpoint.
+	//
+	// Containment-exempt: these are the consuming VPC's subnets, an access
+	// path INTO the workgroup; the workgroup is not deployed into them.
 	SubnetIds []*v1.StringValueOrRef `protobuf:"bytes,2,rep,name=subnet_ids,json=subnetIds,proto3" json:"subnet_ids,omitempty"`
 	// Security groups attached to the endpoint's network interfaces.
 	// Empty uses the VPC's default security group. Reference
@@ -606,15 +615,15 @@ var File_catalog_aws_awsredshiftserverlessworkgroup_v1alpha1_spec_proto protoref
 
 const file_catalog_aws_awsredshiftserverlessworkgroup_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	">catalog/aws/awsredshiftserverlessworkgroup/v1alpha1/spec.proto\x127dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xdd\x1a\n" +
+	">catalog/aws/awsredshiftserverlessworkgroup/v1alpha1/spec.proto\x127dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xe1\x1a\n" +
 	"\"AwsRedshiftServerlessWorkgroupSpec\x12\x1f\n" +
 	"\x06region\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06region\x12\x87\x01\n" +
 	"\x0enamespace_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\x95\b\x92\xd4a\x1dstatus.outputs.namespace_nameR\rnamespaceName\x12#\n" +
 	"\rbase_capacity\x18\x03 \x01(\x05R\fbaseCapacity\x12!\n" +
 	"\fmax_capacity\x18\x04 \x01(\x05R\vmaxCapacity\x12\xa7\x01\n" +
-	"\x18price_performance_target\x18\x05 \x01(\v2m.dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupPricePerformanceTargetR\x16pricePerformanceTarget\x12t\n" +
+	"\x18price_performance_target\x18\x05 \x01(\v2m.dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupPricePerformanceTargetR\x16pricePerformanceTarget\x12x\n" +
 	"\n" +
-	"subnet_ids\x18\x06 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\tsubnetIds\x12\x8b\x01\n" +
+	"subnet_ids\x18\x06 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\tsubnetIds\x12\x8b\x01\n" +
 	"\x12security_group_ids\x18\a \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x10securityGroupIds\x120\n" +
 	"\x14enhanced_vpc_routing\x18\b \x01(\bR\x12enhancedVpcRouting\x12/\n" +
 	"\x13publicly_accessible\x18\t \x01(\bR\x12publiclyAccessible\x12\x12\n" +
@@ -645,11 +654,11 @@ const file_catalog_aws_awsredshiftserverlessworkgroup_v1alpha1_spec_proto_rawDes
 	"*AwsRedshiftServerlessWorkgroupCustomDomain\x12,\n" +
 	"\vdomain_name\x18\x01 \x01(\tB\v\xbaH\b\xc8\x01\x01r\x03\x18\xfd\x01R\n" +
 	"domainName\x12\x83\x01\n" +
-	"\x0fcertificate_arn\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB&\xbaH\x03\xc8\x01\x01\x88\xd4a\xe9\a\x92\xd4a\x17status.outputs.cert_arnR\x0ecertificateArn\"\xec\x02\n" +
+	"\x0fcertificate_arn\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB&\xbaH\x03\xc8\x01\x01\x88\xd4a\xe9\a\x92\xd4a\x17status.outputs.cert_arnR\x0ecertificateArn\"\xf0\x02\n" +
 	",AwsRedshiftServerlessWorkgroupEndpointAccess\x121\n" +
-	"\rendpoint_name\x18\x01 \x01(\tB\f\xbaH\t\xc8\x01\x01r\x04\x10\x01\x18\x1eR\fendpointName\x12t\n" +
+	"\rendpoint_name\x18\x01 \x01(\tB\f\xbaH\t\xc8\x01\x01r\x04\x10\x01\x18\x1eR\fendpointName\x12x\n" +
 	"\n" +
-	"subnet_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\tsubnetIds\x12\x92\x01\n" +
+	"subnet_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\tsubnetIds\x12\x92\x01\n" +
 	"\x16vpc_security_group_ids\x18\x03 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x13vpcSecurityGroupIds\"\xa9\x02\n" +
 	"(AwsRedshiftServerlessWorkgroupUsageLimit\x12U\n" +
 	"\n" +

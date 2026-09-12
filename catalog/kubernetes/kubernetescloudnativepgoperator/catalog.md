@@ -8,7 +8,6 @@ When you deploy this Cloud Resource, the IaC module provisions:
 
 - **Helm Release** (`cnpg`) -- the CloudNativePG operator Deployment, its mutating/validating webhooks, and its RBAC (ClusterRoles when cluster-wide, namespace-scoped when fenced)
 - **CRDs** -- Cluster, ScheduledBackup, Backup, Pooler, Database, and companions — stamped `helm.sh/resource-policy: keep` unconditionally, so uninstalling the release never cascade-deletes the databases behind them
-- **Barman Cloud plugin** (optional) -- a SECOND Helm release beside the operator (upstream forbids folding them into one) providing object-store backups for every database; its internal TLS is issued by cert-manager
 - **Namespace** (optional) -- created with standard governance labels when `createNamespace` is true (`cnpg-system` is the upstream convention)
 
 ## Before You Deploy
@@ -19,14 +18,14 @@ When you deploy this Cloud Resource, the IaC module provisions:
 
 ### Kubernetes Cluster
 
-- For the Barman Cloud backup plugin: **cert-manager on the cluster** (a deployed KubernetesCertManager) — the plugin's operator↔sidecar TLS certificates are cert-manager Certificates, and the install fails without it.
 - For the operator PodMonitor: the Prometheus operator CRDs — the release fails to install without them.
+- For backups: nothing here. Object-store backups are the Barman Cloud plugin's job, installed into this operator's namespace by a separate resource ([CNPG Barman Cloud Plugin](/cloud-catalog/kubernetes-cnpg-barman-cloud-plugin)), which needs cert-manager.
 
 ## Deploy
 
 ### Console
 
-Open the deployment store, find **CloudNativePG Operator**, and click **Deploy**. The creation wizard walks you through placement, the chart pin and CRD dial, operator runtime, the watch scope, operator configuration, the backup plugin, observability, image sourcing, and scheduling. Start from the **Standard** preset in the [Presets](#presets) tab.
+Open the deployment store, find **CloudNativePG Operator**, and click **Deploy**. The creation wizard walks you through placement, the chart pin and CRD dial, operator runtime, the watch scope, operator configuration, observability, image sourcing, and scheduling. Start from the **Standard** preset in the [Presets](#presets) tab.
 
 ### CLI
 
@@ -44,8 +43,6 @@ spec:
     value: cnpg-system
   createNamespace: true
   chartVersion: "0.29.0"
-  barmanCloudPlugin:
-    enabled: true
   monitoring:
     podMonitorEnabled: true
   priorityClassName: system-cluster-critical
@@ -55,7 +52,7 @@ spec:
 planton apply -f cnpg-operator.yaml
 ```
 
-This creates the `cnpg-system` namespace, installs the operator release plus the Barman Cloud backup plugin, and enables the operator's PodMonitor — the backup-capable production posture. Declare databases with KubernetesPostgres resources afterwards. A Stack Job tracks the provisioning in real time.
+This creates the `cnpg-system` namespace, installs the operator release, and enables the operator's PodMonitor — the production control-plane posture. Declare databases with KubernetesPostgres resources afterwards, and a CNPG Barman Cloud Plugin beside the operator before any of them declares a backup. A Stack Job tracks the provisioning in real time.
 
 ### InfraChart
 
@@ -69,23 +66,21 @@ spec:
       name: cnpg-namespace
       fieldPath: spec.name
   createNamespace: false
-  barmanCloudPlugin:
-    enabled: true
 ```
 
-The InfraPipeline creates the namespace first, then installs the operator into it in dependency order.
+The InfraPipeline creates the namespace first, then installs the operator into it in dependency order. A CNPG Barman Cloud Plugin node referencing this resource's `namespace` output follows it, and backup-declaring databases follow the plugin.
 
 ## Key Configuration
 
 These are the most important decisions when configuring the operator. Explore the full field reference in the [API Explorer](#api-explorer) tab.
 
-**One installation per cluster** -- the CRDs are cluster-scoped and the webhook service name is baked into the webhook certificate; a second installation would fight over both. The release name is fixed to `cnpg`.
+**One installation per cluster** -- the CRDs are cluster-scoped and the webhook service name is baked into the webhook certificate; a second installation would fight over both. The release name is fixed to `cnpg`. When CloudNativePG is ALREADY on the cluster (a self-hosted platform operator installs one for its own database; `kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg` tells), do not declare this kind — declare only what the cluster is missing, usually the CNPG Barman Cloud Plugin with the resident operator's namespace. A CloudNativePG uninstalled by a non-Helm owner can leave cluster-scoped CRDs, webhooks, and RBAC behind with that owner's labels; an install then fails Helm's ownership check ("managed-by must equal Helm") until those leftovers are deleted.
 
 **The chart pin governs** -- chart and operator versions move separately (chart `0.29.0` ships operator `1.30.0`). Pick versions from the served chart index; editing the pin later IS the upgrade.
 
 **CRDs survive uninstall, unconditionally** -- the chart stamps `helm.sh/resource-policy: keep` on every CRD, so removing the release never takes the databases with it. This kind deliberately offers no dial to weaken that posture.
 
-**The backup plugin is the backup path** -- CloudNativePG's built-in object-store support is deprecated upstream; the Barman Cloud plugin is what makes every KubernetesPostgres backup block function. It installs as its own release, requires cert-manager, and appears as a second release name in the outputs.
+**Backups are a separate resource** -- CloudNativePG's built-in object-store support is deprecated upstream; the Barman Cloud plugin is what makes every KubernetesPostgres backup block function, and it is its own chart, pin, and dependency set. Declare a [CNPG Barman Cloud Plugin](/cloud-catalog/kubernetes-cnpg-barman-cloud-plugin) into this operator's namespace before the first database declares a backup; without it the operator parks that database in an unknown-plugin phase.
 
 **Standbys are not throughput** -- extra operator replicas are leader-elected warm standbys that shorten the operator's own failover; `maxConcurrentReconciles` is the throughput dial for control planes managing many databases.
 
@@ -109,20 +104,19 @@ After provisioning, `status.outputs` contains values that downstream Cloud Resou
 
 | Output | Description | Common Downstream Use |
 |--------|-------------|----------------------|
-| `namespace` | Installation namespace | Debugging and composition |
+| `namespace` | Installation namespace | The CNPG Barman Cloud Plugin's `namespace` references it — the plugin must live where the operator does |
 | `release_name` | Operator Helm release name (always `cnpg`) | Debugging the release (`helm status`) |
-| `barman_plugin_release_name` | Barman Cloud plugin release name when enabled; empty otherwise | Verifying the backup engine every KubernetesPostgres backup block depends on |
 
 ## Common Patterns
 
 Browse the [Presets](#presets) tab for ready-to-deploy configurations.
 
-**Standard** -- the operator alone, cluster-wide, pinned and prioritized for a production control plane. Databases run and fail over; their backup blocks wait for the plugin. Start from the **Standard** preset.
+**Standard** -- the operator alone, cluster-wide, pinned and prioritized for a production control plane. Databases run and fail over; their backup blocks need the CNPG Barman Cloud Plugin beside it. Start from the **Standard** preset.
 
-**With Backup Plugin** -- the operator plus the Barman Cloud plugin — the backup-capable posture for production database fleets (cert-manager required first). Start from the **With Backup Plugin** preset.
+**Backup-capable cluster** -- this operator plus a CNPG Barman Cloud Plugin referencing its namespace (cert-manager first): the production database-fleet posture, declared as two resources in one chart.
 
 ## Works With
 
-- [**PostgreSQL**](/cloud-catalog/kubernetes-postgres) -- the databases this operator reconciles; each one composes against the CRDs installed here, and their backup blocks depend on the Barman plugin.
-- [**Cert Manager**](/cloud-catalog/kubernetes-cert-manager) -- the Barman Cloud plugin's TLS issuer; deploy it before enabling the plugin.
+- [**PostgreSQL**](/cloud-catalog/kubernetes-postgres) -- the databases this operator reconciles; each one composes against the CRDs installed here.
+- [**CNPG Barman Cloud Plugin**](/cloud-catalog/kubernetes-cnpg-barman-cloud-plugin) -- the object-store backup engine, installed into this operator's namespace; every KubernetesPostgres backup block depends on it.
 - [**Kubernetes Namespace**](/cloud-catalog/kubernetes-namespace) -- the placement target (`cnpg-system` by convention), permanent while the CRDs are kept.

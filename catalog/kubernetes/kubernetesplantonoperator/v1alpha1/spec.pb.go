@@ -79,9 +79,9 @@ type KubernetesPlantonOperatorSpec struct {
 	// the resource. When false, the namespace must already exist.
 	CreateNamespace bool `protobuf:"varint,2,opt,name=create_namespace,json=createNamespace,proto3" json:"create_namespace,omitempty"`
 	// *
-	// The planton-operator chart version to install (e.g. "0.9.1"). The chart
-	// and the operator image share one version line: chart 0.9.1 runs
-	// operator v0.9.1. Defaults to the version this catalog release was
+	// The planton-operator chart version to install (e.g. "0.15.0"). The chart
+	// and the operator image share one version line: chart 0.15.0 runs
+	// operator v0.15.0. Defaults to the version this catalog release was
 	// validated against; pin a different version only for change control.
 	// Versions must exist as published charts at oci://ghcr.io/plantonhq/charts.
 	// Charts older than 0.8.0 do not own their definitions and are refused
@@ -485,12 +485,12 @@ var File_catalog_kubernetes_kubernetesplantonoperator_v1alpha1_spec_proto protor
 
 const file_catalog_kubernetes_kubernetesplantonoperator_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"@catalog/kubernetes/kubernetesplantonoperator/v1alpha1/spec.proto\x129dev.planton.kubernetes.kubernetesplantonoperator.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a#catalog/kubernetes/kubernetes.proto\x1a%catalog/kubernetes/workload_pod.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xd7\x0e\n" +
+	"@catalog/kubernetes/kubernetesplantonoperator/v1alpha1/spec.proto\x129dev.planton.kubernetes.kubernetesplantonoperator.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a#catalog/kubernetes/kubernetes.proto\x1a%catalog/kubernetes/workload_pod.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xd9\x0e\n" +
 	"\x1dKubernetesPlantonOperatorSpec\x12j\n" +
 	"\tnamespace\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x18\xbaH\x03\xc8\x01\x01\x88\xd4a\xa0\x1f\x92\xd4a\tspec.nameR\tnamespace\x12)\n" +
-	"\x10create_namespace\x18\x02 \x01(\bR\x0fcreateNamespace\x12\xd2\x01\n" +
-	"\rchart_version\x18\x03 \x01(\tB\xa7\x01\xbaH\x9a\x01\xba\x01\x96\x01\n" +
-	"\x14chart_version_format\x12Rchart version must be an exact semver like \"0.9.1\" — ranges are not reproducible\x1a*this.matches('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$')\x8a\xa6\x1d\x050.9.1H\x00R\fchartVersion\x88\x01\x01\x12-\n" +
+	"\x10create_namespace\x18\x02 \x01(\bR\x0fcreateNamespace\x12\xd4\x01\n" +
+	"\rchart_version\x18\x03 \x01(\tB\xa9\x01\xbaH\x9b\x01\xba\x01\x97\x01\n" +
+	"\x14chart_version_format\x12Schart version must be an exact semver like \"0.15.0\" — ranges are not reproducible\x1a*this.matches('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$')\x8a\xa6\x1d\x060.15.0H\x00R\fchartVersion\x88\x01\x01\x12-\n" +
 	"\breplicas\x18\x05 \x01(\x05B\f\xbaH\x04\x1a\x02(\x01\x8a\xa6\x1d\x011H\x01R\breplicas\x88\x01\x01\x126\n" +
 	"\x0fleader_election\x18\x06 \x01(\bB\b\x8a\xa6\x1d\x04trueH\x02R\x0eleaderElection\x88\x01\x01\x12H\n" +
 	"\tresources\x18\a \x01(\v2*.dev.planton.kubernetes.ContainerResourcesR\tresources\x12\x8b\x01\n" +

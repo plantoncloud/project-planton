@@ -1,0 +1,61 @@
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesMongodb
+metadata:
+  name: prod-mongo
+spec:
+  namespace:
+    value: percona-mongo
+  replica_sets:
+    - name: rs0
+      # The production shape: a majority survives one member loss; on GKE
+      # the operator's default anti-affinity (one member per node) makes
+      # the autoscaler add nodes to honor it.
+      size: 3
+      storage:
+        size: 100Gi
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      pod_disruption_budget:
+        max_unavailable: 1
+  tls:
+    mode: requireTLS
+  users:
+    - name: app
+      roles:
+        - name: readWrite
+          db: app
+  backup:
+    storages:
+      - name: gcs
+        main: true
+        gcs:
+          bucket: <backups-bucket>
+          # One prefix per cluster: a restore target declares this same
+          # storage and reads the backups from here.
+          prefix: prod-mongo
+          # GCS backups are KEYED — Percona Backup for MongoDB has no
+          # Workload Identity path. The key rides in by reference from a
+          # GcpServiceAccount declared with `user_managed_key: {}`; grant
+          # that account roles/storage.objectAdmin AND
+          # roles/storage.legacyBucketReader on the bucket.
+          credentials:
+            service_account_key:
+              valueFrom:
+                kind: GcpServiceAccount
+                name: prod-mongo-backup
+                fieldPath: status.outputs.key_base64
+    tasks:
+      - name: nightly
+        schedule: "0 2 * * *" # FIVE-field cron — 02:00 nightly
+        storage_name: gcs
+        type: logical
+        keep: 14
+    pitr:
+      # Continuous oplog archiving between backups: a restore lands at any
+      # moment, not just at the last nightly.
+      enabled: true

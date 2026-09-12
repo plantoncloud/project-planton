@@ -100,21 +100,6 @@ var _ = ginkgo.Describe("KubernetesCloudNativePgOperator Validation Tests", func
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
-		ginkgo.It("barman plugin with a pinned chart version should be valid", func() {
-			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{
-				Enabled:      true,
-				ChartVersion: stringPtr("0.7.0"),
-			}
-			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
-		})
-
-		ginkgo.It("barman plugin with chart_version unset should be valid (default applies)", func() {
-			input.Spec.BarmanCloudPlugin = &KubernetesCloudNativePgOperatorBarmanPlugin{
-				Enabled: true,
-			}
-			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
-		})
-
 		ginkgo.It("full-surface spec with every block populated should be valid", func() {
 			input.Spec = &KubernetesCloudNativePgOperatorSpec{
 				Namespace:       literal("cnpg-system"),
@@ -137,14 +122,6 @@ var _ = ginkgo.Describe("KubernetesCloudNativePgOperator Validation Tests", func
 					"PULL_SECRET_NAME":      "registry-pull",
 				},
 				MaxConcurrentReconciles: int32Ptr(20),
-				BarmanCloudPlugin: &KubernetesCloudNativePgOperatorBarmanPlugin{
-					Enabled:      true,
-					ChartVersion: stringPtr("0.7.0"),
-					Resources: &kubernetes.ContainerResources{
-						Requests: &kubernetes.CpuMemory{Cpu: "50m", Memory: "64Mi"},
-						Limits:   &kubernetes.CpuMemory{Cpu: "200m", Memory: "256Mi"},
-					},
-				},
 				Monitoring: &KubernetesCloudNativePgOperatorMonitoring{
 					PodMonitorEnabled: true,
 					GrafanaDashboard:  true,

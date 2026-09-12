@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -54,10 +55,26 @@ type Component interface {
 	Reconcile(ctx context.Context, c client.Client, scheme *runtime.Scheme, planton *v1.PlantonPlatform) (Result, error)
 }
 
-// Result describes the outcome of a single component reconciliation.
+// Result describes the outcome of a single component reconciliation: whether
+// the component is Ready, the one-word reason behind the answer, the object
+// the reason is about (when there is one), and the sentence a person reads.
+// A not-ready Result built through Base.NotReady always carries the most
+// specific reason the cluster can support; a bare {Ready: false, Message}
+// is the generic "still deploying" answer and the controller records it as
+// such.
 type Result struct {
 	Ready   bool
+	Reason  v1.ComponentReason
+	Object  *v1.ComponentObjectReference
 	Message string
+}
+
+// Refused is the not-ready Result for a declaration that cannot be honored as
+// written -- a front door that does not exist, a referenced Secret that is
+// missing, a listener no hostname matches. Nothing is deploying and nothing
+// will until the spec changes; the message names the field and the way out.
+func Refused(message string) Result {
+	return Result{Ready: false, Reason: v1.ComponentReasonConfigurationRefused, Message: message}
 }
 
 // All returns every component the operator knows about, in a stable order.
@@ -169,7 +186,25 @@ func (b *Base) ApplyManifests(ctx context.Context, c client.Client, planton *v1.
 			client.FieldOwner(SSAFieldManager),
 		}
 
-		if err := c.Patch(ctx, obj, client.Apply, opts...); err != nil {
+		err := c.Patch(ctx, obj, client.Apply, opts...)
+		if err != nil && isImmutableJobChange(obj, err) {
+			// A Job's pod template is immutable: a chart upgrade that changes
+			// a migration Job (a new image, new labels) cannot be patched onto
+			// the completed run, only replaced -- which is exactly what Helm
+			// does for a hook with the before-hook-creation policy. Delete the
+			// old run (background propagation: its pods are done) and apply
+			// the new one, so the new migration runs once. Patching the same
+			// content is a no-op and never reaches here, so a Job that has not
+			// changed is never re-run.
+			log.Info("Replacing Job whose template changed",
+				"name", obj.GetName(), "namespace", obj.GetNamespace())
+			if derr := c.Delete(ctx, obj, client.PropagationPolicy(metav1.DeletePropagationBackground)); derr != nil && !apierrors.IsNotFound(derr) {
+				return fmt.Errorf("replacing Job %s/%s whose template changed: deleting the completed run: %w",
+					obj.GetNamespace(), obj.GetName(), derr)
+			}
+			err = c.Patch(ctx, obj, client.Apply, opts...)
+		}
+		if err != nil {
 			return fmt.Errorf("applying %s %s/%s: %w",
 				obj.GetKind(), obj.GetNamespace(), obj.GetName(), err)
 		}
@@ -180,6 +215,18 @@ func (b *Base) ApplyManifests(ctx context.Context, c client.Client, planton *v1.
 		)
 	}
 	return nil
+}
+
+// isImmutableJobChange reports whether a server-side apply was refused because
+// a batch/v1 Job's immutable pod template differs from the rendered one -- the
+// one refusal ApplyManifests answers by replacing the object. Any other
+// invalid-object error stays an error: deleting a Job over a mistake in the
+// manifest would hide the mistake.
+func isImmutableJobChange(obj *unstructured.Unstructured, err error) bool {
+	if obj.GetKind() != "Job" || obj.GroupVersionKind().Group != "batch" {
+		return false
+	}
+	return apierrors.IsInvalid(err) && strings.Contains(err.Error(), "immutable")
 }
 
 // IsStatefulSetReady checks if a StatefulSet has at least one ready replica.
@@ -508,7 +555,7 @@ func (b *Base) EnsureSubOperator(ctx context.Context, c client.Client, opts SubO
 		return false, nil
 	}
 
-	if crd.GetLabels()["app.kubernetes.io/managed-by"] != SSAFieldManager {
+	if crd.GetLabels()[ManagedByLabel] != SSAFieldManager {
 		log.V(1).Info("Sub-operator pre-installed by another owner, respecting it")
 		return true, nil
 	}
@@ -562,6 +609,12 @@ func (b *Base) deploymentState(ctx context.Context, c client.Client, name, names
 // them using SSA. Namespaced resources without an explicit namespace are placed
 // in defaultNamespace. The target namespace is created if it does not exist.
 func (b *Base) ApplyOperatorManifests(ctx context.Context, c client.Client, loader ManifestLoaderFunc, defaultNamespace string) error {
+	// Serialized with RemoveSubOperator: a platform arriving while the
+	// janitor removes the previous install's definitions must apply after
+	// the teardown has finished, never between its deletes.
+	subOperatorMu.Lock()
+	defer subOperatorMu.Unlock()
+
 	log := logf.FromContext(ctx)
 
 	objs, err := loader()
@@ -582,7 +635,7 @@ func (b *Base) ApplyOperatorManifests(ctx context.Context, c client.Client, load
 		if labels == nil {
 			labels = map[string]string{}
 		}
-		labels["app.kubernetes.io/managed-by"] = SSAFieldManager
+		labels[ManagedByLabel] = SSAFieldManager
 		obj.SetLabels(labels)
 
 		if err := b.EnsureNamespace(ctx, c, obj.GetNamespace()); err != nil {
@@ -627,7 +680,7 @@ func (b *Base) EnsureNamespace(ctx context.Context, c client.Client, namespace s
 	newNS.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: "Namespace"})
 	newNS.SetName(namespace)
 	newNS.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": SSAFieldManager,
+		ManagedByLabel: SSAFieldManager,
 	})
 
 	return c.Create(ctx, newNS)

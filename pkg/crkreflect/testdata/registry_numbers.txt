@@ -602,6 +602,7 @@ KubernetesSeaweedFs=4123
 KubernetesQdrant=4124
 KubernetesRabbitMqOperator=4125
 KubernetesRabbitMq=4126
+KubernetesCnpgBarmanCloudPlugin=4127
 KubernetesAirflow=4130
 KubernetesSparkOperator=4131
 KubernetesKubeRayOperator=4132

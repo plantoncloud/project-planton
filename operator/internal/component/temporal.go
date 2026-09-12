@@ -48,7 +48,18 @@ func (t *Temporal) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sc
 	}
 	if !ready {
 		log.Info("Temporal not ready")
-		return Result{Ready: false, Message: "Waiting for Temporal frontend"}, nil
+		// The chart's schema Job creates Temporal's databases and tables;
+		// until it finishes, every server pod exits on "schema_version does
+		// not exist" and restarts. Read the Job FIRST so those restarts are
+		// reported as the wait they are, not as a crash loop -- and a Job
+		// that failed is named as the cause instead of the pods it starves.
+		if expl := t.explainJobs(ctx, c, planton.Namespace, map[string]string{
+			"app.kubernetes.io/instance":  fmt.Sprintf("%s-temporal", planton.Name),
+			"app.kubernetes.io/component": "database",
+		}, "Temporal schema setup"); expl != nil {
+			return Result{Ready: false, Reason: expl.Reason, Object: expl.Object, Message: expl.Message}, nil
+		}
+		return t.NotReady(ctx, c, planton.Namespace, DeploymentRef(frontendDeploy), "Waiting for Temporal frontend"), nil
 	}
 
 	log.Info("Temporal ready")

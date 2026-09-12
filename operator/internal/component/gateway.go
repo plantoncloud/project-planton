@@ -71,7 +71,7 @@ func (g *Gateway) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sch
 	// before the readiness check so the URL every later component derives
 	// from (identity, control plane, console) is available in this same pass.
 	url, _ := frontDoorURL(planton)
-	planton.Status.ConsoleURL = url
+	publishFrontDoor(planton, url)
 
 	ready, err := g.IsDeploymentReady(ctx, c, resources.GatewayDeploymentName(planton.Name), planton.Namespace)
 	if err != nil {
@@ -79,7 +79,8 @@ func (g *Gateway) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sch
 	}
 	if !ready {
 		log.Info("Gateway not ready")
-		return Result{Ready: false, Message: "Waiting for the front-door gateway Deployment"}, nil
+		return g.NotReady(ctx, c, planton.Namespace, DeploymentRef(resources.GatewayDeploymentName(planton.Name)),
+			"Waiting for the front-door gateway Deployment"), nil
 	}
 
 	log.Info("Gateway ready")

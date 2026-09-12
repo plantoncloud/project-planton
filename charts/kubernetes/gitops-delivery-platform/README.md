@@ -161,8 +161,9 @@ with the stores.
   never widen the controller's identity.
 - **Backups:** the archive database deploys without object-store backups
   (the Barman Cloud plugin requires cert-manager). Once cert-manager is
-  present, enable `barman_cloud_plugin` on the operator and declare a
-  `backup` block on the KubernetesPostgres resource.
+  present, declare a `KubernetesCnpgBarmanCloudPlugin` referencing the
+  operator's namespace and a `backup` block on the KubernetesPostgres
+  resource.
 
 ---
 

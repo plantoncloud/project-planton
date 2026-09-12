@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package dev.planton.kubernetes.kubernetescnpgbarmancloudplugin.v1alpha1;
+
+import "catalog/kubernetes/kubernetescnpgbarmancloudplugin/v1alpha1/api.proto";
+import "catalog/kubernetes/provider.proto";
+
+// KubernetesCnpgBarmanCloudPluginStackInput is the input for both IaC
+// modules (Pulumi and Terraform) of the kubernetes-cnpg-barman-cloud-plugin
+// component.
+message KubernetesCnpgBarmanCloudPluginStackInput {
+  // the kubernetes-cnpg-barman-cloud-plugin resource to deploy
+  KubernetesCnpgBarmanCloudPlugin target = 1;
+
+  // kubernetes provider configuration
+  dev.planton.kubernetes.KubernetesProviderConfig provider_config = 2;
+}

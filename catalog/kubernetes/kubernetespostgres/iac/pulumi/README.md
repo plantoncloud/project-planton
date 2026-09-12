@@ -9,8 +9,9 @@ CRDs — field or structure drift against the pinned CRD fails at COMPILE
 time, not at apply time.
 
 Prerequisites at deploy time: the CloudNativePG operator
-(`KubernetesCloudNativePgOperator`) on the cluster, installed with
-`barman_cloud_plugin.enabled` when backups are declared.
+(`KubernetesCloudNativePgOperator`) on the cluster, and the Barman Cloud
+plugin (`KubernetesCnpgBarmanCloudPlugin`, in the operator's namespace)
+when backups or an object-store recovery are declared.
 
 ## What the Module Creates
 
@@ -108,7 +109,10 @@ planton pulumi up --manifest e2e/manifest.yaml --module-dir <path-to-this-module
   recovery with PITR targets, pg_basebackup) and the externalClusters
   list including the synthetic recovery entry
 - `module/backup.go`: ObjectStore rendering per backend arm (S3 /
-  GCS / Azure Blob, keyless vs declared keys), ScheduledBackups
+  Cloudflare R2 / GCS / Azure Blob, keyless vs declared keys; the R2
+  arm composes the S3 endpoint from the account and jurisdiction through
+  the shared `pkg/cloudflare/r2` helper and pins the sidecar's checksum
+  posture), ScheduledBackups
 - `module/secrets.go`: deterministic credential-Secret materialization
 - `module/vars.go`: the CNPG-I plugin identifier
   (`barman-cloud.cloudnative-pg.io`) and the synthetic recovery-source

@@ -22,6 +22,19 @@ kubeconfig path, not the cluster's origin. Every test still deploys, verifies,
 destroys, and verifies cleanup of its own resources — only the cluster outlives
 the run.
 
+What also outlives a run on the persistent cluster: the CRDs of kinds whose
+uninstall keeps them by design (`crds.keep_on_uninstall`, the posture of
+KubernetesCertManager, KubernetesCloudNativePgOperator, the Barman Cloud
+plugin, the Percona operators). Most are inert between lanes; cert-manager's
+are NOT — the Percona MongoDB operator probes for cert-manager and, finding
+its CRDs with no webhook behind them, refuses to mint TLS for every cluster
+("the cert-manager mutation webhook did not mutate the dry-run
+CertificateRequest object"). After a lane that installed cert-manager as a
+dependency (any Postgres backup lane, through the plugin), sweep the six
+`*.cert-manager.io` CRDs before running a Percona MongoDB lane on the same
+kind cluster (`kubectl delete crd -l app.kubernetes.io/name=cert-manager`, or
+by name).
+
 ## Cluster Profiles
 
 Some scenarios need a cluster the default kind cluster cannot be: a Cilium
@@ -41,6 +54,7 @@ metadata:
 | (absent) | the default shared cluster | everything else |
 | `cilium-cni` | `<base>-cilium`, single-node, `disableDefaultCNI: true` | Cilium-as-primary-CNI lanes; NetworkPolicy behavioral enforcement |
 | `aws-eks` | REAL cluster (no local constructor) — batch-provisioned EKS via `realcluster/aws-eks/` | Cloud-LB provisioning, IRSA identity hops, snapshot-capable CSI storage, real node autoscaling |
+| `gcp-gke` | REAL cluster (no local constructor) — an existing GKE cluster with Workload Identity; the GCP side (identities, bindings, bucket) and the Cloudflare R2 side (bucket, scoped API token) created from the catalog via `realcluster/gcp-gke/` | Keyless GCS backups and restores through Workload Identity, R2 backups and restores through the databases' `r2` arms, multi-node HA under real anti-affinity, lanes beside resident operators |
 
 Mechanics, all verified against the framework's own contracts:
 
@@ -63,8 +77,16 @@ Mechanics, all verified against the framework's own contracts:
   what a scenario would DO to a cluster as much as what it needs from it,
   and running an unmatched profile on a shared real cluster can destroy it
   for every later lane (installing a primary CNI on a live EKS cluster, for
-  example). Real-cluster profiles (`aws-eks`) have no local constructor and
-  skip with the reason on local runs.
+  example). Real-cluster profiles (`aws-eks`, `gcp-gke`) have no local
+  constructor and skip with the reason on local runs.
+- Real clusters carry RESIDENTS (the GKE management cluster runs
+  cert-manager and CloudNativePG installed by another hand), and the
+  singleton kinds forbid a second copy. Two per-scenario annotations declare
+  the fit, documented in full in `e2e/README.md`:
+  `planton.dev/e2e-resident-prerequisites: "Kind, ..."` prunes kinds the
+  cluster already has (refused on scenarios not pinned to a real-cluster
+  profile), and `planton.dev/e2e-prerequisite-install-manifest: "Kind=path"`
+  substitutes a prerequisite's install profile for this lane only.
 - Component profiles whose EVERY lane needs a real cluster carry the
   `real_cluster` status in `e2e/profile.yaml` (the Karpenter family): the
   entrypoints skip them wherever no external cluster is supplied, and the

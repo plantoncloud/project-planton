@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -53,9 +54,33 @@ func TestHTTPRouteRendersTheRouteTable(t *testing.T) {
 	for idx, raw := range rules {
 		rule := raw.(map[string]any)
 		matches, _, _ := unstructured.NestedSlice(rule, "matches")
-		path, _, _ := unstructured.NestedMap(matches[0].(map[string]any), "path")
-		if path["type"] != "PathPrefix" || path["value"] != table[idx].PathPrefix {
-			t.Errorf("rule %d path = %v, want PathPrefix %s", idx, path, table[idx].PathPrefix)
+		wantMatches := 1
+		if table[idx].HeaderMatched() {
+			wantMatches = len(table[idx].Header.Values)
+		}
+		if len(matches) != wantMatches {
+			t.Errorf("rule %d has %d matches, want %d", idx, len(matches), wantMatches)
+		}
+		for _, m := range matches {
+			match := m.(map[string]any)
+			path, _, _ := unstructured.NestedMap(match, "path")
+			wantType := "PathPrefix"
+			if table[idx].Exact {
+				wantType = "Exact"
+			}
+			if path["type"] != wantType || path["value"] != table[idx].PathPrefix {
+				t.Errorf("rule %d path = %v, want %s %s", idx, path, wantType, table[idx].PathPrefix)
+			}
+			headers, hasHeaders, _ := unstructured.NestedSlice(match, "headers")
+			if hasHeaders != table[idx].HeaderMatched() {
+				t.Errorf("rule %d header match present = %v, want %v", idx, hasHeaders, table[idx].HeaderMatched())
+			}
+			if hasHeaders {
+				header := headers[0].(map[string]any)
+				if header["type"] != "Exact" || header["name"] != table[idx].Header.Name {
+					t.Errorf("rule %d header = %v, want an Exact match on %s", idx, header, table[idx].Header.Name)
+				}
+			}
 		}
 		backends, _, _ := unstructured.NestedSlice(rule, "backendRefs")
 		backend := backends[0].(map[string]any)
@@ -63,8 +88,136 @@ func TestHTTPRouteRendersTheRouteTable(t *testing.T) {
 			t.Errorf("rule %d backend = %v", idx, backend)
 		}
 		_, hasTimeout, _ := unstructured.NestedMap(rule, "timeouts")
-		if hasTimeout != (table[idx].Backend == BackendControlPlane) {
-			t.Errorf("rule %d timeouts present = %v; only control-plane routes carry the streaming timeout", idx, hasTimeout)
+		if hasTimeout != table[idx].Backend.ServesStreams() {
+			t.Errorf("rule %d timeouts present = %v; only control-plane doors carry the streaming timeout", idx, hasTimeout)
+		}
+	}
+}
+
+// The native-gRPC row: one match per gRPC content type, each an Exact header
+// match paired with the root prefix, delivered to the raw gRPC Service port.
+// Precedence is the API's: the row sits after the longer prefixes (browser
+// API, storage, identity) and, having a header match, ahead of the console's
+// bare catch-all at the same prefix.
+func TestHTTPRouteRoutesNativeGRPCByContentType(t *testing.T) {
+	table := FrontDoorRoutes()
+	grpcIdx := -1
+	for idx, route := range table {
+		if route.Backend == BackendControlPlaneGRPC {
+			grpcIdx = idx
+		}
+	}
+	if grpcIdx < 0 {
+		t.Fatal("the route table has no native-gRPC row")
+	}
+	grpcRow := table[grpcIdx]
+	if grpcRow.PathPrefix != ConsolePathPrefix || !grpcRow.HeaderMatched() || grpcRow.Header.Name != GRPCContentTypeHeader {
+		t.Errorf("native-gRPC row = %+v; want the root prefix narrowed by %s", grpcRow, GRPCContentTypeHeader)
+	}
+	if grpcRow.ServicePortName() != controlPlaneGrpcPortName || grpcRow.ServicePort() != controlPlaneServicePort {
+		t.Errorf("native-gRPC row targets %s:%d, want %s:%d", grpcRow.ServicePortName(), grpcRow.ServicePort(), controlPlaneGrpcPortName, controlPlaneServicePort)
+	}
+	console := table[len(table)-1]
+	if console.Backend != BackendConsole || console.HeaderMatched() {
+		t.Errorf("the table must end with the console's bare catch-all, got %+v", console)
+	}
+	if grpcIdx != len(table)-2 {
+		t.Errorf("the native-gRPC row is at %d; it must sit just before the console catch-all so the table reads in precedence order", grpcIdx)
+	}
+
+	route := HTTPRoute(HTTPRouteConfig{CRName: "planton", Namespace: "planton", Hostname: "planton.example.com", GatewayName: "main"})
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	matches, _, _ := unstructured.NestedSlice(rules[grpcIdx].(map[string]any), "matches")
+	seen := map[string]bool{}
+	for _, m := range matches {
+		headers, _, _ := unstructured.NestedSlice(m.(map[string]any), "headers")
+		seen[headers[0].(map[string]any)["value"].(string)] = true
+	}
+	for _, ct := range GRPCContentTypes {
+		if !seen[ct] {
+			t.Errorf("content type %q is not matched by the native-gRPC rule", ct)
+		}
+	}
+}
+
+// The remote-runners capability adds exactly ONE rule ahead of the table: the
+// deploy queue's workflow service, by service-segment prefix, to the queue
+// frontend's gRPC port with the streaming timeout disabled (long polls). It
+// outranks the content-type gRPC root rule by path length, and nothing else
+// of Temporal -- the operator service in particular -- is routed. Without the
+// capability the route is byte-for-byte the plain table.
+func TestHTTPRouteCarriesTheDeployQueueOnlyForRemoteRunners(t *testing.T) {
+	base := HTTPRouteConfig{CRName: "planton", Namespace: "planton", Hostname: "planton.example.com", GatewayName: "main"}
+
+	closed := HTTPRoute(base)
+	closedRules, _, _ := unstructured.NestedSlice(closed.Object, "spec", "rules")
+	if len(closedRules) != len(FrontDoorRoutes()) {
+		t.Fatalf("without remote runners the route must be the plain table (%d rules), got %d", len(FrontDoorRoutes()), len(closedRules))
+	}
+	for _, raw := range closedRules {
+		backends, _, _ := unstructured.NestedSlice(raw.(map[string]any), "backendRefs")
+		if backends[0].(map[string]any)["name"] == TemporalFrontendServiceName("planton") {
+			t.Fatal("the deploy queue must never be routed while remote runners are off")
+		}
+	}
+
+	open := base
+	open.RemoteRunners = true
+	route := HTTPRoute(open)
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	if len(rules) != len(FrontDoorRoutes())+1 {
+		t.Fatalf("remote runners add exactly one rule, got %d for %d table rows", len(rules), len(FrontDoorRoutes()))
+	}
+	queue := rules[0].(map[string]any)
+	matches, _, _ := unstructured.NestedSlice(queue, "matches")
+	path, _, _ := unstructured.NestedMap(matches[0].(map[string]any), "path")
+	if path["type"] != "PathPrefix" || path["value"] != TemporalWorkflowServicePath {
+		t.Errorf("queue rule path = %v, want PathPrefix %s (a service-segment prefix beats the content-type root rule)", path, TemporalWorkflowServicePath)
+	}
+	if _, hasHeaders, _ := unstructured.NestedSlice(matches[0].(map[string]any), "headers"); hasHeaders {
+		t.Error("the queue rule needs no header match: its path already names the one service")
+	}
+	backends, _, _ := unstructured.NestedSlice(queue, "backendRefs")
+	backend := backends[0].(map[string]any)
+	if backend["name"] != TemporalFrontendServiceName("planton") || backend["port"] != int64(TemporalFrontendGRPCPort) {
+		t.Errorf("queue rule backend = %v, want the Temporal frontend on %d", backend, TemporalFrontendGRPCPort)
+	}
+	timeouts, hasTimeout, _ := unstructured.NestedMap(queue, "timeouts")
+	if !hasTimeout || timeouts["request"] != "0s" {
+		t.Errorf("queue rule timeouts = %v; long polls hold a request for about a minute, the timeout must be disabled", timeouts)
+	}
+	for _, raw := range rules {
+		for _, m := range mustSlice(raw.(map[string]any), "matches") {
+			p, _, _ := unstructured.NestedMap(m.(map[string]any), "path")
+			if v, _ := p["value"].(string); v != TemporalWorkflowServicePath && strings.HasPrefix(v, "/temporal.") {
+				t.Errorf("only the workflow service leaves the cluster; found a route for %s", v)
+			}
+		}
+	}
+	if RemoteRunnerRoutes()[0].ServicePortName() != temporalFrontendGRPCPortName {
+		t.Errorf("the queue backend must target the chart's %q port by name", temporalFrontendGRPCPortName)
+	}
+}
+
+func mustSlice(m map[string]any, field string) []any {
+	s, _, _ := unstructured.NestedSlice(m, field)
+	return s
+}
+
+// The address device clients are told to dial follows the front door's URL:
+// same host, the URL's port or the scheme's default.
+func TestGRPCEndpoint(t *testing.T) {
+	cases := map[string]string{
+		"https://planton.example.com":      "planton.example.com:443",
+		"http://planton.example.com":       "planton.example.com:80",
+		"https://planton.example.com:8443": "planton.example.com:8443",
+		"http://localhost:8080":            "localhost:8080",
+		"":                                 "",
+		"not a url":                        "",
+	}
+	for in, want := range cases {
+		if got := GRPCEndpoint(in); got != want {
+			t.Errorf("GRPCEndpoint(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

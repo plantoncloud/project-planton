@@ -3,6 +3,7 @@ package module
 import (
 	kubernetesprovider "github.com/plantonhq/planton/catalog/kubernetes"
 	kubernetesmongodbv1alpha1 "github.com/plantonhq/planton/catalog/kubernetes/kubernetesmongodb/v1alpha1"
+	"github.com/plantonhq/planton/pkg/cloudflare/r2"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
 	kubernetesmeta "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -42,19 +43,44 @@ import (
 //   - affinity: antiAffinityTopologyKey renders only when the spec sets
 //     one; the literal "none" passes through verbatim — it is the
 //     operator's own OFF switch.
+//
+// The cluster resource never awaits the operator -- EXCEPT when the spec
+// declares a restore. The Restore object is a one-shot the operator does not
+// retry: its controller validates the backup as soon as its own agent check
+// passes, and on a FRESH cluster that check passes while the pbm-agents are
+// still crash-looping through the replica set's first authentication (their
+// heartbeats are written before the crash). The resync command it then sends
+// reaches no listening agent, the controller's 30-second resync-start
+// deadline expires, and the Restore is parked in a terminal error ("get
+// backup meta: not found") that nothing revisits -- live-caught on a
+// three-member target. status.state == ready is the signal after which every
+// agent is listening and the cluster controller has already synced the main
+// storage, so a restore declared in the same manifest as its target waits
+// for it here (pulumi.com/waitFor, the provider's await on a JSONPath) and
+// the Restore is created after. A cluster without a restore keeps the
+// never-block-on-a-controller posture.
 func createCluster(ctx *pulumi.Context, locals *Locals,
 	kubernetesProvider pulumi.ProviderResource,
 	dependencies []pulumi.ResourceOption,
 ) (pulumi.Resource, error) {
+	annotations := map[string]string{}
+	if locals.Spec.GetRestore() != nil {
+		annotations["pulumi.com/waitFor"] = "jsonpath={.status.state}=ready"
+		// Three members on an autoscaled cluster take minutes each; the
+		// provider's default await of ten minutes is too tight for a
+		// restore target's first start.
+		annotations["pulumi.com/timeoutSeconds"] = "1800"
+	}
 	return apiextensions.NewCustomResource(ctx, locals.ClusterName,
 		&apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("psmdb.percona.com/v1"),
 			Kind:       pulumi.String("PerconaServerMongoDB"),
 			Metadata: &kubernetesmeta.ObjectMetaArgs{
-				Name:       pulumi.String(locals.ClusterName),
-				Namespace:  pulumi.String(locals.Namespace),
-				Labels:     pulumi.ToStringMap(locals.Labels),
-				Finalizers: pulumi.StringArray{pulumi.String(vars.Finalizer)},
+				Name:        pulumi.String(locals.ClusterName),
+				Namespace:   pulumi.String(locals.Namespace),
+				Labels:      pulumi.ToStringMap(locals.Labels),
+				Annotations: pulumi.ToStringMap(annotations),
+				Finalizers:  pulumi.StringArray{pulumi.String(vars.Finalizer)},
 			},
 			OtherFields: kubernetes.UntypedArgs{
 				"spec": buildSpec(locals),
@@ -549,8 +575,10 @@ func buildBackup(locals *Locals) map[string]interface{} {
 
 // buildBackupStorages renders storages as a MAP keyed by storage name (the
 // CRD shape); tasks and PITR reference entries by that name.
-// credentialsSecret renders only for declared-key arms — keyless S3/GCS
-// use the pods' ambient cloud identity.
+// credentialsSecret renders for every arm that carries credentials — the
+// module-materialized `<name>-backup-<storage>` or the user's existing
+// Secret — and is omitted only on the keyless S3 arm (the pods' ambient AWS
+// identity). GCS always renders one: the CRD requires it.
 func buildBackupStorages(storages []*kubernetesmongodbv1alpha1.KubernetesMongodbBackupStorage, clusterName string) map[string]interface{} {
 	out := map[string]interface{}{}
 	for _, storage := range storages {
@@ -571,9 +599,44 @@ func buildBackupStorages(storages []*kubernetesmongodbv1alpha1.KubernetesMongodb
 		case storage.GetAzure() != nil:
 			entry["type"] = "azure"
 			entry["azure"] = buildBackupAzure(storage.GetAzure(), clusterName, storage.GetName())
+		case storage.GetR2() != nil:
+			// R2 speaks S3: the operator's `s3` block, with the R2-specific
+			// values composed here rather than typed by the user.
+			entry["type"] = "s3"
+			entry["s3"] = buildBackupR2(storage.GetR2(), clusterName, storage.GetName())
 		}
 
 		out[storage.GetName()] = entry
+	}
+	return out
+}
+
+// buildBackupR2 renders a Cloudflare R2 storage onto the operator's `s3`
+// block. The spec is in R2's own vocabulary (bucket, account, jurisdiction,
+// a Cloudflare credential); this is where the S3 translation happens:
+//   - endpointUrl: the jurisdiction's host, from the shared pkg/cloudflare/r2
+//     helper (an eu/fedramp/us bucket is served ONLY through
+//     <account>.<jurisdiction>.r2.cloudflarestorage.com);
+//   - region: "auto", the only region R2 accepts (PBM would default to
+//     us-east-1, which Cloudflare aliases -- rendered explicitly so the CR
+//     says what it means);
+//   - forcePathStyle: true -- PBM's own default when unset, pinned so the
+//     addressing style the store was proven with is what the CR declares;
+//   - credentialsSecret: the module-materialized `<name>-backup-<storage>`
+//     Secret carrying AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY as declared
+//     (by default the CloudflareAccountApiToken's r2_access_key_id /
+//     r2_secret_access_key outputs, which that kind derives -- no hashing
+//     happens here). There is no keyless posture for R2.
+func buildBackupR2(r2Storage *kubernetesmongodbv1alpha1.KubernetesMongodbR2Storage, clusterName, storageName string) map[string]interface{} {
+	out := map[string]interface{}{
+		"bucket":            r2Storage.GetBucket().GetValue(),
+		"region":            r2.Region,
+		"endpointUrl":       r2.S3Endpoint(r2Storage.GetAccountId().GetValue(), r2Storage.GetJurisdiction().GetValue()),
+		"forcePathStyle":    true,
+		"credentialsSecret": clusterName + "-backup-" + storageName,
+	}
+	if r2Storage.GetPrefix() != "" {
+		out["prefix"] = r2Storage.GetPrefix()
 	}
 	return out
 }
@@ -602,15 +665,24 @@ func buildBackupS3(s3 *kubernetesmongodbv1alpha1.KubernetesMongodbS3Storage, clu
 
 func buildBackupGcs(gcs *kubernetesmongodbv1alpha1.KubernetesMongodbGcsStorage, clusterName, storageName string) map[string]interface{} {
 	out := map[string]interface{}{
-		"bucket": gcs.GetBucket(),
+		"bucket":            gcs.GetBucket(),
+		"credentialsSecret": gcsCredentialsSecretName(gcs, clusterName, storageName),
 	}
 	if gcs.GetPrefix() != "" {
 		out["prefix"] = gcs.GetPrefix()
 	}
-	if gcs.GetServiceAccountKeyJson() != "" {
-		out["credentialsSecret"] = clusterName + "-backup-" + storageName
-	}
 	return out
+}
+
+// gcsCredentialsSecretName is the Secret the operator's GCS client reads: the
+// module-materialized `<name>-backup-<storage>` when the spec declares a
+// service-account key, or the user's own Secret when it names one. The spec
+// oneof guarantees exactly one arm.
+func gcsCredentialsSecretName(gcs *kubernetesmongodbv1alpha1.KubernetesMongodbGcsStorage, clusterName, storageName string) string {
+	if existing := gcs.GetCredentials().GetExistingSecretName(); existing != "" {
+		return existing
+	}
+	return clusterName + "-backup-" + storageName
 }
 
 func buildBackupAzure(azure *kubernetesmongodbv1alpha1.KubernetesMongodbAzureStorage, clusterName, storageName string) map[string]interface{} {

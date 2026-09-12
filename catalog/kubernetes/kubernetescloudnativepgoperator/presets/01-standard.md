@@ -2,25 +2,26 @@
 
 This preset installs the CloudNativePG operator in its standard posture:
 the operator release alone, cluster-wide watch scope, pinned chart
-version, sized and prioritized for a production control plane. No backup
-plugin — databases declared with KubernetesPostgres run, replicate, and
-fail over, but their backup blocks need the plugin arm (see
-02-with-backup-plugin). One installation per cluster: the CRDs and
-webhooks are cluster-scoped singletons, and the release name is fixed to
-`cnpg`.
+version, sized and prioritized for a production control plane. Databases
+declared with KubernetesPostgres run, replicate, and fail over; their
+backup blocks need the Barman Cloud plugin beside this operator
+(KubernetesCnpgBarmanCloudPlugin, its own resource). One installation
+per cluster: the CRDs and webhooks are cluster-scoped singletons, and the
+release name is fixed to `cnpg`.
 
 ## When to Use
 
-- Any cluster that will run KubernetesPostgres databases and does not
-  need object-store backups yet
+- Any cluster that will run KubernetesPostgres databases
 - The 30-second choice: this is the standard first CloudNativePG
-  installation
+  installation; add the plugin resource beside it when a database needs
+  object-store backups
 
 ## Key Configuration Choices
 
-- **Operator only, no plugin** — the Barman Cloud plugin (and its
-  cert-manager dependency) stays out until a database needs backups;
-  enabling it later is a spec change, not a reinstall
+- **Operator only** — the Barman Cloud plugin (and its cert-manager
+  dependency) is a separate resource, KubernetesCnpgBarmanCloudPlugin,
+  declared into this operator's namespace when a database needs backups;
+  adding it later touches nothing here
 - **`replicas: 1`** (chart default) — extra replicas are leader-elected
   warm standbys that shorten failover of the operator itself; they add
   no reconciliation throughput (`max_concurrent_reconciles` is that
@@ -42,5 +43,6 @@ None — this preset deploys as-is.
 
 ## Related Presets
 
-- **02-with-backup-plugin** — the same installation plus the Barman
-  Cloud plugin, for clusters whose databases declare backup blocks
+- **KubernetesCnpgBarmanCloudPlugin / 01-standard** — the backup plugin
+  beside this operator, for clusters whose databases declare backup
+  blocks

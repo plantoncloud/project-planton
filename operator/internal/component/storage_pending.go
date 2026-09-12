@@ -14,9 +14,10 @@ import (
 // A stuck volume is the first wall real clusters hit (no default class, a
 // default class whose driver was never installed, a backend rejecting our
 // sizes) -- and without this file it surfaces as a generic "Waiting for X"
-// forever. Each data component's not-ready branch asks ExplainPendingStorage
-// for a better answer; the classification itself is pure so the wording and
-// arms are pinned by offline tests.
+// forever. Base.NotReady (workload_pending.go) finds the Pending claims a
+// component's own pods reference and asks classifyPendingPVC for the cause;
+// the classification is pure so the wording and arms are pinned by offline
+// tests.
 
 // The operator only READS these to explain a stuck volume; it never installs
 // storage drivers or mutates classes (that would require cloud credentials
@@ -53,41 +54,35 @@ var driverInstallHints = map[string]string{
 	"disk.csi.azure.com":    "on AKS, the disk CSI driver ships enabled -- re-enable it if it was removed",
 }
 
-// ExplainPendingStorage looks for a Pending volume belonging to a component
-// (claims whose name contains releaseName) and, when it can tell WHY the
-// volume is stuck, returns a plain-language message naming the fix. Returns
-// ("", false) when there is nothing better to say than the component's own
-// generic waiting message. Read failures also return ("", false): explaining
-// is best-effort and must never fail a reconcile.
-func (b *Base) ExplainPendingStorage(ctx context.Context, c client.Client, namespace, releaseName string) (string, bool) {
-	var pvcs corev1.PersistentVolumeClaimList
-	if err := c.List(ctx, &pvcs, client.InNamespace(namespace)); err != nil {
-		return "", false
-	}
-	var pending *corev1.PersistentVolumeClaim
-	for i := range pvcs.Items {
-		pvc := &pvcs.Items[i]
-		if pvc.Status.Phase == corev1.ClaimPending && strings.Contains(pvc.Name, releaseName) {
-			pending = pvc
-			break
+// storageFacts are the cluster-wide facts a Pending claim is judged against.
+type storageFacts struct {
+	classes []storagev1.StorageClass
+	drivers []storagev1.CSIDriver
+}
+
+// storageFactsReader returns a memoized reader for the cluster's storage
+// facts, so the StorageClass and CSIDriver lists are fetched at most once per
+// explanation and only when a claim is actually Pending. Both reads are
+// best-effort: a cluster without the CSIDriver API (or RBAC lag on an
+// upgrade) still gets the arms that need no driver facts, and a class-list
+// failure yields no classes, which the no-class arm reports honestly.
+func storageFactsReader(ctx context.Context, c client.Client) func() storageFacts {
+	var facts *storageFacts
+	return func() storageFacts {
+		if facts != nil {
+			return *facts
 		}
+		facts = &storageFacts{}
+		var classes storagev1.StorageClassList
+		if err := c.List(ctx, &classes); err == nil {
+			facts.classes = classes.Items
+		}
+		var drivers storagev1.CSIDriverList
+		if err := c.List(ctx, &drivers); err == nil {
+			facts.drivers = drivers.Items
+		}
+		return *facts
 	}
-	if pending == nil {
-		return "", false
-	}
-
-	var classes storagev1.StorageClassList
-	if err := c.List(ctx, &classes); err != nil {
-		return "", false
-	}
-	var drivers storagev1.CSIDriverList
-	// Best-effort: a cluster without the CSIDriver API (or RBAC lag on an
-	// upgrade) still gets the arms that need no driver facts.
-	_ = c.List(ctx, &drivers)
-	var events corev1.EventList
-	_ = c.List(ctx, &events, client.InNamespace(namespace))
-
-	return classifyPendingPVC(pending, classes.Items, drivers.Items, events.Items)
 }
 
 // classifyPendingPVC is the pure classifier: given one Pending claim and the

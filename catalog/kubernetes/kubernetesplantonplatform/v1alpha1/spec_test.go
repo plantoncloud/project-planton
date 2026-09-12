@@ -144,6 +144,30 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 			gomega.Expect(err).To(gomega.BeNil())
 		})
 
+		// The reachability declaration: every word is accepted on an enabled
+		// door, and "private" is accepted even on a disabled one because it is
+		// true there (a port-forward door is reached only from the machine
+		// running it). Only the contradiction is refused, in the invalid block.
+		ginkgo.It("should accept every reachability word on an enabled door", func() {
+			for _, word := range []string{"auto", "public", "private"} {
+				input := minimalValidPlatform()
+				input.Spec.Ingress = &KubernetesPlantonPlatformIngress{
+					Enabled:      true,
+					Hostname:     "planton.example.com",
+					Reachability: strPtr(word),
+				}
+				err := protovalidate.Validate(input)
+				gomega.Expect(err).To(gomega.BeNil(), "reachability %q", word)
+			}
+		})
+
+		ginkgo.It("should accept reachability private on a disabled ingress", func() {
+			input := minimalValidPlatform()
+			input.Spec.Ingress = &KubernetesPlantonPlatformIngress{Reachability: strPtr("private")}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).To(gomega.BeNil())
+		})
+
 		ginkgo.It("should accept runner workload identity and database growth", func() {
 			input := minimalValidPlatform()
 			replicas := int32(2)
@@ -180,7 +204,7 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 		ginkgo.It("should accept a license from a Secret reference", func() {
 			input := minimalValidPlatform()
 			input.Spec.License = &KubernetesPlantonPlatformLicense{
-				SecretKeyRef: &KubernetesPlantonPlatformLicenseSecretKeyRef{
+				SecretKeyRef: &KubernetesPlantonPlatformSecretKeyRef{
 					Name: "planton-license",
 					Key:  "key",
 				},
@@ -193,6 +217,85 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 			input := minimalValidPlatform()
 			input.Spec.Identity = &KubernetesPlantonPlatformIdentity{
 				AdminEmail: "admin@example.com",
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).To(gomega.BeNil())
+		})
+
+		// Email: one declaration for both senders. The three ways into a relay
+		// and the Resend arm are each accepted on their own; the contradictions
+		// are refused in the invalid block, in the platform's own words.
+		ginkgo.It("should accept an SMTP relay with a username and password Secret", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From:    &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				ReplyTo: "it-help@acme.com",
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{
+					Host:                  "smtp.office365.com",
+					CredentialsSecretName: "planton-email",
+				},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).To(gomega.BeNil())
+		})
+
+		ginkgo.It("should accept an SMTP relay signed in through OAuth2, with a private CA bundle", func() {
+			input := minimalValidPlatform()
+			port := int32(587)
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com", Name: strPtr("Acme Planton")},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{
+					Host:     "smtp.office365.com",
+					Port:     &port,
+					Security: strPtr("starttls"),
+					Oauth2: &KubernetesPlantonPlatformEmailSmtpOauth2{
+						User:            "no-reply@planton.acme.com",
+						TokenUrl:        "https://login.microsoftonline.com/tenant/oauth2/v2.0/token",
+						Scope:           "https://outlook.office365.com/.default",
+						ClientId:        "app-registration-client-id",
+						ClientSecretRef: &KubernetesPlantonPlatformSecretKeyRef{Name: "planton-email-oauth2", Key: "client-secret"},
+					},
+					CaBundleSecretRef: &KubernetesPlantonPlatformSecretKeyRef{Name: "corp-ca", Key: "ca.crt"},
+				},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).To(gomega.BeNil())
+		})
+
+		ginkgo.It("should accept a credential-free plaintext relay (an internal smart host that admits the cluster's address)", func() {
+			input := minimalValidPlatform()
+			port := int32(25)
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{
+					Host:     "smtp-relay.corp.acme.com",
+					Port:     &port,
+					Security: strPtr("none"),
+				},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).To(gomega.BeNil())
+		})
+
+		ginkgo.It("should accept every security word on a credential-free relay", func() {
+			for _, word := range []string{"starttls", "tls", "none"} {
+				input := minimalValidPlatform()
+				input.Spec.Email = &KubernetesPlantonPlatformEmail{
+					From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+					Smtp: &KubernetesPlantonPlatformEmailSmtp{Host: "smtp-relay.corp.acme.com", Security: strPtr(word)},
+				}
+				err := protovalidate.Validate(input)
+				gomega.Expect(err).To(gomega.BeNil(), "security %q", word)
+			}
+		})
+
+		ginkgo.It("should accept Resend with the API key by reference", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Resend: &KubernetesPlantonPlatformEmailResend{
+					ApiKeySecretRef: &KubernetesPlantonPlatformSecretKeyRef{Name: "planton-email", Key: "api-key"},
+				},
 			}
 			err := protovalidate.Validate(input)
 			gomega.Expect(err).To(gomega.BeNil())
@@ -264,6 +367,25 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 				Hostname:   "planton.example.com",
 				GatewayRef: &KubernetesPlantonPlatformGatewayRef{Name: literalRef("main")},
 				Tls:        &KubernetesPlantonPlatformIngressTls{SecretName: "planton-tls"},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		ginkgo.It("should fail on reachability public with the ingress disabled (a port-forward door is never public)", func() {
+			input := minimalValidPlatform()
+			input.Spec.Ingress = &KubernetesPlantonPlatformIngress{Reachability: strPtr("public")}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.ContainSubstring("reached only through kubectl port-forward"))
+		})
+
+		ginkgo.It("should fail on a reachability word outside auto, public, private", func() {
+			input := minimalValidPlatform()
+			input.Spec.Ingress = &KubernetesPlantonPlatformIngress{
+				Enabled:      true,
+				Hostname:     "planton.example.com",
+				Reachability: strPtr("internet"),
 			}
 			err := protovalidate.Validate(input)
 			gomega.Expect(err).NotTo(gomega.BeNil())
@@ -360,7 +482,7 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 			input := minimalValidPlatform()
 			input.Spec.License = &KubernetesPlantonPlatformLicense{
 				Key: "plk_FAKE_PLACEHOLDER_VALUE",
-				SecretKeyRef: &KubernetesPlantonPlatformLicenseSecretKeyRef{
+				SecretKeyRef: &KubernetesPlantonPlatformSecretKeyRef{
 					Name: "planton-license",
 					Key:  "key",
 				},
@@ -402,6 +524,121 @@ var _ = ginkgo.Describe("KubernetesPlantonPlatformSpec Validation Tests", func()
 			port := int32(70000)
 			input.Spec.Gateway = &KubernetesPlantonPlatformGateway{
 				LocalPort: &port,
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		// Email: the three rules the platform's own definition enforces,
+		// mirrored so a manifest is refused here in the same words it would be
+		// refused by the cluster.
+		ginkgo.It("should fail on email with BOTH an SMTP relay and a Resend account", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From:   &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp:   &KubernetesPlantonPlatformEmailSmtp{Host: "smtp.office365.com"},
+				Resend: &KubernetesPlantonPlatformEmailResend{ApiKeySecretRef: &KubernetesPlantonPlatformSecretKeyRef{Name: "planton-email", Key: "api-key"}},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.ContainSubstring("never both, never neither"))
+		})
+
+		ginkgo.It("should fail on email with neither provider arm", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		ginkgo.It("should fail on email without a from address", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{Host: "smtp.office365.com"},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		ginkgo.It("should fail on an SMTP relay with BOTH a credentials Secret and OAuth2", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{
+					Host:                  "smtp.office365.com",
+					CredentialsSecretName: "planton-email",
+					Oauth2: &KubernetesPlantonPlatformEmailSmtpOauth2{
+						User: "u", TokenUrl: "https://login.microsoftonline.com/t/oauth2/v2.0/token", Scope: "s", ClientId: "c",
+						ClientSecretRef: &KubernetesPlantonPlatformSecretKeyRef{Name: "n", Key: "k"},
+					},
+				},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.ContainSubstring("smtp authenticates one way"))
+		})
+
+		ginkgo.It("should fail on credentials over a plaintext connection (security: none would send them in the clear)", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{
+					Host:                  "smtp-relay.corp.acme.com",
+					Security:              strPtr("none"),
+					CredentialsSecretName: "planton-email",
+				},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.ContainSubstring("would send credentials in the clear"))
+		})
+
+		ginkgo.It("should fail on a security word outside starttls, tls, none", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{Host: "smtp.office365.com", Security: strPtr("ssl")},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		ginkgo.It("should fail on an OAuth2 token URL that is not https", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{
+					Host: "smtp.office365.com",
+					Oauth2: &KubernetesPlantonPlatformEmailSmtpOauth2{
+						User: "u", TokenUrl: "http://login.microsoftonline.com/t/oauth2/v2.0/token", Scope: "s", ClientId: "c",
+						ClientSecretRef: &KubernetesPlantonPlatformSecretKeyRef{Name: "n", Key: "k"},
+					},
+				},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.ContainSubstring("https://"))
+		})
+
+		ginkgo.It("should fail on an out-of-range SMTP port", func() {
+			input := minimalValidPlatform()
+			port := int32(0)
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From: &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Smtp: &KubernetesPlantonPlatformEmailSmtp{Host: "smtp.office365.com", Port: &port},
+			}
+			err := protovalidate.Validate(input)
+			gomega.Expect(err).NotTo(gomega.BeNil())
+		})
+
+		ginkgo.It("should fail on Resend without the API key reference", func() {
+			input := minimalValidPlatform()
+			input.Spec.Email = &KubernetesPlantonPlatformEmail{
+				From:   &KubernetesPlantonPlatformEmailFrom{Address: "no-reply@planton.acme.com"},
+				Resend: &KubernetesPlantonPlatformEmailResend{},
 			}
 			err := protovalidate.Validate(input)
 			gomega.Expect(err).NotTo(gomega.BeNil())

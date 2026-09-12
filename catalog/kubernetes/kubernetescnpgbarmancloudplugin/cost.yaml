@@ -1,0 +1,22 @@
+# Cost profile: what drives this component's bill. Field paths are
+# spec-relative proto field names, held to the served contract by the
+# catalog-data conformance gate. Schema: finops/componentcostprofile/v1.
+apiVersion: finops.planton.dev/v1
+kind: ComponentCostProfile
+metadata:
+  name: kubernetescnpgbarmancloudplugin
+spec:
+  billing_model: cluster_capacity
+  cost_drivers:
+    - field_path: replicas
+      sku_meter: cluster CPU and memory reservations
+      impact: Each plugin replica carries the declared resources. Extra replicas are leader-elected warm standbys that shorten failover of the PLUGIN itself -- they add no backup throughput, just standby capacity.
+    - field_path: resources
+      sku_meter: cluster CPU and memory reservations
+      impact: The CPU and memory requests are what the scheduler reserves per plugin replica. The chart ships no default requests or limits -- empty means the plugin schedules unbounded. The plugin process is light; the backup work runs in a sidecar inside each PostgreSQL instance pod, whose capacity rides the KubernetesPostgres resource.
+  estimate_exclusions:
+    - the price of reserved CPU and memory is the target cluster's node economics, which this catalog cannot know
+    - "the sidecar the plugin injects into every PostgreSQL instance pod reserves capacity inside those pods -- each rides its KubernetesPostgres resource, never this footprint"
+    - "the object-store bytes backups write, and the egress they cost, are declared and accounted on each KubernetesPostgres backup block, never here"
+    - the helm_values overlay merges last and can override the modeled values, including resources
+  notes: "This component installs the backup ENGINE, not the backups: its footprint is the plugin pod(s). What gets backed up, where, and how often is declared through KubernetesPostgres resources, which carry their own capacity and storage footprints."

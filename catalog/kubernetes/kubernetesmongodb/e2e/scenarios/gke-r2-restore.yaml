@@ -1,0 +1,66 @@
+# THE RESTORE PROOF on GKE from Cloudflare R2: a fresh three-member replica set
+# restored from a backup the SOURCE cluster (fixture-gke-r2-source.yaml) took
+# into R2 through the `r2` arm, then rolled forward to the latest archived
+# oplog — the disaster-recovery shape a customer runs when the original is
+# gone and the backups live outside the cloud that ran it. The restore is
+# addressed by its LOCATION in the store: this cluster declares the same R2
+# storage, and the destination is the `s3://` path the seed's backup landed
+# at (the operator composes the S3 form for every S3-API store), published by
+# the seed script. The cluster references the source's system-users Secret
+# because the restored data carries the source's users and passwords. The
+# seed wrote marker A, took the backup, then wrote marker B: the verifier
+# (switched on by this scenario's name) waits for the Restore object to reach
+# ready, reads BOTH markers back through the restored set with the source's
+# credentials — B proves the archived oplog replayed past the base backup —
+# and asserts the three members landed on three distinct nodes.
+#
+# The scenario JOINS the fixture's namespace (fixture-owns / scenario-joins).
+# The seed script is the GCS lane's: it seeds the database, not the store.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesMongodb
+metadata:
+  name: e2e-mdb-gke-dr
+  annotations:
+    planton.dev/e2e-cluster-profile: "gcp-gke"
+    planton.dev/e2e-prerequisites: "catalog/kubernetes/kubernetesmongodb/e2e/fixture-gke-r2-source.yaml"
+    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetesmongodb/e2e/scenarios/gke-restore-seed.setup.sh"
+spec:
+  namespace:
+    value: e2e-mdb-gke
+  system_users_secret_name: e2e-mdb-gke-src-secrets
+  replica_sets:
+    - name: rs0
+      size: 3
+      storage:
+        size: 2Gi
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+  backup:
+    storages:
+      - name: r2
+        main: true
+        r2:
+          bucket:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_BUCKET}
+          prefix: mongo/${E2E_RUN_ID}/e2e-mdb-gke-src
+          account_id:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCOUNT_ID}
+          jurisdiction:
+            value: ${E2E_ENV:PLANTON_E2E_GKE_R2_JURISDICTION}
+          credentials:
+            access_key_id:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_R2_ACCESS_KEY_ID}
+            secret_access_key:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_R2_SECRET_ACCESS_KEY}
+  restore:
+    backup_source:
+      storage_name: r2
+      destination: ${E2E_SETUP:MONGO_BACKUP_DESTINATION}
+      type: logical
+    pitr:
+      type: latest

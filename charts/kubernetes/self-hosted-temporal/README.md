@@ -113,9 +113,10 @@ before the server starts, and the namespace-create Jobs after.
   the deployed KubernetesTemporal resource as load grows.
 - **Backups:** the database deploys without object-store backups because
   the backup path (CloudNativePG's Barman Cloud plugin) requires
-  cert-manager on the cluster. Once cert-manager is present, enable
-  `barman_cloud_plugin` on the operator and declare a `backup` block on
-  the KubernetesPostgres resource — WAL archiving starts immediately.
+  cert-manager on the cluster. Once cert-manager is present, declare a
+  `KubernetesCnpgBarmanCloudPlugin` referencing the operator's namespace
+  and a `backup` block on the KubernetesPostgres resource — WAL archiving
+  starts immediately.
 - **Long-term history:** retention deletes closed workflows from the
   database. When you need them beyond retention, configure Temporal
   archival (S3/GCS) on the deployed resource rather than stretching

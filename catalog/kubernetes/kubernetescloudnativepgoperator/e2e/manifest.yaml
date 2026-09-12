@@ -32,15 +32,6 @@ spec:
     INHERITED_LABELS: environment,workload
     WATCH_NAMESPACE: stripped-by-typed-watch
   maxConcurrentReconciles: 20
-  barmanCloudPlugin:
-    enabled: true
-    chartVersion: "0.7.0"
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        memory: 256Mi
   monitoring:
     podMonitorEnabled: true
     grafanaDashboard: true

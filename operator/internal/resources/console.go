@@ -45,6 +45,14 @@ type ConsoleConfig struct {
 	// origin, nothing hand-configured.
 	PublicURL string
 
+	// GRPCEndpoint is the host:port a native gRPC client (the CLI, the
+	// runner) dials, published by the console's device discovery document.
+	// Set by the component only when the front door actually routes native
+	// gRPC (the Gateway API edge renders the content-type rule; the Ingress
+	// and port-forward doors do not), so the document never advertises an
+	// address that would answer with a console page.
+	GRPCEndpoint string
+
 	// Identity wires the console's sign-in stack to the bundled identity
 	// server. Always set by the component once the front-door URL is known
 	// -- every install signs in.
@@ -130,6 +138,11 @@ func ConsoleDeployment(cfg ConsoleConfig) *appsv1.Deployment {
 
 	envVars := []corev1.EnvVar{
 		{Name: "API_ENDPOINT", Value: apiEndpoint},
+		// The deployment shape, the same declared fact the control plane
+		// boots with. The console publishes it in its device discovery
+		// document so a CLI or desktop pointed at this instance learns what
+		// it is from the instance itself, never from its hostname.
+		{Name: "PLANTON_DEPLOYMENT_KIND", Value: DeploymentKindSelfHosted},
 		// Bind the Next.js standalone server on all interfaces. It listens on
 		// process.env.HOSTNAME, which Kubernetes sets to the pod name (resolving to
 		// the pod IP), so it would otherwise bind that single interface and refuse
@@ -147,6 +160,12 @@ func ConsoleDeployment(cfg ConsoleConfig) *appsv1.Deployment {
 		// so giving the platform its address is the ONLY step; nobody
 		// hand-configures a callback.
 		envVars = append(envVars, corev1.EnvVar{Name: "NEXTAUTH_URL", Value: cfg.PublicURL})
+	}
+	if cfg.GRPCEndpoint != "" {
+		// Published by the discovery document beside the sign-in facts: the
+		// one address a native gRPC client needs, declared by the deployment
+		// that serves it.
+		envVars = append(envVars, corev1.EnvVar{Name: "GRPC_ENDPOINT", Value: cfg.GRPCEndpoint})
 	}
 	if cfg.Identity != nil {
 		envVars = append(envVars,

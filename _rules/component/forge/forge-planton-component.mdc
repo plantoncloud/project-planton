@@ -709,6 +709,43 @@ merely CONSUME the profile component declare it a scenario-level prerequisite
 (annotation), never a registry prerequisite — the component under test
 deploys fine without it on ordinary clusters.
 
+**Real-cluster lanes fit what is already on the cluster.** A real cluster
+(`aws-eks`, `gcp-gke` profiles) arrives with residents — the GKE management
+cluster carries cert-manager and CloudNativePG from the Planton operator; the
+EKS batch carried its own load-balancer controller — and the singleton kinds
+forbid a second copy. Two scenario annotations declare the fit, both per
+scenario: `planton.dev/e2e-prerequisite-install-manifest: "Kind=path"`
+SUBSTITUTES the kind's install profile (the manifest takes the kind's slot in
+the chain — for a prerequisite that must arrive in a shape its consumer-wide
+profile does not describe on THIS cluster), and
+`planton.dev/e2e-resident-prerequisites: "Kind"` prunes a kind the cluster
+already has (refused on scenarios not pinned to a real-cluster profile —
+nothing is resident on a harness-owned cluster; the Postgres GKE recovery
+lane declares CloudNativePG and cert-manager resident and adds only the
+backup-plugin kind beside them, the very shape under test). A manifest-path
+entry in `e2e-prerequisites` can never do either: it only ever ADDS an
+instance. Prefer declaring the resident and adding the missing sibling kind
+over substituting a posture-flipped profile: a kind whose install profile
+needs a boolean to become "only the part the cluster lacks" is two kinds. Real clusters also add TIME: an instance whose anti-affinity makes
+the autoscaler add a node pays node provisioning plus a cold image pull
+(live-measured ~4 minutes per instance on GKE) — size verifier readiness
+windows for the topology on fresh nodes, not one pod on a warm kind node.
+
+**Restore proofs read the backup the seed wrote — through `${E2E_SETUP:NAME}`.**
+A backup's storage location exists only after the seed takes it, and it is
+exactly what the restore manifest must declare. The setup script publishes
+`NAME=value` lines to `$E2E_SETUP_OUTPUT`; the runner expands the scenario's
+`${E2E_SETUP:NAME}` tokens after SETUP, before VALIDATE. Never hardcode a
+backup name only one run produced, and never let two lanes share an
+archive path: carry `${E2E_RUN_ID}` in the backup destination — Barman
+refuses to archive into a path holding another cluster's WAL (the cluster
+stays healthy while ContinuousArchiving stays false forever; live-caught),
+and PBM keys its metadata by the storage path. The seeded evidence must be
+readable by the credential the proof authenticates with: a marker table the
+seed created as the superuser fails the application user's read with
+"permission denied" on a credential that authenticated perfectly (live-caught
+— own the table by the application role).
+
 **Behavioral proofs whose driver CR is served by the component under test are
 VERIFIER-OWNED.** Scenario fixtures deploy BEFORE the component under test, so
 a fixture cannot carry a custom resource whose CRD the component itself

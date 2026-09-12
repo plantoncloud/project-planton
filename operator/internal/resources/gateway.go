@@ -109,9 +109,22 @@ func GatewayPortForwardCommand(crName, namespace string, localPort int32) string
 //     browser's localhost:port origin, from which the identity server's
 //     sign-in pages and OIDC responses derive URLs (KC_PROXY_HEADERS=
 //     xforwarded) and the console its callbacks.
+//   - A browser session is bigger than nginx's defaults assume, in both
+//     directions. The console's sign-in callback answers with a session
+//     cookie larger than the 8k header buffer nginx reads an upstream
+//     response into (proxy_buffer_size governs that buffer even with
+//     buffering off; without it the callback is a 502 "upstream sent too
+//     big header" and the CLI's browser sign-in never completes), and the
+//     browser then sends that cookie back on every request
+//     (large_client_header_buffers). proxy_buffers and
+//     proxy_busy_buffers_size ride along not because buffering is on but
+//     because nginx checks the three against each other at parse time:
+//     raising proxy_buffer_size alone doubles the default busy size past
+//     "all buffers minus one" and nginx refuses to start. The Ingress door
+//     sets the same response-side fact as an annotation (ingress.go).
 func GatewayNginxConfig(crName, namespace string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;\n\nserver {\n    listen %d;\n\n", gatewayContainerPort)
+	fmt.Fprintf(&b, "resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;\n\nserver {\n    listen %d;\n    large_client_header_buffers 4 32k;\n\n", gatewayContainerPort)
 
 	routes := FrontDoorRoutes()
 	upstreamVar := func(r FrontDoorRoute) string {
@@ -120,20 +133,36 @@ func GatewayNginxConfig(crName, namespace string) string {
 			return "$identity_upstream"
 		case BackendConsole:
 			return "$console_upstream"
+		case BackendControlPlaneWebhook:
+			return "$controlplane_webhook_upstream"
 		default:
 			return "$controlplane_upstream"
 		}
 	}
+	// One upstream per backend the path-only rows reach (the header-matched
+	// native-gRPC row is skipped below, so its port declares no upstream).
 	for _, r := range []FrontDoorRoute{
-		{Backend: BackendControlPlane}, {Backend: BackendIdentity}, {Backend: BackendConsole},
+		{Backend: BackendControlPlane}, {Backend: BackendControlPlaneWebhook},
+		{Backend: BackendIdentity}, {Backend: BackendConsole},
 	} {
 		fmt.Fprintf(&b, "    set %s http://%s.%s.svc.cluster.local:%d;\n",
 			upstreamVar(r), r.ServiceName(crName), namespace, r.ServicePort())
 	}
 
 	for _, r := range routes {
-		fmt.Fprintf(&b, "\n    location %s {\n        proxy_pass %s;\n        proxy_http_version 1.1;\n",
-			r.PathPrefix, upstreamVar(r))
+		if r.HeaderMatched() {
+			// The port-forward door serves a workstation; a native gRPC client
+			// on that workstation port-forwards the control plane's raw gRPC
+			// port directly, so the header-matched row has no job here (and
+			// nginx would need a map on $http_content_type to express it).
+			continue
+		}
+		modifier := ""
+		if r.Exact {
+			modifier = "= "
+		}
+		fmt.Fprintf(&b, "\n    location %s%s {\n        proxy_pass %s;\n        proxy_http_version 1.1;\n",
+			modifier, r.PathPrefix, upstreamVar(r))
 		switch r.Backend {
 		case BackendControlPlane:
 			b.WriteString("        proxy_buffering off;\n        proxy_request_buffering off;\n" +
@@ -144,7 +173,10 @@ func GatewayNginxConfig(crName, namespace string) string {
 				"        proxy_set_header X-Forwarded-For $remote_addr;\n" +
 				"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
 				"        proxy_set_header X-Forwarded-Host $http_host;\n" +
-				"        proxy_buffering off;\n")
+				"        proxy_buffering off;\n" +
+				"        proxy_buffer_size 32k;\n" +
+				"        proxy_buffers 4 32k;\n" +
+				"        proxy_busy_buffers_size 64k;\n")
 		}
 		b.WriteString("    }\n")
 	}

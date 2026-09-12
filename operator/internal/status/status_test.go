@@ -1,7 +1,9 @@
 package status
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -94,6 +96,45 @@ func TestInitialize_UpdatesVersion(t *testing.T) {
 	}
 }
 
+// The email column follows the spec in both directions and speaks the
+// license column's grammar: which arm is declared, never whether the relay
+// accepts mail.
+func TestInitialize_EmailColumnFollowsSpec(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	if p.Status.Email != v1.EmailModeNotConfigured {
+		t.Errorf("email = %q, want NotConfigured on an install with no spec.email", p.Status.Email)
+	}
+
+	p.Spec.Email = &v1.EmailSpec{
+		From: v1.EmailFromSpec{Address: "no-reply@planton.acme.com"},
+		SMTP: &v1.EmailSMTPSpec{Host: "smtp.office365.com", Port: 587},
+	}
+	if changed := Initialize(p); !changed {
+		t.Fatal("expected Initialize to detect the declared email")
+	}
+	if p.Status.Email != v1.EmailModeSMTP {
+		t.Errorf("email = %q, want SMTP", p.Status.Email)
+	}
+
+	p.Spec.Email = &v1.EmailSpec{
+		From:   v1.EmailFromSpec{Address: "no-reply@planton.acme.com"},
+		Resend: &v1.EmailResendSpec{APIKeySecretRef: v1.SecretKeyRef{Name: "planton-email", Key: "api-key"}},
+	}
+	Initialize(p)
+	if p.Status.Email != v1.EmailModeResend {
+		t.Errorf("email = %q, want Resend", p.Status.Email)
+	}
+
+	p.Spec.Email = nil
+	if changed := Initialize(p); !changed {
+		t.Fatal("expected Initialize to detect the removed email")
+	}
+	if p.Status.Email != v1.EmailModeNotConfigured {
+		t.Errorf("email = %q, want NotConfigured after removal", p.Status.Email)
+	}
+}
+
 // The license column follows the spec in both directions (a key can be added
 // to or removed from a running install), and blank-tolerance matches
 // effectiveLicense so the column never claims a key the Deployment does not
@@ -114,7 +155,7 @@ func TestInitialize_LicenseColumnFollowsSpec(t *testing.T) {
 	}
 
 	p.Spec.License = &v1.LicenseSpec{
-		SecretKeyRef: &v1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+		SecretKeyRef: &v1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 	}
 	Initialize(p)
 	if p.Status.License != v1.LicenseModeSecretRef {
@@ -135,16 +176,12 @@ func TestInitialize_OptionalComponents(t *testing.T) {
 		Spec: v1.PlantonPlatformSpec{
 			Version: "v1.0.0",
 			Components: &v1.ComponentsSpec{
-				Authorization: &v1.ComponentToggle{Enabled: true},
-				Graph:         &v1.Neo4jSpec{Enabled: true},
+				Graph: &v1.Neo4jSpec{Enabled: true},
 			},
 		},
 	}
 	Initialize(p)
 
-	if p.Status.Components.OpenFGA == nil {
-		t.Error("expected OpenFGA status to be initialized when authorization is enabled")
-	}
 	if p.Status.Components.Neo4j == nil {
 		t.Error("expected Neo4j status to be initialized when enabled")
 	}
@@ -154,11 +191,18 @@ func TestInitialize_OptionalComponentsDisabled(t *testing.T) {
 	p := newMinimalPlanton()
 	Initialize(p)
 
-	if p.Status.Components.OpenFGA != nil {
-		t.Error("expected OpenFGA status to be nil when authorization is disabled")
-	}
 	if p.Status.Components.Neo4j != nil {
 		t.Error("expected Neo4j status to be nil when disabled")
+	}
+}
+
+// The policy engine is part of every platform, so its slot exists on the
+// minimal footprint.
+func TestInitialize_OpenFGASlotIsUnconditional(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	if p.Status.Components.OpenFGA == nil || p.Status.Components.OpenFGA.Phase != v1.ComponentPhasePending {
+		t.Fatalf("expected a pending OpenFGA slot on the minimal footprint, got %+v", p.Status.Components.OpenFGA)
 	}
 }
 
@@ -180,11 +224,13 @@ func TestComputeOverallPhase_AllReady(t *testing.T) {
 		p.Status.Components.PostgreSQL,
 		p.Status.Components.Redis, p.Status.Components.Temporal,
 		p.Status.Components.ControlPlane, p.Status.Components.Console,
-		// The minimal footprint now includes the front-door gateway and the
-		// identity server -- sign-in is unconditional -- plus the in-cluster
-		// runner, the bundled secrets manager, and the build engine
-		// (Tekton), all on by default.
+		// The minimal footprint includes the front-door gateway and the
+		// identity server -- sign-in is unconditional -- the policy engine
+		// -- authorization is unconditional -- plus the in-cluster runner,
+		// the bundled secrets manager, and the build engine (Tekton), all
+		// on by default.
 		p.Status.Components.Gateway, p.Status.Components.Identity,
+		p.Status.Components.OpenFGA,
 		p.Status.Components.Runner, p.Status.Components.OpenBAO,
 		p.Status.Components.Tekton,
 	} {
@@ -235,18 +281,82 @@ func TestComputeOverallPhase_ErrorTakesPrecedence(t *testing.T) {
 
 func TestSetComponentPhase(t *testing.T) {
 	cs := &v1.ComponentStatus{Phase: v1.ComponentPhasePending}
-	SetComponentPhase(cs, v1.ComponentPhaseDeploying, "Creating resources")
+	transitioned := SetComponentPhase(cs, v1.ComponentPhaseDeploying, ComponentState{Message: "Creating resources"})
 
+	if !transitioned {
+		t.Error("Pending -> Deploying is a transition")
+	}
 	if cs.Phase != v1.ComponentPhaseDeploying {
 		t.Errorf("expected Deploying, got %s", cs.Phase)
 	}
 	if cs.Message != "Creating resources" {
 		t.Errorf("expected message 'Creating resources', got %s", cs.Message)
 	}
+	if cs.Reason != v1.ComponentReasonDeploying {
+		t.Errorf("an empty reason on a not-ready phase normalizes to Deploying, got %q", cs.Reason)
+	}
+	if cs.LastTransitionTime.IsZero() {
+		t.Error("a transition stamps lastTransitionTime")
+	}
+}
+
+// A Ready result that names no reason is Healthy: a component that never
+// learned the vocabulary still reports one.
+func TestSetComponentPhase_ReadyNormalizesToHealthy(t *testing.T) {
+	cs := &v1.ComponentStatus{Phase: v1.ComponentPhaseDeploying}
+	SetComponentPhase(cs, v1.ComponentPhaseReady, ComponentState{Message: "Console healthy"})
+	if cs.Reason != v1.ComponentReasonHealthy {
+		t.Errorf("expected Healthy, got %q", cs.Reason)
+	}
+}
+
+// The transition time moves only when the phase, reason, or object changes.
+// A message that ticks ("95s since start") is the same condition persisting;
+// a reconcile every thirty seconds must not make it look freshly changed.
+func TestSetComponentPhase_TransitionTimeIsSticky(t *testing.T) {
+	cs := &v1.ComponentStatus{}
+	pod := &v1.ComponentObjectReference{Kind: "Pod", Name: "planton-console-abc"}
+	SetComponentPhase(cs, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonStartingUp, Object: pod, Message: "90s since start"})
+	first := cs.LastTransitionTime
+	cs.LastTransitionTime = metav1.NewTime(first.Add(-time.Minute)) // make a later stamp detectable
+
+	if SetComponentPhase(cs, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonStartingUp, Object: pod, Message: "120s since start"}) {
+		t.Error("same phase, reason, and object is not a transition")
+	}
+	if !cs.LastTransitionTime.Equal(&metav1.Time{Time: first.Add(-time.Minute)}) {
+		t.Error("lastTransitionTime must not move while the condition persists")
+	}
+	if cs.Message != "120s since start" {
+		t.Error("the message still updates while the condition persists")
+	}
+
+	if !SetComponentPhase(cs, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonCrashLooping, Object: pod, Message: "keeps exiting"}) {
+		t.Error("a new reason is a transition")
+	}
+	if !SetComponentPhase(cs, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonCrashLooping,
+		Object: &v1.ComponentObjectReference{Kind: "Pod", Name: "planton-console-def"}, Message: "keeps exiting"}) {
+		t.Error("a new object is a transition")
+	}
 }
 
 func TestSetComponentPhase_NilSafe(t *testing.T) {
-	SetComponentPhase(nil, v1.ComponentPhaseDeploying, "should not panic")
+	if SetComponentPhase(nil, v1.ComponentPhaseDeploying, ComponentState{Message: "should not panic"}) {
+		t.Error("nil slot is never a transition")
+	}
+}
+
+// Every condition records the generation it speaks about.
+func TestSetCondition_RecordsObservedGeneration(t *testing.T) {
+	p := newMinimalPlanton()
+	p.Generation = 7
+	SetCondition(p, v1.ConditionReady, metav1.ConditionFalse, "x", "y")
+	if got := p.Status.Conditions[0].ObservedGeneration; got != 7 {
+		t.Errorf("expected observedGeneration 7, got %d", got)
+	}
 }
 
 func TestSetCondition(t *testing.T) {
@@ -277,6 +387,7 @@ func TestUpdateReadyCondition_AllReady(t *testing.T) {
 		p.Status.Components.Redis, p.Status.Components.Temporal,
 		p.Status.Components.ControlPlane, p.Status.Components.Console,
 		p.Status.Components.Gateway, p.Status.Components.Identity,
+		p.Status.Components.OpenFGA,
 		p.Status.Components.Runner, p.Status.Components.OpenBAO,
 		p.Status.Components.Tekton,
 	} {
@@ -314,6 +425,134 @@ func TestUpdateReadyCondition_NotReady(t *testing.T) {
 		}
 	}
 	t.Error("expected Ready condition to exist")
+}
+
+func readyCondition(t *testing.T, p *v1.PlantonPlatform) metav1.Condition {
+	t.Helper()
+	for _, c := range p.Status.Conditions {
+		if c.Type == v1.ConditionReady {
+			return c
+		}
+	}
+	t.Fatal("expected Ready condition to exist")
+	return metav1.Condition{}
+}
+
+// The MESSAGE column a person reads first is the Ready condition's message.
+// While deploying it names the first component still waiting, in that
+// component's own words, and counts the others.
+func TestUpdateReadyCondition_NamesTheWaitingComponent(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	p.Status.Components.PostgreSQL.Phase = v1.ComponentPhaseReady
+	SetComponentPhase(p.Status.Components.Redis, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonStartingUp, Message: "pod planton-redis-0 is running and not yet answering its health check, 40s since start -- normal in the first minutes of a boot"})
+
+	UpdateReadyCondition(p)
+	c := readyCondition(t, p)
+	if c.Reason != string(v1.ComponentReasonStartingUp) {
+		t.Errorf("the condition carries the component's reason, got %q", c.Reason)
+	}
+	if !strings.HasPrefix(c.Message, "redis: pod planton-redis-0 is running") {
+		t.Errorf("the message opens with the component's key and its own sentence, got %q", c.Message)
+	}
+	if !strings.Contains(c.Message, "more components are not ready yet)") {
+		t.Errorf("the message counts the others still waiting, got %q", c.Message)
+	}
+}
+
+// A failure outranks every component merely waiting, wherever it sits in the
+// slot order: the crash is the news, not the console waiting on it.
+func TestUpdateReadyCondition_FailureOutranksWaiting(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	SetComponentPhase(p.Status.Components.PostgreSQL, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonStartingUp, Message: "starting"})
+	SetComponentPhase(p.Status.Components.Console, v1.ComponentPhaseDeploying, ComponentState{
+		Reason:  v1.ComponentReasonImagePullFailed,
+		Object:  &v1.ComponentObjectReference{Kind: "Pod", Name: "planton-console-7d9"},
+		Message: "image ghcr.io/plantonhq/console:v9 for container \"console\" of pod planton-console-7d9 cannot be pulled (ImagePullBackOff: manifest unknown) -- check that the tag exists"})
+
+	UpdateReadyCondition(p)
+	c := readyCondition(t, p)
+	if c.Reason != string(v1.ComponentReasonImagePullFailed) {
+		t.Errorf("the failing component's reason wins, got %q", c.Reason)
+	}
+	if !strings.HasPrefix(c.Message, "console: image ghcr.io/plantonhq/console:v9") {
+		t.Errorf("the failing component is named first, got %q", c.Message)
+	}
+}
+
+// An Error phase outranks a failure reason on a Deploying component: the
+// operator's own inability to act is the root, and the message names which
+// component it could not act on -- never a bare "one or more components".
+func TestUpdateReadyCondition_ErrorNamesTheComponent(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	SetComponentPhase(p.Status.Components.Console, v1.ComponentPhaseDeploying, ComponentState{
+		Reason: v1.ComponentReasonCrashLooping, Message: "keeps exiting"})
+	SetComponentPhase(p.Status.Components.Temporal, v1.ComponentPhaseError, ComponentState{
+		Reason: v1.ComponentReasonReconcileFailed, Message: "the operator could not reconcile this component: applying Temporal manifests: boom"})
+
+	UpdateReadyCondition(p)
+	c := readyCondition(t, p)
+	if c.Reason != string(v1.ComponentReasonReconcileFailed) {
+		t.Errorf("Error outranks a deploying failure, got %q", c.Reason)
+	}
+	if !strings.HasPrefix(c.Message, "temporal: the operator could not reconcile") {
+		t.Errorf("the erroring component is named, got %q", c.Message)
+	}
+}
+
+// status.github echoes the declared hosts in order, marking the ones with an
+// install App; NotConfigured when nothing is declared.
+func TestInitialize_GithubEcho(t *testing.T) {
+	p := newMinimalPlanton()
+	Initialize(p)
+	if p.Status.Github != v1.GithubModeNotConfigured {
+		t.Errorf("undeclared echoes NotConfigured, got %q", p.Status.Github)
+	}
+	p.Spec.Github = &v1.GithubSpec{Hosts: []v1.GithubHostSpec{
+		{Host: "github.example.com", App: &v1.GithubAppSpec{ClientID: "x"}},
+		{Host: "github.com"},
+	}}
+	if !Initialize(p) {
+		t.Error("a changed declaration is a status change")
+	}
+	if p.Status.Github != "github.example.com (App), github.com" {
+		t.Errorf("echo = %q", p.Status.Github)
+	}
+}
+
+// Every reason the operator can write is either a failure or an in-progress
+// state, and the list the troubleshooting reference is indexed by covers all
+// of them -- adding a constant without classifying and listing it fails here.
+func TestComponentReasons_AllClassifiedAndListed(t *testing.T) {
+	listed := map[v1.ComponentReason]bool{}
+	for _, r := range v1.AllComponentReasons() {
+		listed[r] = true
+	}
+	for _, r := range []v1.ComponentReason{
+		v1.ComponentReasonHealthy, v1.ComponentReasonWaitingForDependency, v1.ComponentReasonDeploying,
+		v1.ComponentReasonStartingUp, v1.ComponentReasonWaitingForSchema, v1.ComponentReasonVolumeProvisioning,
+		v1.ComponentReasonVolumeUnprovisionable, v1.ComponentReasonImagePullFailed, v1.ComponentReasonContainerConfigInvalid,
+		v1.ComponentReasonOutOfMemory, v1.ComponentReasonCrashLooping, v1.ComponentReasonVolumeMountFailed,
+		v1.ComponentReasonUnschedulable, v1.ComponentReasonRolloutStalled, v1.ComponentReasonCreateRefused,
+		v1.ComponentReasonJobFailed, v1.ComponentReasonConfigurationRefused, v1.ComponentReasonReconcileFailed,
+	} {
+		if !listed[r] {
+			t.Errorf("reason %q is not in AllComponentReasons", r)
+		}
+	}
+	inProgress := map[v1.ComponentReason]bool{
+		v1.ComponentReasonHealthy: true, v1.ComponentReasonWaitingForDependency: true, v1.ComponentReasonDeploying: true,
+		v1.ComponentReasonStartingUp: true, v1.ComponentReasonWaitingForSchema: true, v1.ComponentReasonVolumeProvisioning: true,
+	}
+	for _, r := range v1.AllComponentReasons() {
+		if inProgress[r] == r.IsFailure() {
+			t.Errorf("reason %q must be exactly one of in-progress or failure", r)
+		}
+	}
 }
 
 // Exactly one front door: the ingress and gateway slots follow the ingress

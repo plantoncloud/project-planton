@@ -4,8 +4,10 @@
 
 **The operator must already be on the cluster.** This component declares
 a database; KubernetesCloudNativePgOperator installs the ENGINE that
-reconciles it (with `barman_cloud_plugin.enabled` when backups are
-declared). Deploy the operator first, databases after.
+reconciles it, and KubernetesCnpgBarmanCloudPlugin (in the operator's
+namespace) is the backup engine a `backup` block or an object-store
+recovery runs through. Deploy the operator first, the plugin when any
+database will declare backups, databases after.
 
 Also not the right component when:
 
@@ -53,8 +55,10 @@ the new primary automatically.
   `ObjectStore` resource plus the Cluster's plugin wiring (WAL archiving
   starts immediately) and one `ScheduledBackup` per declared schedule.
   CloudNativePG's built-in object-store support is deprecated upstream
-  and deliberately not modeled. The operator must be installed with
-  `barman_cloud_plugin.enabled`.
+  and deliberately not modeled. The Barman Cloud plugin
+  (KubernetesCnpgBarmanCloudPlugin) must be on the cluster, in the
+  operator's namespace — without it the operator parks this Cluster in
+  its unknown-plugin phase and never creates the instances.
 - **Secrets never appear inline** — every declared credential (owner
   password, role passwords, superuser password, external-cluster
   passwords, object-store keys) materializes as a deterministic
@@ -77,7 +81,9 @@ the new primary automatically.
   sizes can only grow — the operator rejects shrinks)
 - **`spec.bootstrap`**: exactly one of `initdb` (fresh empty database —
   the standard path), `recovery` (restore from an object-store backup —
-  disaster recovery, cloning, PITR), or `pg_basebackup` (physical
+  disaster recovery, cloning, PITR; `database`/`owner`/
+  `owner_secret_name` carry the source's application credential into
+  the recovered cluster), or `pg_basebackup` (physical
   streaming from a declared external cluster — same-major-version
   migration)
 
@@ -145,12 +151,21 @@ flag tells the Barman Cloud plugin to use that ambient identity.
 | EKS / AWS S3 | `eks.role_arn` — the `eks.amazonaws.com/role-arn` annotation (IRSA) | `s3.keyless: true` | `s3.access_keys` — materialized as the `<name>-backup-creds` Secret |
 | GKE / GCS | `gke.service_account_email` — the `iam.gke.io/gcp-service-account` annotation | `gcs.keyless: true` | `gcs.service_account_key_json` |
 | AKS / Azure Blob | `aks.client_id` (+ optional `tenant_id`) — the `azure.workload.identity/*` annotations | `azure_blob.keyless: true` + `storage_account` (identifies the endpoint) | `connection_string` XOR `storage_account` + `storage_key` |
-| S3-compatible (MinIO, R2, Ceph RGW, ...) | — | `s3.endpoint_url` + `access_keys` (keyless is spec-rejected: it only mints AWS credentials) | `endpoint_ca_pem` for self-signed endpoints |
+| Cloudflare R2 (from any cluster) | — (R2 has no ambient-identity path) | `r2` — `account_id` + `jurisdiction` by reference to a `CloudflareR2Bucket`, `credentials` by reference to a `CloudflareAccountApiToken` (the token IS the S3 key pair); the module composes the jurisdiction's endpoint and region `auto` | the same two `credentials` fields as literals (a dashboard-minted "Access Key ID" / "Secret Access Key") |
+| S3-compatible (MinIO, Ceph RGW, ...) | — | `s3.endpoint_url` + `access_keys` (keyless is spec-rejected: it only mints AWS credentials) | `endpoint_ca_pem` for self-signed endpoints |
 
 The cloud-side half of each keyless contract (IRSA trust policy, GCP WI
 binding, Entra federated credential) is written against the cluster's
 own ServiceAccount — CloudNativePG names it after the cluster, in the
-cluster's namespace.
+cluster's namespace — so it is one binding per cluster, a recovery
+target included. On GKE the GCP service account needs
+`roles/storage.objectAdmin` AND `roles/storage.legacyBucketReader` on
+the bucket: Barman calls `storage.buckets.get` before every WAL archive
+and `objectAdmin` alone 403s every archive (live-caught; the cluster
+reports healthy while `ContinuousArchiving` stays false). The whole
+GKE disaster-recovery resource set — identity, binding, bucket, operator
+plugin, source cluster, recovery target — is laid out in
+[GUIDE.md](GUIDE.md).
 
 ## Stack Outputs
 
@@ -285,6 +300,14 @@ spec:
       source_server_name: orders-db
       recovery_target:
         target_time: "2026-07-20T06:00:00Z" # PITR — omit for full recovery
+      # The recovered data carries the source's roles and passwords. Name
+      # the source's application database and owner, and bring the source's
+      # app Secret (kept alive by a KubernetesSecret / ExternalSecret) so
+      # this cluster hands out credentials that actually work. Omit
+      # owner_secret_name for a clone that gets a fresh password.
+      database: orders
+      owner: orders
+      owner_secret_name: orders-db-app
   workload_identity:
     eks:
       role_arn:

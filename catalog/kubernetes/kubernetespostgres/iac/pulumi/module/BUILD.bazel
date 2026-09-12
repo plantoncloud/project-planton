@@ -18,6 +18,7 @@ go_library(
     deps = [
         "//catalog/kubernetes",
         "//catalog/kubernetes/kubernetespostgres/v1alpha1",
+        "//pkg/cloudflare/r2",
         "//pkg/iac/pulumi/pulumimodule/provider/kubernetes/kuberneteslabelkeys",
         "//pkg/iac/pulumi/pulumimodule/provider/kubernetes/pulumikubernetesprovider",
         "//pkg/kubernetes/kubernetestypes/cloudnativepg/kubernetes/barmancloud/v1:barmancloud",

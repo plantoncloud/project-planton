@@ -1265,6 +1265,9 @@ type AwsRedshiftClusterEndpointAuthorization struct {
 	// Restrict the grant to specific VPCs in the grantee account. Empty
 	// authorizes ALL of the account's VPCs. Reference AwsVpc vpc_id
 	// outputs or pass literal VPC IDs.
+	//
+	// Containment-exempt: a grant admits another VPC's endpoints to the
+	// cluster; the cluster never lives inside the VPC it authorizes.
 	VpcIds []*v1.StringValueOrRef `protobuf:"bytes,2,rep,name=vpc_ids,json=vpcIds,proto3" json:"vpc_ids,omitempty"`
 	// Revoke the authorization on delete even if the grantee still has
 	// live endpoints against the cluster (their endpoints are deleted
@@ -1462,10 +1465,10 @@ const file_catalog_aws_awsredshiftcluster_v1alpha1_spec_proto_rawDesc = "" +
 	" AwsRedshiftClusterEndpointAccess\x12@\n" +
 	"\rendpoint_name\x18\x01 \x01(\tB\x1b\xbaH\x18\xc8\x01\x01r\x132\x11^[0-9a-z-]{1,30}$R\fendpointName\x12*\n" +
 	"\x11subnet_group_name\x18\x02 \x01(\tR\x0fsubnetGroupName\x12\x92\x01\n" +
-	"\x16vpc_security_group_ids\x18\x03 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x13vpcSecurityGroupIds\"\xea\x01\n" +
+	"\x16vpc_security_group_ids\x18\x03 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x13vpcSecurityGroupIds\"\xee\x01\n" +
 	"'AwsRedshiftClusterEndpointAuthorization\x12/\n" +
-	"\aaccount\x18\x01 \x01(\tB\x15\xbaH\x12\xc8\x01\x01r\r2\v^[0-9]{12}$R\aaccount\x12k\n" +
-	"\avpc_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x1e\x88\xd4a\xf8\a\x92\xd4a\x15status.outputs.vpc_idR\x06vpcIds\x12!\n" +
+	"\aaccount\x18\x01 \x01(\tB\x15\xbaH\x12\xc8\x01\x01r\r2\v^[0-9]{12}$R\aaccount\x12o\n" +
+	"\avpc_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\"\x88\xd4a\xf8\a\x92\xd4a\x15status.outputs.vpc_id\x98\xd4a\x01R\x06vpcIds\x12!\n" +
 	"\fforce_delete\x18\x03 \x01(\bR\vforceDeleteB\xee\x02\n" +
 	"/com.dev.planton.aws.awsredshiftcluster.v1alpha1B\tSpecProtoP\x01Z_github.com/plantonhq/planton/catalog/aws/awsredshiftcluster/v1alpha1;awsredshiftclusterv1alpha1\xa2\x02\x04DPAA\xaa\x02+Dev.Planton.Aws.Awsredshiftcluster.V1alpha1\xca\x02+Dev\\Planton\\Aws\\Awsredshiftcluster\\V1alpha1\xe2\x027Dev\\Planton\\Aws\\Awsredshiftcluster\\V1alpha1\\GPBMetadata\xea\x02/Dev::Planton::Aws::Awsredshiftcluster::V1alpha1b\x06proto3"
 

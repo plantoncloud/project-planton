@@ -25,4 +25,4 @@ spec:
   create_namespace: true
   # The previous published chart, pinned explicitly: the first act must not
   # follow the default, or the second act would have nothing to move to.
-  chart_version: 0.9.0
+  chart_version: 0.14.1

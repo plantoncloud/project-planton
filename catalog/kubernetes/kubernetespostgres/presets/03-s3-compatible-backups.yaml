@@ -26,10 +26,11 @@ spec:
       destination_path: s3://pg-backups/app-db
       s3:
         # S3-compatible stores use the store's expected region value —
-        # MinIO accepts any; use "auto" for Cloudflare R2.
+        # MinIO accepts any.
         region: minio
         # The S3-COMPATIBLE arm: endpoint URL of the store (in-cluster
-        # MinIO here; https://<account>.r2.cloudflarestorage.com for R2).
+        # MinIO here). Cloudflare R2 has its own arm (`r2`) that composes
+        # the endpoint from the bucket's account and jurisdiction.
         endpoint_url: http://minio.minio-system.svc:9000
         # An S3-compatible endpoint authenticates with access keys — the
         # keyless posture only mints AWS credentials (spec-enforced). The

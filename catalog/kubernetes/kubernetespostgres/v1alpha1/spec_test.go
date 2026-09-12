@@ -68,6 +68,24 @@ func azureStore(path string, azure *KubernetesPostgresAzureBlobObjectStore) *Kub
 	}
 }
 
+// r2Store returns an object store on the Cloudflare R2 arm with every
+// reference in its default-kind form (the bucket for account and
+// jurisdiction, the account API token for the key pair) — the composed
+// shape a chart or the console produces.
+func r2Store(path string) *KubernetesPostgresObjectStore {
+	return &KubernetesPostgresObjectStore{
+		DestinationPath: path,
+		Backend: &KubernetesPostgresObjectStore_R2{R2: &KubernetesPostgresR2ObjectStore{
+			AccountId:    valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "pg-archive", "status.outputs.account_id"),
+			Jurisdiction: valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "pg-archive", "status.outputs.jurisdiction"),
+			Credentials: &KubernetesPostgresR2Credentials{
+				AccessKeyId:     valueFrom(cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken, "pg-archive-writer", "status.outputs.r2_access_key_id"),
+				SecretAccessKey: valueFrom(cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken, "pg-archive-writer", "status.outputs.r2_secret_access_key"),
+			},
+		}},
+	}
+}
+
 // validBackup returns a minimal valid backup block (s3 keyless, no
 // schedules) for tests that mutate one backup rule at a time.
 func validBackup() *KubernetesPostgresBackup {
@@ -223,6 +241,21 @@ var _ = ginkgo.Describe("KubernetesPostgres Validation Tests", func() {
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
+		ginkgo.It("recovery naming the source's database, owner, and app Secret should be valid (credential continuity — the DR shape)", func() {
+			input.Spec.Bootstrap = &KubernetesPostgresBootstrap{
+				Method: &KubernetesPostgresBootstrap_Recovery{
+					Recovery: &KubernetesPostgresBootstrapRecovery{
+						ObjectStore:      s3KeylessStore("s3://pg-backups/source"),
+						SourceServerName: "orders-db",
+						Database:         "orders",
+						Owner:            "orders",
+						OwnerSecretName:  "orders-db-app",
+					},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
 		ginkgo.It("recovery target with only backup_id should be valid (backup_id is not a selector)", func() {
 			input.Spec.Bootstrap = &KubernetesPostgresBootstrap{
 				Method: &KubernetesPostgresBootstrap_Recovery{
@@ -309,6 +342,43 @@ var _ = ginkgo.Describe("KubernetesPostgres Validation Tests", func() {
 				SecretAccessKey: "minio123",
 			}
 			input.Spec.Backup = backup
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to r2 composed from the Cloudflare kinds should be valid", func() {
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: r2Store("s3://pg-archive/main")}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to r2 with a literal account, jurisdiction, and dashboard-minted key pair should be valid", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().AccountId = literal("4793d734c0b8e484dfc37ec392b5fa8a")
+			store.GetR2().Jurisdiction = literal("eu")
+			store.GetR2().Credentials.AccessKeyId = literal("f267e341f3dd4697bd3b9f71dd96247f")
+			store.GetR2().Credentials.SecretAccessKey = literal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to r2 without a jurisdiction should be valid (empty is the default jurisdiction)", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().Jurisdiction = nil
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("recovery from an r2 archive should be valid (the arm serves both the backup and the recovery store)", func() {
+			input.Spec.Bootstrap = &KubernetesPostgresBootstrap{
+				Method: &KubernetesPostgresBootstrap_Recovery{
+					Recovery: &KubernetesPostgresBootstrapRecovery{
+						ObjectStore:      r2Store("s3://pg-archive/source"),
+						SourceServerName: "orders-db",
+						Database:         "orders",
+						Owner:            "orders",
+						OwnerSecretName:  "orders-db-app",
+					},
+				},
+			}
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
@@ -971,6 +1041,57 @@ var _ = ginkgo.Describe("KubernetesPostgres Validation Tests", func() {
 					Keyless:        true,
 					StorageAccount: "myaccount",
 				}),
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 backend with a gs:// path should fail (r2_path_scheme)", func() {
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: r2Store("gs://pg-archive/main")}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without an account_id should fail (required)", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().AccountId = nil
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 with a malformed literal account_id should fail (account_id_format)", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().AccountId = literal("not-an-account-id")
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 with an unknown literal jurisdiction should fail (jurisdiction_valid)", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().Jurisdiction = literal("europe")
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without credentials should fail (required — R2 has no keyless posture)", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().Credentials = nil
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 credentials missing the secret access key should fail (required)", func() {
+			store := r2Store("s3://pg-archive/main")
+			store.GetR2().Credentials.SecretAccessKey = nil
+			input.Spec.Backup = &KubernetesPostgresBackup{ObjectStore: store}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("recovery from r2 with a malformed literal account_id should fail (account_id_format on the recovery store)", func() {
+			store := r2Store("s3://pg-archive/source")
+			store.GetR2().AccountId = literal("short")
+			input.Spec.Bootstrap = &KubernetesPostgresBootstrap{
+				Method: &KubernetesPostgresBootstrap_Recovery{
+					Recovery: &KubernetesPostgresBootstrapRecovery{ObjectStore: store, SourceServerName: "orders-db"},
+				},
 			}
 			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
 		})

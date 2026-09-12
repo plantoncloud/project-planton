@@ -69,10 +69,13 @@ var kubernetesTier1Components = []string{
 	"kubernetestelemetry",
 	// Postgres flagship. KubernetesPostgres declares
 	// KubernetesCloudNativePgOperator as a registry prerequisite, which the
-	// harness installs before applying the Cluster scenario; the
+	// harness installs before applying the Cluster scenario; the backup and
+	// recovery scenarios also declare KubernetesCnpgBarmanCloudPlugin (whose
+	// own registry edges bring cert-manager and the operator); the
 	// behavioral-failover scenario proves data durability live (write →
 	// primary loss → promotion → read-back).
 	"kubernetescloudnativepgoperator",
+	"kubernetescnpgbarmancloudplugin",
 	"kubernetespostgres",
 }
 
@@ -578,14 +581,22 @@ func TestKubernetesTemporal_Terraform(t *testing.T) {
 
 // ─── Tier 1 Pulumi/Terraform (Postgres flagship) ────────────────────────────
 // KubernetesPostgres declares KubernetesCloudNativePgOperator as a registry
-// prerequisite; the harness installs the operator (with the Barman Cloud
-// plugin per the prerequisite manifest) before every Cluster scenario.
+// prerequisite; the harness installs the operator before every Cluster
+// scenario. Backup and object-store recovery scenarios additionally declare
+// KubernetesCnpgBarmanCloudPlugin, which chains cert-manager and the
+// operator through its own registry edges.
 
 func TestKubernetesCloudNativePgOperator_Pulumi(t *testing.T) {
 	runAllScenariosForComponent(t, "kubernetescloudnativepgoperator", "pulumi")
 }
 func TestKubernetesCloudNativePgOperator_Terraform(t *testing.T) {
 	runAllScenariosForComponent(t, "kubernetescloudnativepgoperator", "terraform")
+}
+func TestKubernetesCnpgBarmanCloudPlugin_Pulumi(t *testing.T) {
+	runAllScenariosForComponent(t, "kubernetescnpgbarmancloudplugin", "pulumi")
+}
+func TestKubernetesCnpgBarmanCloudPlugin_Terraform(t *testing.T) {
+	runAllScenariosForComponent(t, "kubernetescnpgbarmancloudplugin", "terraform")
 }
 func TestKubernetesPostgres_Pulumi(t *testing.T) {
 	runAllScenariosForComponent(t, "kubernetespostgres", "pulumi")

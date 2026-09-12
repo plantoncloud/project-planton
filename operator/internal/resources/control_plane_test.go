@@ -8,9 +8,8 @@ import (
 )
 
 func testControlPlaneConfig() ControlPlaneConfig {
-	// OpenFGA is deliberately absent: a populated connection MEANS the
-	// authorization component is enabled and the real engine gets wired.
-	// The minimal footprint runs none.
+	// The OpenFGA connection is always present -- the policy engine is part of
+	// every platform, so the component wires it unconditionally.
 	//
 	// The identity binding is always present -- every install signs in
 	// (there is no unauthenticated arm), so a config without one is not a
@@ -22,6 +21,7 @@ func testControlPlaneConfig() ControlPlaneConfig {
 		Replicas:   1,
 		PostgreSQL: PostgreSQLConnection("planton", "default"),
 		Redis:      RedisConnection("planton", "default"),
+		OpenFGA:    OpenFGAConnection("planton", "default"),
 		Temporal:   TemporalConnection("planton", "default"),
 		Identity:   testIdentityBinding(),
 		Storage:    testStorageBinding(),
@@ -41,7 +41,6 @@ func testIdentityBinding() *IdentityBinding {
 		InternalIssuerURL:     "http://planton-identity.default.svc.cluster.local/idp/realms/planton",
 		Hostname:              "planton.example.com",
 		UsersClientSecretName: "planton-identity-users-client",
-		AuthorizationProvider: "allow-authenticated",
 		Bootstrap:             BootstrapBinding{OrgSlug: "default", OrgName: "default", EnvSlug: "default", EnvName: "default"},
 	}
 }
@@ -73,18 +72,15 @@ func TestControlPlaneDeployment_StorageProviderEnvVars(t *testing.T) {
 // The AWS browser-setup flow (CloudFormation quick-create) is declared OFF and
 // its integration env is omitted entirely -- the dead-placeholder pattern (a
 // 000000000000 account id and http://localhost template URLs that mint broken
-// AWS console links at first use) must never come back. The keyless oidc
-// method is advertised unavailable through the connection-method catalog so
-// the console recommends the runner method instead.
+// AWS console links at first use) must never come back. Keyless is NOT
+// declared here -- it is the front door's verdict, rendered from the
+// WebIdentity binding (see the posture tests below).
 func TestControlPlaneDeployment_AwsConnectionMethodEnvVars(t *testing.T) {
 	deploy := ControlPlaneDeployment(testControlPlaneConfig())
 	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
 
 	if v := envMap["AWS_CLOUDFORMATION_ENABLED"]; v != "false" {
 		t.Errorf("AWS_CLOUDFORMATION_ENABLED = %q, want false", v)
-	}
-	if v := envMap["PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY"]; v != "unavailable" {
-		t.Errorf("oidc method availability = %q, want unavailable", v)
 	}
 	for _, placeholder := range []string{
 		"AWS_CLOUDFORMATION_CALLBACK_URL",
@@ -133,8 +129,8 @@ func TestControlPlaneDeployment_ImageOverride(t *testing.T) {
 func TestControlPlaneDeployment_Ports(t *testing.T) {
 	deploy := ControlPlaneDeployment(testControlPlaneConfig())
 	ports := deploy.Spec.Template.Spec.Containers[0].Ports
-	if len(ports) != 3 {
-		t.Fatalf("expected 3 ports, got %d", len(ports))
+	if len(ports) != 4 {
+		t.Fatalf("expected 4 ports (grpc, grpc-web, webhook, debug), got %d", len(ports))
 	}
 	if ports[0].ContainerPort != 8080 {
 		t.Errorf("grpc port = %d, want 8080", ports[0].ContainerPort)
@@ -142,8 +138,11 @@ func TestControlPlaneDeployment_Ports(t *testing.T) {
 	if ports[1].ContainerPort != 8081 {
 		t.Errorf("grpc-web port = %d, want 8081", ports[1].ContainerPort)
 	}
-	if ports[2].ContainerPort != 5005 {
-		t.Errorf("debug port = %d, want 5005", ports[2].ContainerPort)
+	if ports[2].Name != "webhook" || ports[2].ContainerPort != 8086 {
+		t.Errorf("webhook port = %s/%d, want webhook/8086", ports[2].Name, ports[2].ContainerPort)
+	}
+	if ports[3].ContainerPort != 5005 {
+		t.Errorf("debug port = %d, want 5005", ports[3].ContainerPort)
 	}
 }
 
@@ -212,30 +211,21 @@ func TestControlPlaneDeployment_NoMessageBrokerEnvVars(t *testing.T) {
 	}
 }
 
-// The minimal footprint still runs no policy engine: the authorization
-// posture is governed by the provider mode (allow-authenticated below), and
-// the FGA_* settings are present only as inert placeholders so the Spring
-// context binds (mirroring the desktop contract). Sign-in itself is
-// unconditional -- there is no local IDP arm to fall back to.
-func TestControlPlaneDeployment_MinimalFootprintAuthorization(t *testing.T) {
+// Sign-in is unconditional -- there is no local IDP arm to fall back to.
+func TestControlPlaneDeployment_SignInIsUnconditional(t *testing.T) {
 	deploy := ControlPlaneDeployment(testControlPlaneConfig())
 	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
 
 	if envMap["IDP_PROVIDER"] != IdentityProviderKeycloak {
 		t.Errorf("IDP_PROVIDER = %q, want keycloak (sign-in is unconditional)", envMap["IDP_PROVIDER"])
 	}
-	// FGA settings are literal placeholders, not wired from an OpenFGA bootstrap.
-	if envMap["FGA_STORE_ID"] != "local" {
-		t.Errorf("FGA_STORE_ID = %q, want local (inert placeholder)", envMap["FGA_STORE_ID"])
-	}
 }
 
-// With the authorization component enabled the FGA connection is REAL: the
-// endpoint points at the deployed engine and the store/model ids come from the
-// component's bootstrap ConfigMap -- never placeholders, never hand-wired.
-func TestControlPlaneDeployment_OpenFGAOptIn(t *testing.T) {
+// The FGA connection is REAL on every platform: the endpoint points at the
+// deployed engine and the store id comes from the component's bootstrap
+// ConfigMap -- never placeholders, never hand-wired.
+func TestControlPlaneDeployment_OpenFGAAlwaysWired(t *testing.T) {
 	cfg := testControlPlaneConfig()
-	cfg.OpenFGA = OpenFGAConnection("planton", "default")
 	deploy := ControlPlaneDeployment(cfg)
 
 	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
@@ -302,8 +292,9 @@ func TestControlPlaneDeployment_IdentityBinding(t *testing.T) {
 	}
 	// Retired plumbing must never reappear: no machine-identity env (internal
 	// calls need no process identity), no RPC_AUTHORIZATION_ENABLED (the
-	// key it fed has zero readers -- enforcement is governed by the
-	// authorization provider mode), and none of the pre-pluggable-IDP Auth0
+	// key it fed has zero readers -- enforcement is the policy engine's), no
+	// authorization-arm selector (the policy engine is not selectable), and
+	// none of the pre-pluggable-IDP Auth0
 	// bindings (their owning config block was removed with zero Java
 	// consumers). Reappearance of any of these is rot.
 	for _, name := range []string{
@@ -311,6 +302,7 @@ func TestControlPlaneDeployment_IdentityBinding(t *testing.T) {
 		"MICROSERVICE_IDENTITY_IDP_CLIENT_ID",
 		"MICROSERVICE_IDENTITY_IDP_CLIENT_SECRET",
 		"RPC_AUTHORIZATION_ENABLED",
+		"PLANTON_AUTHORIZATION_PROVIDER",
 		"AUTH0_MANAGEMENT_API_URL",
 		"IDP_CLIENT_ID_CONSOLE",
 		"IDP_CLIENT_ID_CLI",
@@ -321,12 +313,8 @@ func TestControlPlaneDeployment_IdentityBinding(t *testing.T) {
 			t.Errorf("%s must not be injected into the control plane", name)
 		}
 	}
-	// The trusting-team authorization arm plus the first-boot seeds ride the
-	// identity arm: sign-in without them is the silent-failure state this
-	// wiring exists to prevent.
-	if envMap["PLANTON_AUTHORIZATION_PROVIDER"] != "allow-authenticated" {
-		t.Errorf("PLANTON_AUTHORIZATION_PROVIDER = %q, want allow-authenticated", envMap["PLANTON_AUTHORIZATION_PROVIDER"])
-	}
+	// The first-boot seeds ride the identity binding: sign-in without them
+	// is the silent-failure state this wiring exists to prevent.
 	if envMap["PLANTON_BOOTSTRAP_ORGANIZATION_SLUG"] != "default" {
 		t.Errorf("PLANTON_BOOTSTRAP_ORGANIZATION_SLUG = %q, want default", envMap["PLANTON_BOOTSTRAP_ORGANIZATION_SLUG"])
 	}
@@ -378,20 +366,29 @@ func TestControlPlaneDeployment_FederationFactsMount(t *testing.T) {
 	deploy := ControlPlaneDeployment(testControlPlaneConfig())
 	podSpec := deploy.Spec.Template.Spec
 
-	if len(podSpec.Volumes) != 1 || podSpec.Volumes[0].ConfigMap == nil ||
-		podSpec.Volumes[0].ConfigMap.Name != IdentityFederationFactsConfigMapName("planton") {
-		t.Fatalf("expected the federation facts ConfigMap volume, got %+v", podSpec.Volumes)
+	// Two facts files ride this shape on every install: the identity
+	// federation's and the GitHub declaration's. Nothing else is mounted on a
+	// config that declares no credentials.
+	if len(podSpec.Volumes) != 2 || podSpec.Volumes[0].ConfigMap == nil ||
+		podSpec.Volumes[0].ConfigMap.Name != IdentityFederationFactsConfigMapName("planton") ||
+		podSpec.Volumes[1].ConfigMap == nil || podSpec.Volumes[1].ConfigMap.Name != GithubFactsConfigMapName("planton") {
+		t.Fatalf("expected the two facts ConfigMap volumes, got %+v", podSpec.Volumes)
 	}
-	if podSpec.Volumes[0].ConfigMap.Optional == nil || !*podSpec.Volumes[0].ConfigMap.Optional {
-		t.Error("the facts volume must be optional (belt-and-braces; the identity component ensures it exists)")
+	for _, volume := range podSpec.Volumes {
+		if volume.ConfigMap.Optional == nil || !*volume.ConfigMap.Optional {
+			t.Errorf("facts volume %s must be optional (belt-and-braces; the component ensures it exists)", volume.Name)
+		}
 	}
 
 	mounts := podSpec.Containers[0].VolumeMounts
-	if len(mounts) != 1 || mounts[0].MountPath != IdentityFederationFactsMountPath || !mounts[0].ReadOnly {
-		t.Fatalf("expected one read-only mount at %s, got %+v", IdentityFederationFactsMountPath, mounts)
+	if len(mounts) != 2 || mounts[0].MountPath != IdentityFederationFactsMountPath || !mounts[0].ReadOnly ||
+		mounts[1].MountPath != GithubFactsMountPath || !mounts[1].ReadOnly {
+		t.Fatalf("expected two read-only mounts at %s and %s, got %+v", IdentityFederationFactsMountPath, GithubFactsMountPath, mounts)
 	}
-	if mounts[0].SubPath != "" {
-		t.Error("the facts mount must never use subPath: subPath mounts freeze kubelet's in-place updates")
+	for _, mount := range mounts {
+		if mount.SubPath != "" {
+			t.Error("a facts mount must never use subPath: subPath mounts freeze kubelet's in-place updates")
+		}
 	}
 
 	envMap := envVarMap(podSpec.Containers[0].Env)
@@ -511,8 +508,8 @@ func TestControlPlaneService(t *testing.T) {
 	if svc.Spec.Type != "ClusterIP" {
 		t.Errorf("type = %s, want ClusterIP", svc.Spec.Type)
 	}
-	if len(svc.Spec.Ports) != 2 {
-		t.Fatalf("expected 2 ports, got %d", len(svc.Spec.Ports))
+	if len(svc.Spec.Ports) != 3 {
+		t.Fatalf("expected 3 ports (grpc, grpc-web, webhook), got %d", len(svc.Spec.Ports))
 	}
 	if svc.Spec.Ports[0].Port != 80 {
 		t.Errorf("grpc service port = %d, want 80", svc.Spec.Ports[0].Port)
@@ -577,15 +574,16 @@ func TestControlPlaneDeployment_RunnerBinding(t *testing.T) {
 		t.Errorf("KUBERNETES_WORKLOAD_AUTH_TRUSTED_NAMESPACES = %q, want exactly the CR namespace",
 			envMap["KUBERNETES_WORKLOAD_AUTH_TRUSTED_NAMESPACES"])
 	}
-	// Runner-connectivity advertisement: minted identity documents and the
-	// materializer's capability gate both read these.
-	if envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"] != cfg.Temporal.FrontendEndpoint {
-		t.Errorf("CONNECT_RUNNER_TEMPORAL_ENDPOINT = %q, want the in-cluster frontend",
-			envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"])
-	}
-	if envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"] != "platform.pipelines" {
-		t.Errorf("CONNECT_RUNNER_TEMPORAL_NAMESPACE = %q, want platform.pipelines",
-			envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"])
+	// The deploy-queue advertisement is NOT the in-cluster runner's: every
+	// platform reader of it is a remote-runner gate or minter, and an
+	// in-cluster address would admit a laptop and then hand it a name only
+	// pods resolve. With remote runners closed (this binding) it stays unset,
+	// which is what makes the control plane refuse a remote enrollment
+	// honestly.
+	for _, absent := range []string{"CONNECT_RUNNER_TEMPORAL_ENDPOINT", "CONNECT_RUNNER_TEMPORAL_NAMESPACE"} {
+		if v, ok := envMap[absent]; ok {
+			t.Errorf("%s = %q; the queue must not be advertised to remote runners while the capability is closed", absent, v)
+		}
 	}
 	// Single-runner direct dial: CloudOps reaches the runner at its Service
 	// with the shared bearer -- sourced from the SAME Secret key the runner
@@ -614,12 +612,51 @@ func TestControlPlaneDeployment_RunnerBinding(t *testing.T) {
 			t.Errorf("%s must be absent: this install operates no runner tunnel and ships no CA", absent)
 		}
 	}
-	// The document endpoint is the in-cluster Service -- the same
-	// reachability horizon as the advertised Temporal endpoint.
+	// The two-address contract with remote runners closed: both the remote
+	// and the platform-scoped API address are the in-cluster Service (the
+	// remote one is boot-required and truthful for the only runners that can
+	// enroll then -- this cluster's).
 	wantEndpoint := ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace) + ":80"
 	if envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"] != wantEndpoint {
 		t.Errorf("CONNECT_RUNNER_PLANTON_API_ENDPOINT = %q, want %s",
 			envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"], wantEndpoint)
+	}
+	if envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"] != wantEndpoint {
+		t.Errorf("CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT = %q, want the in-cluster Service %s",
+			envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"], wantEndpoint)
+	}
+}
+
+// With remote runners open, the addresses stamped into enrolling runners'
+// identity documents are the FRONT DOOR's -- what a laptop dials -- for both
+// the queue and the API, while platform-scoped credentials keep the in-cluster
+// Service. The in-cluster runner is untouched either way: its document is
+// rendered by the operator (see RunnerIdentityDocumentJSON), never minted.
+func TestControlPlaneDeployment_RemoteRunnersAdvertiseTheFrontDoor(t *testing.T) {
+	cfg := testControlPlaneConfig()
+	cfg.RemoteRunners = &RemoteRunnersBinding{
+		PlantonAPIEndpoint: "planton.example.com:443",
+		TemporalEndpoint:   "planton.example.com:443",
+	}
+	deploy := ControlPlaneDeployment(cfg)
+	envMap := envVarMap(deploy.Spec.Template.Spec.Containers[0].Env)
+
+	if envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"] != "planton.example.com:443" {
+		t.Errorf("CONNECT_RUNNER_TEMPORAL_ENDPOINT = %q, want the front door", envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"])
+	}
+	if envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"] != "platform.pipelines" {
+		t.Errorf("CONNECT_RUNNER_TEMPORAL_NAMESPACE = %q, want platform.pipelines", envMap["CONNECT_RUNNER_TEMPORAL_NAMESPACE"])
+	}
+	if envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"] != "planton.example.com:443" {
+		t.Errorf("CONNECT_RUNNER_PLANTON_API_ENDPOINT = %q, want the front door", envMap["CONNECT_RUNNER_PLANTON_API_ENDPOINT"])
+	}
+	inCluster := ControlPlaneServiceFQDN(cfg.CRName, cfg.Namespace) + ":80"
+	if envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"] != inCluster {
+		t.Errorf("CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT = %q, want the in-cluster Service %s", envMap["CONNECT_RUNNER_PLATFORM_PLANTON_API_ENDPOINT"], inCluster)
+	}
+	// Never the in-cluster queue name on the remote advertisement.
+	if v := envMap["CONNECT_RUNNER_TEMPORAL_ENDPOINT"]; strings.Contains(v, "svc.cluster.local") {
+		t.Errorf("the remote advertisement must never be an in-cluster name, got %s", v)
 	}
 }
 
@@ -1014,4 +1051,139 @@ func assertSecretEnv(t *testing.T, envs []corev1.EnvVar, envName, secretName, ke
 		return
 	}
 	t.Errorf("env %s not found", envName)
+}
+
+func publicDoorWebIdentity() *WebIdentityBinding {
+	return &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: true}
+}
+
+func publicDoorGithubWebhooks() *GithubWebhooksBinding {
+	return &GithubWebhooksBinding{Reachable: true, ReceiverURL: "https://planton.example.com/webhooks/github"}
+}
+
+// The connection-method posture the control plane boots with, pinned per
+// front-door arm exactly as the control plane's methods-by-deployment fixture
+// declares it (its self-hosted public-door and private-door sections): a value
+// changed here without that fixture, or vice versa, is an install that
+// advertises one thing and enforces another. Three arms: a public https door,
+// a door declared private, the port-forward door.
+func TestControlPlaneDeployment_PostureFollowsTheFrontDoor(t *testing.T) {
+	const privateReason = "Keyless connections need cloud providers to fetch this install's signing keys from its " +
+		"front door over the public internet, and the front door is declared private. Use the runner or access-key method instead."
+
+	arms := []struct {
+		name    string
+		webID   *WebIdentityBinding
+		hooks   *GithubWebhooksBinding
+		console *ConsoleBinding
+		want    map[string]string
+		absent  []string
+	}{
+		{
+			name:    "public https door",
+			webID:   publicDoorWebIdentity(),
+			hooks:   publicDoorGithubWebhooks(),
+			console: &ConsoleBinding{URL: "https://planton.example.com"},
+			want: map[string]string{
+				"OIDC_ISSUER_URL": "https://planton.example.com",
+				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY": "available",
+				"GITHUB_WEBHOOKS_REACHABLE":                            "true",
+				"GITHUB_WEBHOOKS_RECEIVER_URL":                         "https://planton.example.com/webhooks/github",
+				"PLANTON_CONSOLE_URL":                                  "https://planton.example.com",
+			},
+			absent: []string{"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON"},
+		},
+		{
+			name:    "door declared private",
+			webID:   &WebIdentityBinding{IssuerURL: "https://planton.example.com", Offered: false, ClosedReason: privateReason},
+			hooks:   &GithubWebhooksBinding{Reachable: false, ReceiverURL: "https://planton.example.com/webhooks/github"},
+			console: &ConsoleBinding{URL: "https://planton.example.com"},
+			want: map[string]string{
+				"OIDC_ISSUER_URL": "https://planton.example.com",
+				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY": "unavailable",
+				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON":       privateReason,
+				"GITHUB_WEBHOOKS_REACHABLE":                            "false",
+				"GITHUB_WEBHOOKS_RECEIVER_URL":                         "https://planton.example.com/webhooks/github",
+				// A private door is still the console the person's own browser reaches.
+				"PLANTON_CONSOLE_URL": "https://planton.example.com",
+			},
+		},
+		{
+			name:    "port-forward door",
+			webID:   &WebIdentityBinding{IssuerURL: "http://localhost:8080", Offered: false, ClosedReason: "port-forward sentence"},
+			hooks:   &GithubWebhooksBinding{Reachable: false, ReceiverURL: "http://localhost:8080/webhooks/github"},
+			console: &ConsoleBinding{URL: "http://localhost:8080"},
+			want: map[string]string{
+				"OIDC_ISSUER_URL": "http://localhost:8080",
+				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_AVAILABILITY": "unavailable",
+				"PLANTON_CONNECT_METHODAVAILABILITY_OIDC_REASON":       "port-forward sentence",
+				"GITHUB_WEBHOOKS_REACHABLE":                            "false",
+				"GITHUB_WEBHOOKS_RECEIVER_URL":                         "http://localhost:8080/webhooks/github",
+				// The loopback console the browser reaches over the port-forward: true, never a placeholder.
+				"PLANTON_CONSOLE_URL": "http://localhost:8080",
+			},
+		},
+	}
+	// Every arm declares the app-less doors closed the same way.
+	everyArm := map[string]string{
+		"PLANTON_CONNECT_METHODAVAILABILITY_PLATFORMAPP_AVAILABILITY": "unavailable",
+		"PLANTON_CONNECT_METHODAVAILABILITY_PLATFORMAPP_REASON":       PlatformAppUnavailableReason,
+		"GCP_OAUTH_ENABLED":          "false",
+		"AZURE_OAUTH_ENABLED":        "false",
+		"AWS_CLOUDFORMATION_ENABLED": "false",
+		"WEBHOOK_PORT":               "8086",
+	}
+	for _, arm := range arms {
+		t.Run(arm.name, func(t *testing.T) {
+			cfg := testControlPlaneConfig()
+			cfg.WebIdentity = arm.webID
+			cfg.GithubWebhooks = arm.hooks
+			cfg.Console = arm.console
+			envMap := envVarMap(ControlPlaneDeployment(cfg).Spec.Template.Spec.Containers[0].Env)
+			for k, want := range arm.want {
+				if got := envMap[k]; got != want {
+					t.Errorf("%s = %q, want %q", k, got, want)
+				}
+			}
+			for k, want := range everyArm {
+				if got := envMap[k]; got != want {
+					t.Errorf("%s = %q, want %q on every arm", k, got, want)
+				}
+			}
+			for _, k := range arm.absent {
+				if got, ok := envMap[k]; ok {
+					t.Errorf("%s must be absent on this arm (a blank reason would be a lie about an offered mode); got %q", k, got)
+				}
+			}
+			if v, ok := envMap["GITHUB_WEBHOOKS_RECEIVER_URL"]; ok && v == "http://localhost" {
+				t.Error("the receiver URL is the door plus the webhook namespace, never the placeholder")
+			}
+		})
+	}
+}
+
+// The webhook servlet is exposed on the container and the Service under one
+// name, plain HTTP, so the front doors can route the issuer's discovery paths
+// and the webhook namespace to it by name or by number.
+func TestControlPlane_ExposesTheWebhookPort(t *testing.T) {
+	deploy := ControlPlaneDeployment(testControlPlaneConfig())
+	var found bool
+	for _, port := range deploy.Spec.Template.Spec.Containers[0].Ports {
+		if port.Name == "webhook" && port.ContainerPort == 8086 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("container ports = %+v, want a webhook port 8086", deploy.Spec.Template.Spec.Containers[0].Ports)
+	}
+	svc := ControlPlaneService("planton", "default", nil)
+	found = false
+	for _, port := range svc.Spec.Ports {
+		if port.Name == "webhook" && port.Port == 8086 && port.AppProtocol != nil && *port.AppProtocol == "http" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("service ports = %+v, want a webhook port 8086 with appProtocol http", svc.Spec.Ports)
+	}
 }

@@ -214,6 +214,21 @@ Reference an output from another manifest as `valueFrom: {kind: CloudflareAccoun
 |---|---|---|
 | `status.outputs.token_id` | `string` | The Cloudflare-assigned token ID (the token's identity for management calls -- NOT the credential itself). |
 | `status.outputs.value` | `string` | The token's secret value -- the credential. Returned by Cloudflare EXACTLY ONCE, on create: it can never be fetched again, and an imported token has no value at all. Sensitive both here (machine-readable) and in the modules' output registration. If the value is lost, rotate: roll the token (or delete and recreate) to mint a new one. |
+| `status.outputs.r2_access_key_id` | `string` | The token as an S3 access key id for Cloudflare R2's S3 API: Cloudflare defines it as the token's id (the same value as token_id, exported under the name an S3 client configures). Meaningful only when the token carries an R2 permission group (Workers R2 Storage Write/Read at the account, or Workers R2 Storage Bucket Item Write/Read scoped to buckets); a token without one authorizes nothing on the S3 API. Pair with r2_secret_access_key, the endpoint of the bucket's jurisdiction, and region "auto". |
+| `status.outputs.r2_secret_access_key` | `string` | The token as an S3 secret access key for Cloudflare R2's S3 API: Cloudflare defines it as the lowercase hex SHA-256 of the token's value -- exactly the "Secret Access Key" the dashboard shows when the same token is created there. Derived from `value`, so it shares its lifecycle: available from the create that minted the token, absent on an imported token, and rotated by rotating the token. Sensitive. |
+
+## Referenced By
+
+Fields on other kinds that can point at this resource:
+
+| Kind | Field | Reads |
+|---|---|---|
+| KubernetesMongodb | `spec.backup.storages[].r2.credentials.accessKeyId` | `status.outputs.r2_access_key_id` |
+| KubernetesMongodb | `spec.backup.storages[].r2.credentials.secretAccessKey` | `status.outputs.r2_secret_access_key` |
+| KubernetesPostgres | `spec.bootstrap.recovery.objectStore.r2.credentials.accessKeyId` | `status.outputs.r2_access_key_id` |
+| KubernetesPostgres | `spec.bootstrap.recovery.objectStore.r2.credentials.secretAccessKey` | `status.outputs.r2_secret_access_key` |
+| KubernetesPostgres | `spec.backup.objectStore.r2.credentials.accessKeyId` | `status.outputs.r2_access_key_id` |
+| KubernetesPostgres | `spec.backup.objectStore.r2.credentials.secretAccessKey` | `status.outputs.r2_secret_access_key` |
 
 ## See Also
 

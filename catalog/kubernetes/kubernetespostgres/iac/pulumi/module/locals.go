@@ -56,9 +56,11 @@ type Locals struct {
 	OperatorSuperuserSecret string
 	AppSecretName           string
 	// EffectiveAppSecretName is where the application credential actually
-	// lives: the operator-generated `<name>-app` normally, or the
-	// module-provided secret when initdb declares an owner password (the
-	// operator then adopts it instead of generating its own).
+	// lives: the operator-generated `<name>-app` normally, the
+	// module-provided secret when initdb declares an owner password, or
+	// the brought Secret when a recovery names the source's app Secret
+	// (credential continuity) — in both latter cases the operator adopts
+	// the Secret instead of generating its own.
 	EffectiveAppSecretName string
 }
 
@@ -89,6 +91,9 @@ func initializeLocals(_ *pulumi.Context, stackInput *kubernetespostgresv1alpha1.
 	effectiveAppSecretName := appSecretName
 	if spec.GetBootstrap().GetInitdb().GetOwnerPassword() != "" {
 		effectiveAppSecretName = providedAppSecretName
+	}
+	if brought := spec.GetBootstrap().GetRecovery().GetOwnerSecretName(); brought != "" {
+		effectiveAppSecretName = brought
 	}
 
 	return &Locals{

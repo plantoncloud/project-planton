@@ -613,7 +613,7 @@ func RunnerDeployment(cfg RunnerConfig) *appsv1.Deployment {
 							ProbeHandler: corev1.ProbeHandler{
 								GRPC: &corev1.GRPCAction{
 									Port:    runnerGrpcPort,
-									Service: strPtr(RunnerWorkerHealthService),
+									Service: new(RunnerWorkerHealthService),
 								},
 							},
 							InitialDelaySeconds: 5,
@@ -647,7 +647,7 @@ func RunnerDeployment(cfg RunnerConfig) *appsv1.Deployment {
 									Sources: []corev1.VolumeProjection{{
 										ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
 											Audience:          RunnerBadgeAudience,
-											ExpirationSeconds: int64Ptr(runnerBadgeTokenExpirationSeconds),
+											ExpirationSeconds: new(runnerBadgeTokenExpirationSeconds),
 											Path:              runnerBadgeTokenFile,
 										},
 									}},

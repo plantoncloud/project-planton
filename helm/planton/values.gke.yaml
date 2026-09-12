@@ -2,6 +2,7 @@
 #
 #   helm install planton oci://ghcr.io/plantonhq/charts/planton \
 #     --namespace planton --create-namespace \
+#     --set platform.spec.version=<release> \
 #     --values https://raw.githubusercontent.com/plantonhq/planton/main/helm/planton/values.gke.yaml
 #
 # GKE bundles its own ingress controller (class "gce", backed by a Google
@@ -13,6 +14,7 @@
 
 platform:
   spec:
+    # version: <release>   # REQUIRED -- the platform release to install (set it on the command line above)
     # -- Storage: GKE ships working default classes (the PD CSI driver is a
     # standard addon). To pin a specific class or override volume sizes:
     # storage:

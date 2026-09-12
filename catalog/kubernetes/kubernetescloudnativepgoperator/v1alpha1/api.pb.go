@@ -24,9 +24,10 @@ const (
 )
 
 // KubernetesCloudNativePgOperator installs CloudNativePG — the CNCF
-// PostgreSQL operator — on a cluster from the official Helm chart,
-// optionally with the Barman Cloud backup plugin. KubernetesPostgres
-// resources declare the databases the operator reconciles.
+// PostgreSQL operator — on a cluster from the official Helm chart.
+// KubernetesPostgres resources declare the databases the operator
+// reconciles; KubernetesCnpgBarmanCloudPlugin adds object-store backups
+// beside it.
 type KubernetesCloudNativePgOperator struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// api-version

@@ -87,8 +87,11 @@ type Content struct {
 
 // Fixture is a throwaway application repository with the skills installed
 // for one host. Parent holds exactly one entry (Repo) so that any file the
-// agent writes beside the repository is detectable after the run.
+// agent writes beside the repository is detectable after the run; the
+// harness's own artifacts (transcripts) go under Root beside Parent, never
+// inside it, so they can never be mistaken for the agent's writes.
 type Fixture struct {
+	Root   string
 	Parent string
 	Repo   string
 }
@@ -97,10 +100,11 @@ type Fixture struct {
 // temporary parent directory, initializes git (a coding agent's normal
 // surroundings), and installs the two skills where the host scans.
 func NewFixture(host Host, content Content) (*Fixture, error) {
-	parent, err := os.MkdirTemp("", "planton-hostprobe-")
+	root, err := os.MkdirTemp("", "planton-hostprobe-")
 	if err != nil {
 		return nil, err
 	}
+	parent := filepath.Join(root, "workspace")
 	repo := filepath.Join(parent, "orders-api")
 	files := map[string]string{
 		"package.json": `{ "name": "orders-api", "version": "1.0.0", "main": "src/index.js",
@@ -146,12 +150,12 @@ app.listen(3000);
 			return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, out)
 		}
 	}
-	return &Fixture{Parent: parent, Repo: repo}, nil
+	return &Fixture{Root: root, Parent: parent, Repo: repo}, nil
 }
 
 // Remove deletes the fixture. Callers keep it when a run fails so the tree
 // can be inspected.
-func (f *Fixture) Remove() { _ = os.RemoveAll(f.Parent) }
+func (f *Fixture) Remove() { _ = os.RemoveAll(f.Root) }
 
 // Run invokes the host headlessly inside the repository and returns its raw
 // transcript (stream-json lines) plus the exit error, if any. A non-zero
@@ -162,6 +166,11 @@ func (f *Fixture) Run(ctx context.Context, host Host, prompt string, timeout tim
 	defer cancel()
 	cmd := exec.CommandContext(ctx, host.Binary, host.Args(prompt)...)
 	cmd.Dir = f.Repo
+	// Agent CLIs fork helper processes that inherit stdout; without a
+	// WaitDelay, killing the parent at the deadline would leave Run blocked
+	// on the pipe until every helper exits. Ten seconds is generous.
+	cmd.WaitDelay = 10 * time.Second
+	cmd.Stdin = nil
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

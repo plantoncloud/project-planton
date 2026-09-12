@@ -618,9 +618,12 @@ Reference an output from another manifest as `valueFrom: {kind: CloudflareR2Buck
 | Output | Type | Description |
 |---|---|---|
 | `status.outputs.bucket_name` | `string` | The name of the bucket (same as spec.bucket_name) |
-| `status.outputs.bucket_url` | `string` | The S3-compatible API URL for the bucket (e.g., https://<account_id>.r2.cloudflarestorage.com/<bucket>) |
+| `status.outputs.bucket_url` | `string` | The path-style S3 API URL of the bucket: the account's S3 endpoint for the bucket's jurisdiction followed by the bucket name (e.g., https://<account_id>.r2.cloudflarestorage.com/<bucket>, or https://<account_id>.eu.r2.cloudflarestorage.com/<bucket> for an EU bucket). |
 | `status.outputs.custom_domain_urls` | `[]string` | The custom-domain URLs configured for the bucket (one per enabled custom domain), e.g., ["https://media.example.com"]. |
 | `status.outputs.public_url` | `string` | The Cloudflare-managed public URL (r2.dev) when public_access is enabled, e.g., https://pub-<hash>.r2.dev. Empty when public access is disabled. |
+| `status.outputs.account_id` | `string` | The Cloudflare account that owns the bucket (same as spec.account_id). Exported so a consumer that composes this bucket into an S3-compatible client can reference the account beside the bucket name instead of repeating it. |
+| `status.outputs.jurisdiction` | `string` | The bucket's data-residency jurisdiction, normalized: "default" when the spec left it empty, otherwise "eu", "fedramp", or "us" as declared. Part of the bucket's identity and the selector for its S3 endpoint host. |
+| `status.outputs.s3_endpoint` | `string` | The S3 API endpoint that serves this bucket -- the only host that does. https://<account_id>.r2.cloudflarestorage.com for the default jurisdiction, https://<account_id>.<jurisdiction>.r2.cloudflarestorage.com otherwise; requests for a jurisdictional bucket against the default host fail rather than redirect. An S3 client configures this as its endpoint URL with region "auto"; path-style and virtual-hosted addressing both work. |
 
 ## References
 
@@ -641,6 +644,13 @@ Fields on other kinds that can point at this resource:
 | CloudflarePagesProject | `spec.deploymentConfigs.production.r2Buckets[].bucketName` | `status.outputs.bucket_name` |
 | CloudflareWorker | `spec.r2Bundle.bucket` | `status.outputs.bucket_name` |
 | CloudflareWorker | `spec.r2Buckets[].bucketName` | `status.outputs.bucket_name` |
+| KubernetesMongodb | `spec.backup.storages[].r2.bucket` | `status.outputs.bucket_name` |
+| KubernetesMongodb | `spec.backup.storages[].r2.accountId` | `status.outputs.account_id` |
+| KubernetesMongodb | `spec.backup.storages[].r2.jurisdiction` | `status.outputs.jurisdiction` |
+| KubernetesPostgres | `spec.bootstrap.recovery.objectStore.r2.accountId` | `status.outputs.account_id` |
+| KubernetesPostgres | `spec.bootstrap.recovery.objectStore.r2.jurisdiction` | `status.outputs.jurisdiction` |
+| KubernetesPostgres | `spec.backup.objectStore.r2.accountId` | `status.outputs.account_id` |
+| KubernetesPostgres | `spec.backup.objectStore.r2.jurisdiction` | `status.outputs.jurisdiction` |
 
 ## See Also
 

@@ -1,0 +1,58 @@
+# THE RESTORE PROOF on GKE: a fresh three-member replica set restored from a
+# backup the SOURCE cluster (fixture-gke-source.yaml) took into GCS, then
+# rolled forward to the latest archived oplog — the disaster-recovery shape a
+# customer runs when the original is gone. The restore is addressed by its
+# LOCATION in the store (Percona's "storage defined on target" recipe: this
+# cluster declares the same GCS storage, and the destination is the path the
+# seed's backup landed at, published by the seed script), and the cluster
+# references the source's system-users Secret because the restored data
+# carries the source's users and passwords. The seed wrote marker A, took the
+# backup, then wrote marker B: the verifier (switched on by this scenario's
+# name) waits for the Restore object to reach ready, reads BOTH markers back
+# through the restored set with the source's credentials — B proves the
+# archived oplog replayed past the base backup — and asserts the three
+# members landed on three distinct nodes.
+#
+# The scenario JOINS the fixture's namespace (fixture-owns / scenario-joins;
+# the source's Secret and the shared storage live there).
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesMongodb
+metadata:
+  name: e2e-mdb-gke-dr
+  annotations:
+    planton.dev/e2e-cluster-profile: "gcp-gke"
+    planton.dev/e2e-prerequisites: "catalog/kubernetes/kubernetesmongodb/e2e/fixture-gke-source.yaml"
+    planton.dev/e2e-setup-script: "catalog/kubernetes/kubernetesmongodb/e2e/scenarios/gke-restore-seed.setup.sh"
+spec:
+  namespace:
+    value: e2e-mdb-gke
+  system_users_secret_name: e2e-mdb-gke-src-secrets
+  replica_sets:
+    - name: rs0
+      size: 3
+      storage:
+        size: 2Gi
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+  backup:
+    storages:
+      - name: gcs
+        main: true
+        gcs:
+          bucket: ${E2E_ENV:PLANTON_E2E_GKE_BACKUP_BUCKET}
+          prefix: mongo/${E2E_RUN_ID}/e2e-mdb-gke-src
+          credentials:
+            service_account_key:
+              value: ${E2E_ENV:PLANTON_E2E_GKE_MONGO_BACKUP_KEY_B64}
+  restore:
+    backup_source:
+      storage_name: gcs
+      destination: ${E2E_SETUP:MONGO_BACKUP_DESTINATION}
+      type: logical
+    pitr:
+      type: latest

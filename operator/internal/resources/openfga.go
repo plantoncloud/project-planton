@@ -3,7 +3,7 @@ package resources
 import "fmt"
 
 const (
-	OpenFGAHelmChartVersion = "0.2.12"
+	OpenFGAHelmChartVersion = "0.3.13"
 	OpenFGAHTTPPort         = 8080
 	OpenFGAGRPCPort         = 8081
 	OpenFGADatastoreEngine  = "postgres"

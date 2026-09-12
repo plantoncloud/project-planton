@@ -86,7 +86,7 @@ func TestEffectiveLicense(t *testing.T) {
 	}
 
 	p.Spec.License = &v1.LicenseSpec{
-		SecretKeyRef: &v1.LicenseSecretKeyRef{Name: "acme-license", Key: "license-key"},
+		SecretKeyRef: &v1.SecretKeyRef{Name: "acme-license", Key: "license-key"},
 	}
 	got = effectiveLicense(p)
 	if got == nil || got.SecretName != "acme-license" || got.SecretKey != "license-key" || got.Key != "" {
@@ -94,49 +94,25 @@ func TestEffectiveLicense(t *testing.T) {
 	}
 }
 
-// The authorization arm rides the identity binding: allow-authenticated is the
-// trusting-team default, and enabling the authorization component upgrades to
-// the real policy engine.
-func TestBuildConfig_AuthorizationProviderSelection(t *testing.T) {
+// The policy engine is wired on every platform: the control plane's FGA
+// connection is always real.
+func TestBuildConfig_OpenFGAAlwaysWired(t *testing.T) {
 	cp := &ControlPlane{}
 
-	p := ingressPlatform(true)
-	cfg := cp.buildConfig(p, nil)
-	if cfg.Identity == nil {
-		t.Fatal("expected an identity binding with ingress enabled")
-	}
-	if cfg.Identity.AuthorizationProvider != "allow-authenticated" {
-		t.Errorf("provider = %q, want allow-authenticated", cfg.Identity.AuthorizationProvider)
-	}
-	if cfg.OpenFGA.HTTPURL != "" {
-		t.Error("no OpenFGA connection may be wired while the component is disabled")
-	}
-
-	p.Spec.Components = &v1.ComponentsSpec{Authorization: &v1.ComponentToggle{Enabled: true}}
-	cfg = cp.buildConfig(p, nil)
-	if cfg.Identity.AuthorizationProvider != "openfga" {
-		t.Errorf("provider = %q, want openfga with the authorization component enabled", cfg.Identity.AuthorizationProvider)
-	}
+	cfg := cp.buildConfig(ingressPlatform(true), nil)
 	if cfg.OpenFGA.HTTPURL == "" || cfg.OpenFGA.BootstrapConfigMapName == "" {
-		t.Error("the real OpenFGA connection must be wired when the component is enabled")
+		t.Error("the OpenFGA connection must be wired on every platform")
 	}
 }
 
-// The control plane's FGA store/model env comes from the openfga bootstrap
-// ConfigMap when the component is enabled, so openfga must gate its startup --
-// an explained wait instead of CreateContainerConfigError.
-func TestControlPlaneDependencies_OpenFGAOnlyWhenEnabled(t *testing.T) {
+// The control plane's FGA store env comes from the openfga bootstrap
+// ConfigMap, so openfga gates its startup on every platform -- an explained
+// wait instead of CreateContainerConfigError.
+func TestControlPlaneDependencies_OpenFGAAlwaysGates(t *testing.T) {
 	cp := &ControlPlane{}
 
-	without := cp.Dependencies(ingressPlatform(true))
-	if slices.Contains(without, "openfga") {
-		t.Error("openfga must not gate the minimal footprint")
-	}
-
-	p := ingressPlatform(true)
-	p.Spec.Components = &v1.ComponentsSpec{Authorization: &v1.ComponentToggle{Enabled: true}}
-	with := cp.Dependencies(p)
-	if !slices.Contains(with, "openfga") {
-		t.Error("openfga must gate the control plane when authorization is enabled")
+	deps := cp.Dependencies(ingressPlatform(true))
+	if !slices.Contains(deps, "openfga") {
+		t.Error("openfga must gate the control plane on every platform")
 	}
 }

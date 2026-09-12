@@ -83,8 +83,9 @@ message CloudResourceKindMeta {
   //components that must be deployed before this component can function.
   //order matters: index 0 is deployed first. the E2E framework installs these
   //(resolved transitively) before the component under test and tears them down
-  //in reverse order; a component may pin a prerequisite's exact config via an
-  //e2e/fixtures/ override, which wins over the registry entry. this is also
+  //in reverse order; a consumer may pin a prerequisite's exact install shape
+  //via an e2e/prerequisites/<kind>.yaml override, which wins over the
+  //prerequisite's own e2e/prerequisite.yaml install profile. this is also
   //used by the platform for dependency ordering in infra charts.
   //example: KubernetesPostgres needs KubernetesCloudNativePgOperator
   //because it creates postgresql.cnpg.io/v1 Cluster resources.
@@ -6027,6 +6028,21 @@ enum CloudResourceKind {
     id_prefix: "k8srmq"
     prerequisites: [KubernetesRabbitMqOperator]
     service_group: kubernetes_open_source_software
+  }];
+  // The Barman Cloud plugin is CloudNativePG's object-store backup path,
+  // installed as its own Helm release beside the operator. It registers
+  // with the operator over CNPG-I and issues its TLS through cert-manager,
+  // so both are prerequisites: nothing to register with, or no
+  // certificates, and the release never becomes ready.
+  KubernetesCnpgBarmanCloudPlugin = 4127 [(kind_meta) = {
+    provider: kubernetes
+    version: "v1alpha1"
+    id_prefix: "k8sbcp"
+    prerequisites: [
+      KubernetesCertManager,
+      KubernetesCloudNativePgOperator
+    ]
+    service_group: kubernetes_operators_controllers
   }];
   // 4130–4149: Kubernetes analytics and ML
   // KubernetesPostgres is a prerequisite because Airflow's metadata

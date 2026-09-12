@@ -2,6 +2,7 @@
 #
 #   helm install planton oci://ghcr.io/plantonhq/charts/planton \
 #     --namespace planton --create-namespace \
+#     --set platform.spec.version=<release> \
 #     --values https://raw.githubusercontent.com/plantonhq/planton/main/helm/planton/values.eks.yaml
 #
 # EKS ships no ingress controller and every remaining choice is specific to
@@ -11,6 +12,7 @@
 
 platform:
   spec: {}
+    # version: <release>   # REQUIRED -- the platform release to install (set it on the command line above)
     # -- Storage: EKS clusters need the aws-ebs-csi-driver addon (with its
     # own IAM role via Pod Identity or IRSA) before any stateful workload can
     # run -- the default gp2 class exists on every cluster, but without the

@@ -62,6 +62,47 @@ func s3Storage(name string) *KubernetesMongodbBackupStorage {
 	}
 }
 
+// gcsStorage returns a minimal valid GCS backup storage: a literal
+// service-account key (GCS has no keyless arm — the credentials message is
+// required).
+func gcsStorage(name string) *KubernetesMongodbBackupStorage {
+	return &KubernetesMongodbBackupStorage{
+		Name: name,
+		Backend: &KubernetesMongodbBackupStorage_Gcs{
+			Gcs: &KubernetesMongodbGcsStorage{
+				Bucket: "mongo-backups",
+				Credentials: &KubernetesMongodbGcsCredentials{
+					Source: &KubernetesMongodbGcsCredentials_ServiceAccountKey{
+						ServiceAccountKey: literal(`{"type":"service_account","client_email":"mongo-backup@my-project.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n"}`),
+					},
+				},
+			},
+		},
+	}
+}
+
+// r2Storage returns a Cloudflare R2 backup storage with every reference in
+// its default-kind form (the bucket for name, account, and jurisdiction; the
+// account API token for the key pair) — the composed shape a chart or the
+// console produces.
+func r2Storage(name string) *KubernetesMongodbBackupStorage {
+	return &KubernetesMongodbBackupStorage{
+		Name: name,
+		Backend: &KubernetesMongodbBackupStorage_R2{
+			R2: &KubernetesMongodbR2Storage{
+				Bucket:       valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "mongo-archive", "status.outputs.bucket_name"),
+				Prefix:       "prod-mongo",
+				AccountId:    valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "mongo-archive", "status.outputs.account_id"),
+				Jurisdiction: valueFrom(cloudresourcekind.CloudResourceKind_CloudflareR2Bucket, "mongo-archive", "status.outputs.jurisdiction"),
+				Credentials: &KubernetesMongodbR2Credentials{
+					AccessKeyId:     valueFrom(cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken, "mongo-archive-writer", "status.outputs.r2_access_key_id"),
+					SecretAccessKey: valueFrom(cloudresourcekind.CloudResourceKind_CloudflareAccountApiToken, "mongo-archive-writer", "status.outputs.r2_secret_access_key"),
+				},
+			},
+		},
+	}
+}
+
 // validBackup returns a minimal valid backup block (one S3 storage, no
 // tasks) for tests that mutate one backup rule at a time.
 func validBackup() *KubernetesMongodbBackup {
@@ -233,19 +274,120 @@ var _ = ginkgo.Describe("KubernetesMongodb Validation Tests", func() {
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
 
-		ginkgo.It("backup to GCS with a service-account key should be valid", func() {
+		ginkgo.It("backup to R2 composed from the Cloudflare kinds should be valid", func() {
 			input.Spec.Backup = &KubernetesMongodbBackup{
-				Storages: []*KubernetesMongodbBackupStorage{
-					{
-						Name: "gcs-store",
-						Backend: &KubernetesMongodbBackupStorage_Gcs{
-							Gcs: &KubernetesMongodbGcsStorage{
-								Bucket:                "mongo-backups",
-								ServiceAccountKeyJson: `{"type":"service_account","project_id":"my-project"}`,
-							},
-						},
+				Storages: []*KubernetesMongodbBackupStorage{r2Storage("r2")},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to R2 with a literal bucket, account, jurisdiction, and dashboard-minted key pair should be valid", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Bucket = literal("mongo-archive")
+			storage.GetR2().AccountId = literal("4793d734c0b8e484dfc37ec392b5fa8a")
+			storage.GetR2().Jurisdiction = literal("eu")
+			storage.GetR2().Credentials.AccessKeyId = literal("f267e341f3dd4697bd3b9f71dd96247f")
+			storage.GetR2().Credentials.SecretAccessKey = literal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to R2 without a jurisdiction should be valid (empty is the default jurisdiction)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Jurisdiction = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from an R2 storage's location with PITR to latest should be valid (the DR shape on R2)", func() {
+			input.Spec.SystemUsersSecretName = "source-mongodb-secrets"
+			input.Spec.Backup = &KubernetesMongodbBackup{
+				Storages: []*KubernetesMongodbBackupStorage{r2Storage("r2")},
+				Pitr:     &KubernetesMongodbPitr{Enabled: true},
+			}
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "r2",
+						Destination: "s3://mongo-archive/prod-mongo/2026-09-10T12:00:00Z",
+						Type:        stringPtr("logical"),
 					},
 				},
+				Pitr: &KubernetesMongodbRestorePitr{Type: "latest"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to GCS with a literal service-account key should be valid", func() {
+			input.Spec.Backup = &KubernetesMongodbBackup{
+				Storages: []*KubernetesMongodbBackupStorage{gcsStorage("gcs-store")},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to GCS with the key referenced from a GcpServiceAccount should be valid", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = &KubernetesMongodbGcsCredentials{
+				Source: &KubernetesMongodbGcsCredentials_ServiceAccountKey{
+					ServiceAccountKey: valueFrom(cloudresourcekind.CloudResourceKind_GcpServiceAccount, "mongo-backup", "status.outputs.key_base64"),
+				},
+			}
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("backup to GCS with an existing credentials Secret should be valid", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = &KubernetesMongodbGcsCredentials{
+				Source: &KubernetesMongodbGcsCredentials_ExistingSecretName{ExistingSecretName: "gcs-backup-credentials"},
+			}
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("a bring-your-own system-users Secret should be valid", func() {
+			input.Spec.SystemUsersSecretName = "source-mongodb-secrets"
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from a same-namespace Backup object should be valid", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly-2026-09-09"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from a declared storage's location with PITR to latest should be valid (the DR shape)", func() {
+			input.Spec.SystemUsersSecretName = "source-mongodb-secrets"
+			input.Spec.Backup = &KubernetesMongodbBackup{
+				Storages: []*KubernetesMongodbBackupStorage{gcsStorage("gcs-store")},
+				Pitr:     &KubernetesMongodbPitr{Enabled: true},
+			}
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "gcs-store",
+						Destination: "gs://mongo-backups/prod/2026-09-09T12:00:00Z",
+						Type:        stringPtr("logical"),
+					},
+				},
+				Pitr: &KubernetesMongodbRestorePitr{Type: "latest"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
+		})
+
+		ginkgo.It("restore with PITR to a date and replica-set remapping should be valid", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "primary",
+						Destination: "s3://mongo-backups/2026-09-09T12:00:00Z",
+					},
+				},
+				Pitr:             &KubernetesMongodbRestorePitr{Type: "date", Date: "2026-09-09 12:30:00"},
+				ReplsetRemapping: map[string]string{"rs0": "rs1"},
 			}
 			gomega.Expect(protovalidate.Validate(input)).To(gomega.BeNil())
 		})
@@ -700,14 +842,154 @@ var _ = ginkgo.Describe("KubernetesMongodb Validation Tests", func() {
 			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
 		})
 
+		ginkgo.It("r2 without a bucket should fail (required)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Bucket = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without an account_id should fail (required)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().AccountId = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 with a malformed literal account_id should fail (account_id_format)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().AccountId = literal("not-an-account-id")
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 with an unknown literal jurisdiction should fail (jurisdiction_valid)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Jurisdiction = literal("europe")
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 without credentials should fail (required — R2 has no keyless posture)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Credentials = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("r2 credentials missing the secret access key should fail (required)", func() {
+			storage := r2Storage("r2")
+			storage.GetR2().Credentials.SecretAccessKey = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
 		ginkgo.It("gcs without a bucket should fail (required)", func() {
-			input.Spec.Backup = &KubernetesMongodbBackup{
-				Storages: []*KubernetesMongodbBackupStorage{
-					{
-						Name:    "gcs-store",
-						Backend: &KubernetesMongodbBackupStorage_Gcs{Gcs: &KubernetesMongodbGcsStorage{}},
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Bucket = ""
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("gcs without credentials should fail (required — there is no keyless GCS posture)", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = nil
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("gcs credentials with no source arm should fail (oneof required)", func() {
+			storage := gcsStorage("gcs-store")
+			storage.GetGcs().Credentials = &KubernetesMongodbGcsCredentials{}
+			input.Spec.Backup = &KubernetesMongodbBackup{Storages: []*KubernetesMongodbBackupStorage{storage}}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore without the backup block should fail (restore_requires_backup)", func() {
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly-2026-09-09"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore from a storage the backup block does not declare should fail (restore_storage_declared)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "elsewhere",
+						Destination: "s3://mongo-backups/2026-09-09T12:00:00Z",
 					},
 				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore with no source should fail (oneof required)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore destination without a URI scheme should fail (destination_uri)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "primary",
+						Destination: "mongo-backups/2026-09-09T12:00:00Z",
+					},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore type incremental should fail (type_enum — chains restore through their physical base)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupSource{
+					BackupSource: &KubernetesMongodbRestoreBackupSource{
+						StorageName: "primary",
+						Destination: "s3://mongo-backups/2026-09-09T12:00:00Z",
+						Type:        stringPtr("incremental"),
+					},
+				},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR type date without a date should fail (pitr.date_pairing)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "date"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR type latest with a date should fail (pitr.date_pairing)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "latest", Date: "2026-09-09 12:30:00"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR date in RFC3339 form should fail (the operator's format is 'YYYY-MM-DD HH:MM:SS')", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "date", Date: "2026-09-09T12:30:00Z"},
+			}
+			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
+		})
+
+		ginkgo.It("restore PITR with an unknown type should fail (pitr.type_enum)", func() {
+			input.Spec.Backup = validBackup()
+			input.Spec.Restore = &KubernetesMongodbRestore{
+				Source: &KubernetesMongodbRestore_BackupName{BackupName: "nightly"},
+				Pitr:   &KubernetesMongodbRestorePitr{Type: "oplog"},
 			}
 			gomega.Expect(protovalidate.Validate(input)).ToNot(gomega.BeNil())
 		})

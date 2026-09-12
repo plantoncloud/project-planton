@@ -110,6 +110,20 @@ Two per-component fallbacks, in order of preference:
    permission questions arise. Prefer fetching only the pages the answer
    needs over mirroring the tree.
 
+A third rung exists for one question the pack itself cannot settle -- what
+a field DOES when it is applied, as opposed to what it is named and how it
+is validated: the module source. Every component ships the Terraform
+module (`catalog/<provider>/<kind>/iac/tf/`) and the Pulumi module
+(`catalog/<provider>/<kind>/iac/pulumi/module/`) that turn its manifest
+into cloud resources, and the runner applies the module published for a
+release. When a pack page and a live deployment disagree, or a page is
+silent on how a value is used, read the module -- from a sparse checkout
+pinned to the release whose pack you resolved (the tag in the
+release-artifact URL, or of the skills release you installed from), never
+quietly from `main`, which may already describe a field the deployment
+does not have. The workflow skill's grounding reference carries the exact
+checkout commands.
+
 Be honest about what per-component fallbacks cannot give you: full-text
 capability search, the inbound `Referenced By` view, the catalog-wide graph,
 and the authored guides and patterns (the fetched index partially covers

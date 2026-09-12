@@ -831,9 +831,13 @@ message AwsRedshiftClusterEndpointAuthorization {
   // Restrict the grant to specific VPCs in the grantee account. Empty
   // authorizes ALL of the account's VPCs. Reference AwsVpc vpc_id
   // outputs or pass literal VPC IDs.
+  //
+  // Containment-exempt: a grant admits another VPC's endpoints to the
+  // cluster; the cluster never lives inside the VPC it authorizes.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef vpc_ids = 2 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsVpc,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.vpc_id"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.vpc_id",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // Revoke the authorization on delete even if the grantee still has

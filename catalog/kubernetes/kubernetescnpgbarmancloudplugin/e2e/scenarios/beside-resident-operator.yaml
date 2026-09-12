@@ -1,0 +1,38 @@
+# THE RESIDENT-OPERATOR PROOF: a CloudNativePG ALREADY runs on the cluster,
+# installed by another hand and without a backup plugin -- the shape of a
+# self-hosted platform's management cluster, where a platform operator
+# installs CloudNativePG for its own database. This kind adds only the
+# plugin beside it, into the operator's namespace given as a literal (there
+# is no operator RESOURCE to reference; the operator is a fact about the
+# cluster). cert-manager is resident too.
+#
+# Both residents are declared through the resident-prerequisites annotation,
+# so the harness installs neither and tears down neither, and the scenario
+# is pinned to the gcp-gke real-cluster profile (nothing is resident on a
+# harness-owned cluster; the entrypoint refuses the annotation otherwise).
+# The verifier asserts the plugin Deployment Available, its Service carrying
+# the discovery label, and the ObjectStore CRD Established; on destroy, that
+# the plugin is gone while the resident operator's Deployment survives --
+# the assertion that gives this scenario its meaning.
+#
+# On a cluster where the plugin was installed before (this one: an earlier
+# proof left the kept ObjectStore CRD behind), the release adopts the kept
+# CRD because the release name and namespace match -- the adoption path the
+# fixed release name exists for.
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: e2e-barman-plugin-resident
+  annotations:
+    planton.dev/e2e-cluster-profile: "gcp-gke"
+    planton.dev/e2e-resident-prerequisites: "KubernetesCertManager, KubernetesCloudNativePgOperator"
+spec:
+  namespace:
+    value: cnpg-system
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

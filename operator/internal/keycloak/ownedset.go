@@ -30,15 +30,27 @@ type OwnedRealmInput struct {
 	// must carry.
 	ConsoleClientSecret string
 	UsersClientSecret   string
+
+	// Email is the identity server's share of the platform's email
+	// declaration (see realm_email.go): nil hands off the realm's email
+	// settings this pass, a value with no relay owns them off, a relay owns
+	// them as declared.
+	Email *OwnedRealmEmail
 }
 
 // OwnedRealmSettings returns the realm-level fields the operator owns, keyed
-// by their Admin API JSON names. Deliberately NOT here: loginTheme (the
-// server-wide --spi-theme--default flag covers it, and realm theming beyond
-// that is an admin customization), displayName/displayNameHtml (branding an
-// admin may legitimately adjust).
-func OwnedRealmSettings() map[string]any {
-	return map[string]any{
+// by their Admin API JSON names, derived from the live input the way the
+// owned clients are. Deliberately NOT here: loginTheme (the server-wide
+// --spi-theme--default flag covers it, and realm theming beyond that is an
+// admin customization), displayName/displayNameHtml (branding an admin may
+// legitimately adjust).
+//
+// Flat keys are compared whole. The one nested key, smtpServer, is a map
+// Keycloak masks two entries of on read, so the reconciler converges it by
+// key with its own rule (convergeSMTPServer); it is listed here so the
+// import-agreement pin sees every owned key in one place.
+func OwnedRealmSettings(in OwnedRealmInput) map[string]any {
+	settings := map[string]any{
 		// The platform's security posture (DD'd product numbers, not tuning
 		// knobs -- see the constants' comments in internal/resources).
 		"accessTokenLifespan":   resources.IdentityAccessTokenLifespanSeconds,
@@ -48,7 +60,20 @@ func OwnedRealmSettings() map[string]any {
 		// The friction ladder's first step serves plain HTTP; the ingress
 		// owns transport security (see the realm import's comment).
 		"sslRequired": "none",
+		// People choose their own passwords on this realm, so the policy and
+		// the brute-force switch are load-bearing and self-healing: an admin
+		// who relaxes them in the console is reverted on the next pass (see
+		// the constants' comments in internal/resources).
+		"passwordPolicy":      resources.IdentityPasswordPolicy,
+		"bruteForceProtected": resources.IdentityBruteForceProtected,
 	}
+	if in.Email != nil {
+		// "Forgot password?" is offered exactly when an email can be sent:
+		// the switch and the relay are one declaration, owned together.
+		settings[realmResetPasswordAllowedKey] = in.Email.Relay != nil
+		settings[realmSMTPServerKey] = in.Email.smtpServer()
+	}
+	return settings
 }
 
 // OwnedMapper is a protocol mapper the operator owns on one of its clients,

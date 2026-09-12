@@ -38,6 +38,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/plantonhq/planton/operator/internal/keycloaklogintheme"
 	"github.com/plantonhq/planton/operator/internal/resources"
 )
 
@@ -56,7 +57,18 @@ const (
 var (
 	testServerRoot string
 	testLab        *labDirectory
+	// testMailpit is the suite's mail server: SMTP at mailpit:1025 from
+	// Keycloak's side of the network, the inbox API at this host address.
+	testMailpit *mailpit
 )
+
+// testThemeFacts is the install the suite's Keycloak believes it serves; the
+// email-theme test asserts these words in the messages it renders.
+var testThemeFacts = keycloaklogintheme.EmailFacts{
+	BrandName:  "Acme Platform",
+	ConsoleURL: testPublicURL,
+	ReplyTo:    "it-help@acme.example.com",
+}
 
 func TestMain(m *testing.M) {
 	suffix := fmt.Sprintf("%d", os.Getpid())
@@ -79,6 +91,17 @@ func TestMain(m *testing.M) {
 	testLab = lab
 	cleanupLab := func() { lab.stop(); cleanupNetwork() }
 
+	// The mail server Keycloak sends through: the email-theme test reads
+	// what it rendered from Mailpit's inbox API.
+	mail, err := startMailpit(network, "mailpit-"+suffix)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "starting mailpit: %v\n", err)
+		cleanupLab()
+		os.Exit(1)
+	}
+	testMailpit = mail
+	cleanupMail := func() { mail.stop(); cleanupLab() }
+
 	image := resources.IdentityDefaultImageRepo + ":" + resources.IdentityDefaultImageTag
 
 	// The production serving shape: bootstrap admin from env, the /idp
@@ -89,8 +112,12 @@ func TestMain(m *testing.M) {
 	// file sharing silently materializes an unshared host path as an EMPTY
 	// directory, and Keycloak then boots happily trusting nothing (caught
 	// live by this suite's first LDAPS run).
-	// No --rm: a boot failure's logs must survive for the diagnostics below
-	// (cleanup is the explicit rm -f either way).
+	// The Planton theme rides in the same way the operator mounts it (the
+	// theme directory under /opt/keycloak/themes, selected as the server's
+	// default for every type), so the suite renders the sign-in pages and
+	// the emails the way an install does. No --rm: a boot failure's logs
+	// must survive for the diagnostics below (cleanup is the explicit rm -f
+	// either way).
 	out, err := exec.Command("docker", "create",
 		"--network", network, "--network-alias", testNetworkAlias,
 		"-e", "KC_BOOTSTRAP_ADMIN_USERNAME="+testBootstrapAdminUser,
@@ -98,20 +125,31 @@ func TestMain(m *testing.M) {
 		"-e", "KC_HTTP_RELATIVE_PATH="+resources.IdentityPathPrefix,
 		"-e", "KC_TRUSTSTORE_PATHS="+resources.IdentityCATruststorePath+"/"+resources.IdentityCABundleFileName,
 		"-p", "127.0.0.1:0:8080",
-		image, "start-dev").Output()
+		image, "start-dev", "--spi-theme--default="+keycloaklogintheme.ThemeName).Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "creating keycloak container: %v\n", err)
-		cleanupLab()
+		cleanupMail()
 		os.Exit(1)
 	}
 	containerID := strings.TrimSpace(string(out))
 	cleanupAll := func() {
 		_ = exec.Command("docker", "rm", "-f", containerID).Run()
-		cleanupLab()
+		cleanupMail()
 	}
 
 	if cpOut, err := exec.Command("docker", "cp", lab.caDir, containerID+":"+resources.IdentityCATruststorePath).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "copying the lab CA into keycloak: %v\n%s\n", err, cpOut)
+		cleanupAll()
+		os.Exit(1)
+	}
+	themeDir, err := writeThemeDir(testThemeFacts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "writing the theme to disk: %v\n", err)
+		cleanupAll()
+		os.Exit(1)
+	}
+	if cpOut, err := exec.Command("docker", "cp", themeDir, containerID+":/opt/keycloak/themes/").CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "copying the theme into keycloak: %v\n%s\n", err, cpOut)
 		cleanupAll()
 		os.Exit(1)
 	}
@@ -227,7 +265,7 @@ func TestConvergence_FreshRealmAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range OwnedRealmSettings() {
+	for key, want := range OwnedRealmSettings(in.OwnedRealmInput) {
 		if !jsonEqual(want, realm[key]) {
 			t.Errorf("realm setting %s = %v, want %v", key, realm[key], want)
 		}

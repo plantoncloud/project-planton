@@ -4,8 +4,23 @@ output "bucket_name" {
 }
 
 output "bucket_url" {
-  description = "The S3-compatible API URL for the bucket"
+  description = "The path-style S3 API URL of the bucket (its jurisdiction's endpoint plus the bucket name)"
   value       = local.bucket_url
+}
+
+output "account_id" {
+  description = "The Cloudflare account that owns the bucket (same as spec.account_id)"
+  value       = local.account_id
+}
+
+output "jurisdiction" {
+  description = "The bucket's data-residency jurisdiction, normalized: default, eu, fedramp, or us"
+  value       = local.jurisdiction_normalized
+}
+
+output "s3_endpoint" {
+  description = "The S3 API endpoint that serves this bucket's jurisdiction -- the only host that does; configure S3 clients with it and region auto"
+  value       = local.s3_endpoint
 }
 
 output "custom_domain_urls" {

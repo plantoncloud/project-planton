@@ -1,0 +1,80 @@
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesPostgres
+metadata:
+  name: prod-db
+spec:
+  namespace:
+    value: prod-db
+  create_namespace: true
+  # One primary + two replicas, on a HARD anti-affinity rule: on GKE the
+  # cluster autoscaler adds nodes to honor it, so the instances really are
+  # on three nodes.
+  instances: 3
+  storage:
+    size: 100Gi
+  wal_storage:
+    size: 20Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  postgresql:
+    synchronous:
+      method: any
+      number: 1
+      data_durability: required
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      data_checksums: true
+  backup:
+    object_store:
+      # The bucket is the CloudflareR2Bucket's bucket_name; the path after it
+      # is this cluster's alone — a recovered cluster archives to a NEW path;
+      # Barman refuses a path holding another cluster's WAL.
+      destination_path: s3://prod-db-archive/prod-db
+      r2:
+        # The account and jurisdiction follow the bucket by reference, so the
+        # S3 host the module composes always matches where the bucket lives
+        # (an eu/fedramp/us bucket is reachable only through its own host).
+        account_id:
+          valueFrom:
+            kind: CloudflareR2Bucket
+            name: prod-db-archive
+            fieldPath: status.outputs.account_id
+        jurisdiction:
+          valueFrom:
+            kind: CloudflareR2Bucket
+            name: prod-db-archive
+            fieldPath: status.outputs.jurisdiction
+        # The credential is a CloudflareAccountApiToken carrying `Workers R2
+        # Storage Bucket Item Write` on this bucket; the token kind exports
+        # itself as the S3 key pair R2 authenticates. No key is typed here.
+        credentials:
+          access_key_id:
+            valueFrom:
+              kind: CloudflareAccountApiToken
+              name: prod-db-archive-writer
+              fieldPath: status.outputs.r2_access_key_id
+          secret_access_key:
+            valueFrom:
+              kind: CloudflareAccountApiToken
+              name: prod-db-archive-writer
+              fieldPath: status.outputs.r2_secret_access_key
+      wal:
+        compression: zstd
+      data:
+        compression: gzip
+    retention_policy: 30d
+    schedules:
+      - name: daily
+        schedule: "0 0 2 * * *" # SIX-field cron, seconds first — 02:00 nightly
+        immediate: true
+  scheduling:
+    anti_affinity_type: required
+  update_strategy:
+    primary_update_method: switchover

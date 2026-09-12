@@ -57,12 +57,20 @@ type KubernetesMongodbStackOutputs struct {
 	PortForwardCommand string `protobuf:"bytes,6,opt,name=port_forward_command,json=portForwardCommand,proto3" json:"port_forward_command,omitempty"`
 	// *
 	// The Kubernetes Secret key holding the database-admin password (the
-	// operator-managed `<name>-secrets` system-users Secret, key
+	// system-users Secret — the operator-managed `<name>-secrets`, or the
+	// one `system_users_secret_name` brought — key
 	// MONGODB_DATABASE_ADMIN_PASSWORD; the paired username key is
 	// MONGODB_DATABASE_ADMIN_USER).
 	AdminPasswordSecret *kubernetes.KubernetesSecretKey `protobuf:"bytes,7,opt,name=admin_password_secret,json=adminPasswordSecret,proto3" json:"admin_password_secret,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// *
+	// Name of the PerconaServerMongoDBRestore object rendered for the spec's
+	// `restore` declaration (`<name>-restore-<8 hex>`, the suffix hashing
+	// the declaration) — the run whose status tells whether the restore
+	// reached ready: `kubectl get psmdb-restore <this> -n <namespace>`.
+	// Empty when no restore is declared.
+	RestoreName   string `protobuf:"bytes,8,opt,name=restore_name,json=restoreName,proto3" json:"restore_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KubernetesMongodbStackOutputs) Reset() {
@@ -144,11 +152,18 @@ func (x *KubernetesMongodbStackOutputs) GetAdminPasswordSecret() *kubernetes.Kub
 	return nil
 }
 
+func (x *KubernetesMongodbStackOutputs) GetRestoreName() string {
+	if x != nil {
+		return x.RestoreName
+	}
+	return ""
+}
+
 var File_catalog_kubernetes_kubernetesmongodb_v1alpha1_outputs_proto protoreflect.FileDescriptor
 
 const file_catalog_kubernetes_kubernetesmongodb_v1alpha1_outputs_proto_rawDesc = "" +
 	"\n" +
-	";catalog/kubernetes/kubernetesmongodb/v1alpha1/outputs.proto\x121dev.planton.kubernetes.kubernetesmongodb.v1alpha1\x1a#catalog/kubernetes/kubernetes.proto\"\xd3\x02\n" +
+	";catalog/kubernetes/kubernetesmongodb/v1alpha1/outputs.proto\x121dev.planton.kubernetes.kubernetesmongodb.v1alpha1\x1a#catalog/kubernetes/kubernetes.proto\"\xf6\x02\n" +
 	"\x1dKubernetesMongodbStackOutputs\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12!\n" +
 	"\fcluster_name\x18\x02 \x01(\tR\vclusterName\x12\x18\n" +
@@ -157,7 +172,8 @@ const file_catalog_kubernetes_kubernetesmongodb_v1alpha1_outputs_proto_rawDesc =
 	"\vreplica_set\x18\x05 \x01(\tR\n" +
 	"replicaSet\x120\n" +
 	"\x14port_forward_command\x18\x06 \x01(\tR\x12portForwardCommand\x12_\n" +
-	"\x15admin_password_secret\x18\a \x01(\v2+.dev.planton.kubernetes.KubernetesSecretKeyR\x13adminPasswordSecretB\x94\x03\n" +
+	"\x15admin_password_secret\x18\a \x01(\v2+.dev.planton.kubernetes.KubernetesSecretKeyR\x13adminPasswordSecret\x12!\n" +
+	"\frestore_name\x18\b \x01(\tR\vrestoreNameB\x94\x03\n" +
 	"5com.dev.planton.kubernetes.kubernetesmongodb.v1alpha1B\fOutputsProtoP\x01Zdgithub.com/plantonhq/planton/catalog/kubernetes/kubernetesmongodb/v1alpha1;kubernetesmongodbv1alpha1\xa2\x02\x04DPKK\xaa\x021Dev.Planton.Kubernetes.Kubernetesmongodb.V1alpha1\xca\x021Dev\\Planton\\Kubernetes\\Kubernetesmongodb\\V1alpha1\xe2\x02=Dev\\Planton\\Kubernetes\\Kubernetesmongodb\\V1alpha1\\GPBMetadata\xea\x025Dev::Planton::Kubernetes::Kubernetesmongodb::V1alpha1b\x06proto3"
 
 var (

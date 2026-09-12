@@ -19,6 +19,9 @@ refuses to start and its log explains why.
 
 - Kubernetes 1.24+
 - Helm 3.x
+- cert-manager, only for backups of the platform's database: the backup plugin mints
+  its TLS through it. Without cert-manager the platform installs and runs; the
+  `Backup` column says `Unavailable` and why until cert-manager arrives.
 
 ## Installation
 
@@ -114,12 +117,47 @@ Never route a Gateway of your own to the platform's port-forward Service: pages
 load, but the platform still believes it lives at `http://localhost:8080` and
 sign-in sends the browser there. Declare the Gateway on the platform instead.
 
-One hostname serves the web console and the API the browser calls (the API lives
-under the `/rpc` path of that origin). The platform reports its URL in
-`status.consoleUrl` (the `URL` column of `kubectl get plantonplatform`), and the
+One hostname serves the web console, the API the browser calls (under the `/rpc`
+path of that origin), the keyless identity issuer's discovery documents (under
+`/.well-known`), and inbound webhooks (under `/webhooks`). That one hostname is also
+what the platform tells third parties about itself: a customer's own GitHub App is
+pointed at the door's pages and webhook receiver, never at a hosted address. The
+platform reports its URL in `status.consoleUrl` (the `URL` column of `kubectl get plantonplatform`) and
+whether the internet reaches it in `status.reachability` (the `Reachability`
+column; declared with `spec.ingress.reachability`, resolved from the door's shape
+when left at `auto`), and the
 ingress component's status explains any misconfiguration in plain language
 (missing class, missing TLS secret, cert-manager not installed, a Gateway that
 does not admit the hostname or the namespace).
+
+### Connecting your GitHub
+
+An install works with github.com out of the box: teams connect with their own GitHub
+App (the wizard prints the callback, setup, and webhook addresses to paste into GitHub),
+and whether GitHub can deliver webhooks is judged by whether the install's front door is
+on the public internet. Declare `spec.github` on the platform resource when your company
+runs a GitHub Enterprise Server, when you want one GitHub App for the whole install so
+every organization connects in one click, or when the internet rule is wrong for your
+network:
+
+```yaml
+spec:
+  github:
+    hosts:
+      - host: github.example.com          # offered first in every team's wizard
+        app:                              # one App, registered on THIS host, for the whole install
+          clientId: Iv1.8a61f9b3a7aba766
+          privateKeySecretRef: {name: planton-github-example, key: private-key.pem}
+          webhookSecretRef:    {name: planton-github-example, key: webhook-secret}
+        webhooks: reachable               # it shares the install's network; pushes trigger runs
+      - host: github.com                  # offered second; no install App, teams bring their own
+```
+
+The App's private key is the PEM file GitHub generated, stored in a Secret you own and
+mounted as a file; nothing is encoded by hand, and a rotated key is live on the next
+token mint. A Secret or key that does not exist is refused on the resource in words that
+name the host and the field, and that host is offered without the install App until it
+does. `kubectl get plantonplatform -o wide` shows the declaration in the `GITHUB` column.
 
 ## Configuration
 
@@ -133,6 +171,7 @@ does not admit the hostname or the namespace).
 | `replicaCount` | Number of operator replicas | `1` |
 | `leaderElection.enabled` | Enable leader election for HA | `true` |
 | `healthProbe.port` | Health check endpoint port | `8081` |
+| `janitor.sweepInterval` | How often the operator re-checks for cluster-scoped objects it installed that no platform needs any more (see Uninstallation) | `10m` |
 | `resources.requests.cpu` | CPU request | `10m` |
 | `resources.requests.memory` | Memory request | `256Mi` |
 | `resources.limits.cpu` | CPU limit | `500m` |
@@ -153,6 +192,17 @@ in any namespace. When a resource is created, the operator:
 2. Deploys supporting services (OpenFGA with authorization model, Temporal with schema)
 3. Deploys the application layer (control plane monolith, web console)
 
+The platform's own PostgreSQL can back itself up to an object store you own
+(`spec.database.postgresql.backup`: an S3, GCS, Azure Blob, or Cloudflare R2 bucket,
+keyless cloud identity preferred, a schedule, a retention policy). The operator
+installs CloudNativePG's backup engine -- the Barman Cloud plugin -- beside
+CloudNativePG whenever cert-manager is on the cluster, so every PostgreSQL deployed
+through Planton can back itself up too; a `Backup` column on `kubectl get
+plantonplatform` reads `Healthy`, `Deploying`, `Failing` (in the plugin's own words),
+`Unavailable`, or `NotConfigured`, and a platform declared with
+`spec.database.postgresql.recoverFrom` restores its database from another platform's
+archive. A failing backup never takes a working platform out of `Ready`.
+
 Each component is reconciled independently with explicit dependency tracking.
 The operator reports per-component status, an aggregate `Ready` condition whose
 message is the `MESSAGE` column, and a `VersionSupported` condition:
@@ -162,6 +212,28 @@ $ kubectl get plantonplatform
 NAME      PHASE   VERSION   URL                          LICENSE     MESSAGE                              AGE
 planton   Ready   v0.0.45   https://planton.example.com  Community   All enabled components are healthy   5m
 ```
+
+### When something is stuck
+
+A platform that is not Ready names the component, what is wrong, and what to do in
+that same `MESSAGE` column -- for example
+`console: image ghcr.io/plantonhq/console:v0.0.61 for container "console" of pod planton-console-7d9f-x1 cannot be pulled (ImagePullBackOff: manifest unknown) -- check that the tag exists ...`.
+The full detail is on the resource:
+
+```bash
+kubectl get plantonplatform planton -n planton -o yaml   # every component: phase, reason, object, message, lastTransitionTime
+kubectl describe plantonplatform planton -n planton      # one Warning Event per failure the platform entered, a Normal one when it recovered
+```
+
+Each component's `reason` is a stable word (`ImagePullFailed`, `CrashLooping`,
+`OutOfMemory`, `Unschedulable`, `VolumeUnprovisionable`, `ContainerConfigInvalid`,
+`ConfigurationRefused`, ...) and its `object` is the Pod, PersistentVolumeClaim, or Job to
+`kubectl describe` next. Reasons that describe a boot still in progress (`StartingUp`,
+`WaitingForSchema`, `VolumeProvisioning`, `WaitingForDependency`) are not failures and
+raise no Event; a fresh install's control plane takes about two minutes to answer its
+health check and Temporal's pods restart until its schema job finishes -- both read as
+the wait they are. When the message prints a `kubectl logs` command, that log is the
+component's own account.
 
 ## CRD Management
 
@@ -200,14 +272,42 @@ kubectl annotate crd plantonplatforms.planton.ai \
 
 ## Uninstallation
 
+The operator installs two kinds of things beyond the platforms it runs: for every
+platform, a cluster-wide grant its control plane needs (a ClusterRole and
+ClusterRoleBinding), and for the cluster, the shared database operator (CloudNativePG),
+its backup plugin (Barman Cloud, when cert-manager is present), and the build engine
+(Tekton Pipelines) the first platform needs and every later platform reuses. All are
+taken back by the operator itself, so a full uninstall leaves nothing behind:
+
+- Deleting a platform removes its own grant right away, and its own backup store and
+  schedule with it (the archive in your bucket is yours and stays).
+- Deleting the LAST platform on the cluster removes the backup plugin, CloudNativePG,
+  and Tekton -- their definitions, admission webhooks, cluster RBAC, and namespaces --
+  unless something else still uses them (a database of your own on that CloudNativePG,
+  an object store of your own on the plugin, a pipeline run). Then they stay, and
+  `kubectl describe crd clusters.postgresql.cnpg.io` (or
+  `objectstores.barmancloud.cnpg.io`, `pipelineruns.tekton.dev`) carries an Event
+  naming exactly what is using them and
+  the two ways out: delete those objects and the operator finishes on its next pass,
+  or keep the engine as your own. A CloudNativePG or Tekton this operator did not
+  install is never touched.
+
+Order matters only in one way: delete the platforms while the operator is still
+running, then remove the operator release. An operator uninstalled first cannot
+clean up after platforms deleted later.
+
 ```bash
-# Remove the operator. The definitions and every PlantonPlatform stay (crds.keep).
+# 1. Delete every platform (or `helm uninstall planton` for one installed by the
+#    planton chart), then wait for the operator's sweep:
+kubectl delete plantonplatform --all -A
+kubectl get crd -l app.kubernetes.io/managed-by=planton-operator   # empty when done
+
+# 2. Remove the operator. The definitions stay (crds.keep) so a later install of
+#    the same release adopts them; nothing else of the operator's remains.
 helm uninstall planton-operator -n planton
 
-# Reinstalling with the same release name and namespace adopts them again.
-
-# To remove the definitions too -- this destroys every PlantonPlatform on the
-# cluster and the platforms they describe -- delete them after the release:
+# 3. To remove the definitions too -- this destroys every PlantonPlatform still on
+#    the cluster and the platforms they describe -- delete them after the release:
 kubectl delete crd plantonplatforms.planton.ai plantonidentityproviders.planton.ai
 ```
 

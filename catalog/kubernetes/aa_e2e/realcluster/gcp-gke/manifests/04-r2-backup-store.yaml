@@ -1,0 +1,44 @@
+# The batch's Cloudflare R2 side — the backup store the databases' `r2` arms
+# archive to, created from the catalog exactly as the adopter would: one
+# private bucket in the default jurisdiction, and one account API token
+# scoped to that bucket with the least privilege an S3 client that writes
+# backups needs (`Workers R2 Storage Bucket Item Write`: read, write, and
+# list objects in THIS bucket — nothing at the account level). The token IS
+# the S3 credential: Cloudflare defines the access key id as the token's id
+# and the secret access key as the SHA-256 of its value, and the token kind
+# exports both (`r2_access_key_id`, `r2_secret_access_key`).
+#
+# The policy's resource string names the bucket by account, jurisdiction, and
+# name; there is no reference to carry here (the key of a map cannot be a
+# reference), so the bucket name is spelled twice in this file on purpose.
+#
+# Bucket names are unique within an account; this one is fixed so the lanes
+# know it without discovery, and the teardown EMPTIES it over the S3 API
+# before destroying (R2 refuses to delete a non-empty bucket, and the
+# Cloudflare provider offers no force-destroy).
+apiVersion: cloudflare.planton.dev/v1alpha1
+kind: CloudflareR2Bucket
+metadata:
+  name: planton-e2e-gke-backups-r2
+spec:
+  bucketName: planton-e2e-gke-backups
+  accountId: ${CLOUDFLARE_ACCOUNT_ID}
+  jurisdiction: default
+---
+apiVersion: cloudflare.planton.dev/v1alpha1
+kind: CloudflareAccountApiToken
+metadata:
+  name: planton-e2e-gke-backups-writer
+spec:
+  account_id: ${CLOUDFLARE_ACCOUNT_ID}
+  name: planton-e2e-gke-backups-writer
+  policies:
+    - effect: allow
+      # Workers R2 Storage Bucket Item Write — the bucket-scoped object
+      # read/write/list group (Cloudflare's permission-group registry:
+      # GET /accounts/{account_id}/tokens/permission_groups).
+      permission_group_ids:
+        - 2efd5506f9c8494dacb1fa10a3e7d5b6
+      resources:
+        "com.cloudflare.edge.r2.bucket.${CLOUDFLARE_ACCOUNT_ID}_default_planton-e2e-gke-backups":
+          permission: "*"

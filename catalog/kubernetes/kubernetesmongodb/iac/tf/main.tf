@@ -6,7 +6,9 @@
 #   2. declared-credential Secrets (user passwords, backup-storage keys)
 #      — secrets always travel via secret references, never inline in a
 #      custom resource,
-#   3. the psmdb.percona.com/v1 PerconaServerMongoDB CR itself.
+#   3. the psmdb.percona.com/v1 PerconaServerMongoDB CR itself,
+#   4. the PerconaServerMongoDBRestore run, when the spec declares a
+#      restore (see locals.tf for the run-once naming contract).
 #
 # The CR applies through kubectl_manifest (alekc/kubectl): unlike the
 # hashicorp provider's kubernetes_manifest resource it needs no cluster
@@ -19,7 +21,8 @@
 # operator (image pulls, replica-set initialization, mongos rollout) that
 # is not part of applying the resource — the same never-block-on-a-
 # controller posture as the KubernetesPostgres exemplar. Pulumi
-# equivalent: CustomResource without await annotations.
+# equivalent: CustomResource without await annotations. The one exception
+# is a manifest that declares a restore -- see the resource below.
 #
 # NAMING CONTRACT: every object the operator creates derives from
 # metadata.name — pods `<name>-<rs>-N`, per-set headless Services
@@ -101,14 +104,59 @@ resource "kubernetes_secret_v1" "backup_credentials_secret" {
 # Waits for every satellite: the operator reads the user-password and
 # backup-credential Secrets at reconcile time, so they must exist before
 # the CR does.
+#
+# No wait_for -- EXCEPT when the spec declares a restore (see the header
+# comment above): the Restore object is a one-shot the operator does not
+# retry, and its controller validates the backup as soon as its own agent
+# check passes -- which, on a FRESH cluster, is while the pbm-agents are still
+# crash-looping through the replica set's first authentication (their
+# heartbeats are written before the crash). The resync it sends reaches no
+# listening agent, the 30-second resync-start deadline expires, and the
+# Restore is parked in a terminal error ("get backup meta: not found") that
+# nothing revisits -- live-caught on a three-member target. status.state ==
+# ready is the signal after which every agent is listening and the cluster
+# controller has already synced the main storage, so a restore declared in
+# the same manifest as its target waits for it here and the Restore applies
+# after. Three members on an autoscaled cluster take minutes each, hence the
+# create timeout (inert without the wait).
 resource "kubectl_manifest" "mongodb" {
   yaml_body = yamlencode(local.mongodb_manifest)
 
   server_side_apply = true
+
+  dynamic "wait_for" {
+    for_each = local.restore == null ? [] : [1]
+    content {
+      field {
+        key   = "status.state"
+        value = "ready"
+      }
+    }
+  }
+
+  timeouts {
+    create = "30m"
+  }
 
   depends_on = [
     kubernetes_namespace_v1.namespace,
     kubernetes_secret_v1.user_password_secret,
     kubernetes_secret_v1.backup_credentials_secret,
   ]
+}
+
+# ---- the PerconaServerMongoDBRestore run -----------------------------------------
+# Rendered only when the spec declares a restore; names the cluster and is
+# applied after it reports ready (the cluster manifest's wait_for, above).
+# The operator replays the backup INTO the running cluster; the module lets
+# the operator own the run itself (no wait_for here) -- the run's outcome is
+# the Restore object's own status.
+resource "kubectl_manifest" "restore" {
+  count = local.restore == null ? 0 : 1
+
+  yaml_body = yamlencode(local.restore_manifest)
+
+  server_side_apply = true
+
+  depends_on = [kubectl_manifest.mongodb]
 }

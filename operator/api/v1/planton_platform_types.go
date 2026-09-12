@@ -44,6 +44,99 @@ const (
 	ComponentPhaseError     ComponentPhase = "Error"
 )
 
+// ComponentReason is the one-word, machine-readable cause behind a
+// component's phase. The message beside it says the same thing in a sentence
+// a person can act on; the reason is what tooling keys on and what the
+// troubleshooting reference is indexed by.
+//
+// Deliberately NOT an enum on the definition: the adopter upgrades the
+// operator before the platform, and an operator writing a reason the
+// installed definition's enum lacked would have its status write refused.
+// Open strings with documented constants, as the Kubernetes API conventions
+// recommend for condition reasons.
+type ComponentReason string
+
+const (
+	// ComponentReasonHealthy: the component is Ready.
+	ComponentReasonHealthy ComponentReason = "Healthy"
+
+	// ComponentReasonWaitingForDependency: a component this one depends on is
+	// not Ready yet; the message names it.
+	ComponentReasonWaitingForDependency ComponentReason = "WaitingForDependency"
+
+	// ComponentReasonDeploying: objects are applied and nothing has gone
+	// wrong yet -- the workload has not reported, or has no pods yet.
+	ComponentReasonDeploying ComponentReason = "Deploying"
+
+	// ComponentReasonStartingUp: the workload runs and is not yet answering
+	// its health check, with no restarts. Normal in the first minutes of a
+	// boot; the message says how long since start and when to worry.
+	ComponentReasonStartingUp ComponentReason = "StartingUp"
+
+	// ComponentReasonWaitingForSchema: a one-time schema or migration Job
+	// the workload depends on is still running; server pods restarting until
+	// it finishes is expected.
+	ComponentReasonWaitingForSchema ComponentReason = "WaitingForSchema"
+
+	// ComponentReasonVolumeProvisioning: a volume claim is Pending and
+	// nothing says it will not be provisioned -- the provisioner is still
+	// working.
+	ComponentReasonVolumeProvisioning ComponentReason = "VolumeProvisioning"
+
+	// ComponentReasonVolumeUnprovisionable: a volume claim cannot be
+	// provisioned on this cluster (no default StorageClass, a class whose
+	// driver is not installed, or the backend's own rejection); the message
+	// names the claim and the fix.
+	ComponentReasonVolumeUnprovisionable ComponentReason = "VolumeUnprovisionable"
+
+	// ComponentReasonImagePullFailed: a container image cannot be pulled;
+	// the message names the image and the registry's own words.
+	ComponentReasonImagePullFailed ComponentReason = "ImagePullFailed"
+
+	// ComponentReasonContainerConfigInvalid: a container cannot be created
+	// because something it references (a Secret or ConfigMap key) is missing;
+	// the message names it.
+	ComponentReasonContainerConfigInvalid ComponentReason = "ContainerConfigInvalid"
+
+	// ComponentReasonOutOfMemory: a container was killed for exceeding its
+	// memory limit; the message names the limit.
+	ComponentReasonOutOfMemory ComponentReason = "OutOfMemory"
+
+	// ComponentReasonCrashLooping: a container keeps exiting; the message
+	// carries the restart count, the last exit code, and the log command.
+	ComponentReasonCrashLooping ComponentReason = "CrashLooping"
+
+	// ComponentReasonVolumeMountFailed: a pod's volume cannot be attached or
+	// mounted; the message relays the kubelet's own words.
+	ComponentReasonVolumeMountFailed ComponentReason = "VolumeMountFailed"
+
+	// ComponentReasonUnschedulable: no node can take the pod; the message
+	// relays the scheduler's own words (insufficient memory, a taint).
+	ComponentReasonUnschedulable ComponentReason = "Unschedulable"
+
+	// ComponentReasonRolloutStalled: the Deployment controller gave up on
+	// the rollout (its progress deadline passed).
+	ComponentReasonRolloutStalled ComponentReason = "RolloutStalled"
+
+	// ComponentReasonCreateRefused: the API server refused to create the
+	// workload's pods (a quota, an admission policy); the message relays
+	// the refusal.
+	ComponentReasonCreateRefused ComponentReason = "CreateRefused"
+
+	// ComponentReasonJobFailed: a one-time Job the component owns failed;
+	// the message relays the Job's own condition.
+	ComponentReasonJobFailed ComponentReason = "JobFailed"
+
+	// ComponentReasonConfigurationRefused: the declared configuration cannot
+	// be honored as written (a missing referenced Secret, a front door that
+	// does not exist); the message names the spec field.
+	ComponentReasonConfigurationRefused ComponentReason = "ConfigurationRefused"
+
+	// ComponentReasonReconcileFailed: the operator itself could not apply or
+	// read something for this component; the message carries the error.
+	ComponentReasonReconcileFailed ComponentReason = "ReconcileFailed"
+)
+
 // Condition types for PlantonPlatform.
 const (
 	// ConditionReady is True when all enabled components are in Ready phase.
@@ -54,6 +147,15 @@ const (
 	// is created: the message says which release is the oldest this operator
 	// supports and how to move (the version, or an operator built for it).
 	ConditionVersionSupported = "VersionSupported"
+
+	// ConditionBackupHealthy is True when the platform database's WAL
+	// archiving is continuous and a base backup exists, False when a
+	// declared backup is failing or cannot be set up, Unknown while nothing
+	// is declared or the first backup is still on its way. Deliberately not
+	// an input to Ready: a platform whose backup fails is doing its job and
+	// its safety net is not, and the Backup column says so where a person
+	// reads first.
+	ConditionBackupHealthy = "BackupHealthy"
 )
 
 // License delivery modes reported in status.license -- how the key reaches
@@ -63,6 +165,15 @@ const (
 	LicenseModeCommunity = "Community"
 	LicenseModeInlineKey = "InlineKey"
 	LicenseModeSecretRef = "SecretRef"
+)
+
+// Email delivery modes reported in status.email -- which provider arm
+// spec.email declares, never whether the relay accepts mail (the control
+// plane checks that on demand and reports each verdict in words).
+const (
+	EmailModeNotConfigured = "NotConfigured"
+	EmailModeSMTP          = "SMTP"
+	EmailModeResend        = "Resend"
 )
 
 // OpenBAOInitMode controls how OpenBAO is initialized after deployment.
@@ -75,6 +186,31 @@ type OpenBAOInitMode string
 const (
 	OpenBAOInitModeAuto   OpenBAOInitMode = "auto"
 	OpenBAOInitModeManual OpenBAOInitMode = "manual"
+)
+
+// IngressReachability is the one fact about the front door the operator
+// cannot observe from inside the cluster: whether the public internet can
+// reach it. Everything the platform offers that needs an inbound path from
+// the internet -- keyless cloud connections (the cloud fetches the issuer's
+// discovery document), GitHub webhook delivery -- derives from this
+// declaration, so a wrong "public" fails at the cloud's first fetch and a
+// wrong "private" hides doors that would have worked.
+//
+// "auto" (default): resolved from the door's shape -- a hostname served over
+// HTTPS is treated as public, anything else (a plain-HTTP door, a
+// port-forward) as private. The shape of every real install; the right
+// answer for a hand-written manifest.
+// "public": the explicit affirmation the install journey writes after asking
+// the person, prefilled from the door's shape.
+// "private": the honest word for an HTTPS door only a network can reach --
+// split DNS, a corporate CA, an internal load balancer.
+// +kubebuilder:validation:Enum=auto;public;private
+type IngressReachability string
+
+const (
+	IngressReachabilityAuto    IngressReachability = "auto"
+	IngressReachabilityPublic  IngressReachability = "public"
+	IngressReachabilityPrivate IngressReachability = "private"
 )
 
 // ImageSpec allows overriding the container image for a component.
@@ -223,7 +359,7 @@ type RunnerSpec struct {
 // runner's pipeline-build worker, and seed this cluster as the platform's
 // build destination at control-plane boot. The field is named for the
 // CAPABILITY (builds), not the engine (Tekton) -- the same split as
-// components.authorization/OpenFGA.
+// components.graph/Neo4j.
 type BuildSpec struct {
 	// enabled controls whether the build capability is deployed. Default
 	// true: builds power Service Hub -- an install without them can deploy
@@ -236,9 +372,35 @@ type BuildSpec struct {
 	Enabled *bool `json:"enabled,omitempty"`
 }
 
+// RemoteRunnersSpec configures the remote-runners capability: runners in other
+// networks (developer laptops, appliances) pulling this install's deploy work.
+// The capability rides the front door: the operator routes the deploy queue's
+// service through the platform hostname, beside the native gRPC API, and
+// advertises that address to runners that enroll from outside. It needs a
+// Gateway API front door serving the hostname (the queue speaks native gRPC,
+// which only that door carries) -- on any other door the capability stays
+// closed and the ingress component's status says why. Named for the
+// CAPABILITY (remote runners), not the mechanism (a queue route).
+//
+// What is exposed: the deploy queue's WorkflowService, over TLS, without
+// authentication of its own -- the same posture the hosted platform carries
+// for its remote runners. Only the queue's workflow service is routed; its
+// administrative service never leaves the cluster.
+type RemoteRunnersSpec struct {
+	// enabled opens the deploy queue to runners outside this cluster and
+	// advertises the front door's address to them. Default false: an install
+	// that has not chosen this keeps its queue in-cluster, and a runner that
+	// asks to enroll from outside is refused with the reason -- never handed
+	// an address it cannot reach.
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
 // PlantonPlatformSpec defines the desired state of a self-hosted Planton deployment.
 // A minimal spec requires only the version field; all other fields have sensible defaults.
 // +kubebuilder:validation:XValidation:rule="!has(self.bootstrap) || !has(self.bootstrap.secretBackend) || self.bootstrap.secretBackend.type != 'platform' || !has(self.vault) || !has(self.vault.enabled) || self.vault.enabled",message="bootstrap.secretBackend type 'platform' stores secrets in the bundled vault, which spec.vault.enabled: false has opted out of; re-enable the vault or use type awsSecretsManager"
+// +kubebuilder:validation:XValidation:rule="!has(self.remoteRunners) || !has(self.remoteRunners.enabled) || !self.remoteRunners.enabled || (has(self.ingress) && self.ingress.enabled)",message="remoteRunners.enabled opens the deploy queue to runners outside the cluster through the front door, but with ingress disabled there is no front door a laptop could reach; set ingress.enabled: true with a gatewayRef, or leave remoteRunners off"
 type PlantonPlatformSpec struct {
 	// version is the Planton platform release to deploy, as vMAJOR.MINOR.PATCH
 	// (a pre-release suffix is allowed). The control plane, console, and runner
@@ -255,6 +417,24 @@ type PlantonPlatformSpec struct {
 	// reference (at most one). Without it, Planton runs in Community mode.
 	// +optional
 	License *LicenseSpec `json:"license,omitempty"`
+
+	// email declares the mail provider this install sends through -- an SMTP
+	// relay or a Resend account, the address it sends as, credentials by
+	// Secret reference. Its presence is what turns email on: invitations are
+	// emailed as well as linked, alerts reach people, and the sign-in page
+	// offers "Forgot password?". Without it the install sends nothing and
+	// says so wherever an email would have gone.
+	// +optional
+	Email *EmailSpec `json:"email,omitempty"`
+
+	// github declares the GitHub hosts this install works with, the GitHub
+	// App registered for the whole install on each (so every organization
+	// connects in one click), and whether each host can deliver webhooks to
+	// the install. Absent, the install offers github.com with "bring your own
+	// App" and judges webhooks by the front door -- the right posture for an
+	// adopter on github.com who has declared nothing.
+	// +optional
+	Github *GithubSpec `json:"github,omitempty"`
 
 	// storage sets platform-wide storage defaults for every persistent
 	// volume the operator creates: the StorageClass volumes are provisioned
@@ -316,6 +496,13 @@ type PlantonPlatformSpec struct {
 	// +optional
 	Build *BuildSpec `json:"build,omitempty"`
 
+	// remoteRunners lets runners OUTSIDE this cluster -- a developer's laptop
+	// deploying with the cloud sign-in already on it, an appliance in another
+	// network -- pull deploy work from this install. Off by default; every
+	// field is optional. The in-cluster runner is unaffected either way.
+	// +optional
+	RemoteRunners *RemoteRunnersSpec `json:"remoteRunners,omitempty"`
+
 	// vault configures the bundled secrets manager (OpenBAO, the open-source
 	// Vault fork). Deployed by default: it is integral the way the database
 	// is -- it backs the credential store for pasted connection secrets, the
@@ -327,8 +514,9 @@ type PlantonPlatformSpec struct {
 	// +optional
 	Vault *OpenBAOSpec `json:"vault,omitempty"`
 
-	// components toggles optional platform capabilities that are disabled by default
-	// to keep the minimal deployment footprint small.
+	// components toggles the optional platform capabilities that are disabled by
+	// default to keep the minimal deployment footprint small. The policy engine
+	// is not among them: every platform runs it, like its database.
 	// +optional
 	Components *ComponentsSpec `json:"components,omitempty"`
 
@@ -375,6 +563,22 @@ type PrerequisitesSpec struct {
 	// +kubebuilder:validation:Enum=auto;skip
 	// +optional
 	TektonPipelines string `json:"tektonPipelines,omitempty"`
+
+	// postgresBackupPlugin controls deployment of the Barman Cloud plugin,
+	// CloudNativePG's backup engine, which serves every PostgreSQL on the
+	// cluster -- the platform's own database and any database deployed
+	// through Planton.
+	// "auto" (default): the operator installs the plugin whenever it
+	// installed CloudNativePG itself and cert-manager is on the cluster (the
+	// plugin needs it for the TLS between operator and plugin), or whenever
+	// spec.database.postgresql.backup is declared. A cluster that cannot run
+	// the plugin pays nothing for it; a plugin installed by any other means
+	// is detected and respected.
+	// "skip": assume already installed (or unwanted), do not deploy.
+	// +kubebuilder:default="auto"
+	// +kubebuilder:validation:Enum=auto;skip
+	// +optional
+	PostgresBackupPlugin string `json:"postgresBackupPlugin,omitempty"`
 }
 
 // LicenseSpec delivers the deployment's Planton license key. Without one,
@@ -394,21 +598,163 @@ type LicenseSpec struct {
 	// re-delivers the key on the next control-plane restart -- a renewal is
 	// a Secret edit, never a reinstall.
 	// +optional
-	SecretKeyRef *LicenseSecretKeyRef `json:"secretKeyRef,omitempty"`
+	SecretKeyRef *SecretKeyRef `json:"secretKeyRef,omitempty"`
 }
 
-// LicenseSecretKeyRef names one entry of one Secret. A narrowed, CRD-local
-// mirror of corev1.SecretKeySelector: embedding the core type would admit
-// its optional flag, which has no meaning here (a declared license reference
-// must resolve).
-type LicenseSecretKeyRef struct {
-	// name of the Secret.
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
+// EmailSpec declares the one mail provider every sender on the install uses:
+// the control plane (invitations, alerts, license mail) and the identity
+// server (password resets) both send through it, so one declaration is the
+// whole configuration. Exactly one provider arm is set. The operator delivers
+// the declaration and preflights every Secret it names; it never probes the
+// relay itself (a relay probed every thirty seconds is somebody's intrusion
+// alert). The control plane checks the connection on demand and reports each
+// relay failure in the relay's own words.
+// +kubebuilder:validation:XValidation:rule="has(self.smtp) != has(self.resend)",message="email declares exactly one provider: set spec.email.smtp for a relay or spec.email.resend for a Resend account, never both, never neither"
+type EmailSpec struct {
+	// from is the identity every email carries: the address the install
+	// sends as and the display name beside it. The relay must permit sending
+	// as this address (a mailbox's own address, or one it has Send As rights
+	// to); SPF and DKIM for the domain are the domain owner's job.
+	From EmailFromSpec `json:"from"`
 
-	// key within the Secret whose value is the license key.
+	// replyTo is where a person's reply lands -- a help desk or a shared
+	// mailbox -- when the sending address is a no-reply one. Unset, replies
+	// go to from.address.
+	// +optional
+	ReplyTo string `json:"replyTo,omitempty"`
+
+	// smtp sends through any SMTP relay: a workplace mail system (Exchange
+	// Online, Google Workspace, an internal smart host) or a transactional
+	// vendor's SMTP endpoint (SES, SendGrid, Postmark, Mailgun, Resend).
+	// +optional
+	SMTP *EmailSMTPSpec `json:"smtp,omitempty"`
+
+	// resend sends through Resend's API with an API key.
+	// +optional
+	Resend *EmailResendSpec `json:"resend,omitempty"`
+}
+
+// EmailFromSpec is the sender identity on every email the install sends.
+type EmailFromSpec struct {
+	// address the install sends as, e.g. no-reply@planton.acme.com. Required
+	// whenever email is declared: there is no default address, because a
+	// default would name somebody else's domain.
 	// +kubebuilder:validation:MinLength=1
-	Key string `json:"key"`
+	Address string `json:"address"`
+
+	// name shown beside the address in mail clients.
+	// +kubebuilder:default="Planton"
+	// +optional
+	Name string `json:"name,omitempty"`
+}
+
+// EmailSMTPSecurity is how the connection to the relay is protected.
+// +kubebuilder:validation:Enum=starttls;tls;none
+type EmailSMTPSecurity string
+
+const (
+	// EmailSMTPSecurityStartTLS connects in the clear and REQUIRES the
+	// STARTTLS upgrade before anything else is sent; a relay that does not
+	// offer it is a failed connection, never a silent fallback. The
+	// submission default (port 587).
+	EmailSMTPSecurityStartTLS EmailSMTPSecurity = "starttls"
+	// EmailSMTPSecurityTLS opens a TLS connection from the first byte
+	// (implicit TLS, port 465 on most relays).
+	EmailSMTPSecurityTLS EmailSMTPSecurity = "tls"
+	// EmailSMTPSecurityNone is plaintext end to end and never upgrades. For
+	// an internal relay that admits this cluster's address without a
+	// credential; credentials are refused on it.
+	EmailSMTPSecurityNone EmailSMTPSecurity = "none"
+)
+
+// EmailSMTPSpec points the install at an SMTP relay. Three ways to be let in,
+// matching how mail teams actually run relays: a username and password
+// (kubernetes.io/basic-auth Secret), an OAuth2 app registration (Exchange
+// Online, whose password submission Microsoft is retiring), or no credential
+// at all (an internal smart host that allow-lists the cluster's egress).
+// +kubebuilder:validation:XValidation:rule="!(has(self.credentialsSecretName) && size(self.credentialsSecretName) > 0 && has(self.oauth2))",message="smtp authenticates one way: set credentialsSecretName for a username and password, or oauth2 for a token, not both"
+// +kubebuilder:validation:XValidation:rule="!has(self.security) || self.security != 'none' || (!(has(self.credentialsSecretName) && size(self.credentialsSecretName) > 0) && !has(self.oauth2))",message="security: none would send credentials in the clear; keep security at starttls or tls, or drop credentialsSecretName and oauth2 for a relay that admits this cluster's address without them"
+type EmailSMTPSpec struct {
+	// host of the relay, e.g. smtp.office365.com or smtp-relay.corp.acme.com.
+	// +kubebuilder:validation:MinLength=1
+	Host string `json:"host"`
+
+	// port the relay listens on. 587 is the submission port most relays use
+	// with STARTTLS; implicit-TLS relays (security: tls) usually listen on
+	// 465; an internal plaintext relay on 25.
+	// +kubebuilder:default=587
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// security protects the connection: starttls (required upgrade after
+	// connect, the default), tls (implicit TLS from the first byte), or none
+	// (plaintext, credential-free relays only).
+	// +kubebuilder:default="starttls"
+	// +optional
+	Security EmailSMTPSecurity `json:"security,omitempty"`
+
+	// credentialsSecretName names a kubernetes.io/basic-auth Secret in this
+	// namespace whose username and password keys sign in to the relay:
+	//
+	//   kubectl -n <namespace> create secret generic planton-email \
+	//     --type=kubernetes.io/basic-auth \
+	//     --from-literal=username=... --from-literal=password=...
+	//
+	// Omit it for a relay that admits this cluster by network address. The
+	// values are never inline and reach the control plane as mounted files,
+	// so a rotated password is live on the next send with no restart.
+	// +optional
+	CredentialsSecretName string `json:"credentialsSecretName,omitempty"`
+
+	// oauth2 signs in with a token from an OAuth2 client-credentials grant
+	// (SASL XOAUTH2) instead of a password. Exchange Online: tokenUrl
+	// https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token, scope
+	// https://outlook.office365.com/.default, the app registration's client
+	// id and secret, and user = the mailbox the app may send as.
+	// +optional
+	OAuth2 *EmailSMTPOAuth2Spec `json:"oauth2,omitempty"`
+
+	// caBundleSecretRef points at a PEM CA bundle for verifying the relay's
+	// TLS certificate -- the private-CA case, the classic enterprise blocker.
+	// Omit it when the relay's certificate chains to a public root.
+	// +optional
+	CABundleSecretRef *SecretKeyRef `json:"caBundleSecretRef,omitempty"`
+}
+
+// EmailSMTPOAuth2Spec is the client-credentials grant that yields the SMTP
+// token: the same four facts the identity server needs, so one declaration
+// powers both senders.
+type EmailSMTPOAuth2Spec struct {
+	// user is the mailbox the token sends as -- the account the app
+	// registration has been permitted to use.
+	// +kubebuilder:validation:MinLength=1
+	User string `json:"user"`
+
+	// tokenUrl is the provider's OAuth2 token endpoint.
+	// +kubebuilder:validation:Pattern=`^https://`
+	TokenURL string `json:"tokenUrl"`
+
+	// scope requested for the token.
+	// +kubebuilder:validation:MinLength=1
+	Scope string `json:"scope"`
+
+	// clientId of the app registration.
+	// +kubebuilder:validation:MinLength=1
+	ClientID string `json:"clientId"`
+
+	// clientSecretRef points at the app registration's client secret.
+	// Required by reference: the secret is never inline.
+	ClientSecretRef SecretKeyRef `json:"clientSecretRef"`
+}
+
+// EmailResendSpec sends through Resend's HTTP API.
+type EmailResendSpec struct {
+	// apiKeySecretRef points at the Resend API key. Required by reference:
+	// the key is never inline. Reaches the control plane as a mounted file,
+	// so a rotated key is live on the next send with no restart.
+	APIKeySecretRef SecretKeyRef `json:"apiKeySecretRef"`
 }
 
 // StorageSpec sets platform-wide storage defaults. Some backends make these
@@ -475,6 +821,19 @@ type PostgreSQLSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
+
+	// backup declares where the platform's own database is backed up and
+	// how (see PostgreSQLBackupSpec). Absent means no backup: the database
+	// lives on one volume in this cluster and nothing copies it anywhere.
+	// The Backup column of `kubectl get plantonplatform` says which.
+	// +optional
+	Backup *PostgreSQLBackupSpec `json:"backup,omitempty"`
+
+	// recoverFrom restores this platform's database from another platform's
+	// archive instead of creating it empty (see PostgreSQLRecoverFromSpec).
+	// Honored only when the database is first created.
+	// +optional
+	RecoverFrom *PostgreSQLRecoverFromSpec `json:"recoverFrom,omitempty"`
 }
 
 // RedisSpec configures storage for the redis-protocol cache (served by Valkey).
@@ -514,6 +873,7 @@ type RedisSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.tls) || (has(self.hostname) && self.hostname != \"\")",message="tls requires hostname: a certificate cannot be brought or issued for an auto-derived hostname"
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayRef) || !has(self.ingressClassName) || self.ingressClassName == \"\"",message="gatewayRef and ingressClassName name two different front doors; set one -- gatewayRef attaches to a Gateway API Gateway, ingressClassName renders an Ingress"
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayRef) || !has(self.tls) || !has(self.tls.secretName)",message="with gatewayRef the Gateway's HTTPS listener owns the certificate: attach to a listener that already serves the hostname, or set tls.issuer to have a certificate issued for the listener to reference"
+// +kubebuilder:validation:XValidation:rule="!has(self.reachability) || self.reachability != \"public\" || self.enabled",message="reachability: public declares an address the internet reaches, but with enabled: false the platform is reached only through kubectl port-forward from the machine running it; set enabled: true, or leave reachability at auto"
 type IngressSpec struct {
 	// enabled controls whether a front-door route is created.
 	// When false, use kubectl port-forward for access.
@@ -560,6 +920,23 @@ type IngressSpec struct {
 	// matches the hostname and HTTPS is inferred from that listener.
 	// +optional
 	TLS *IngressTLSSpec `json:"tls,omitempty"`
+
+	// reachability declares whether the public internet can reach this
+	// front door. The operator cannot observe that from inside the cluster,
+	// and the capabilities that need an inbound path from the internet --
+	// keyless cloud connections, GitHub webhook delivery -- are offered only
+	// where the door is public. "auto" (default) resolves from the door's
+	// shape: a hostname served over HTTPS is public, anything else private.
+	// Declare "private" for an HTTPS door only your network can reach
+	// (split DNS, a corporate CA); declare "public" to affirm it. Only
+	// "public" is refused on a disabled ingress -- a port-forward door is
+	// never reached from the internet -- while "private" there is simply
+	// true. A definition older than this field refuses the declaration
+	// outright (server-side apply never prunes an unknown field), and the
+	// refusal names the operator to upgrade.
+	// +kubebuilder:default="auto"
+	// +optional
+	Reachability IngressReachability `json:"reachability,omitempty"`
 }
 
 // GatewayParentRef names the Gateway API Gateway an HTTPRoute attaches to.
@@ -775,31 +1152,15 @@ type BootstrapEnvironmentSpec struct {
 
 // ComponentsSpec toggles optional platform capabilities.
 //
-// The minimal footprint runs only the essential core: the control plane serves
-// authorization from its built-in allow-owner arm, search from its built-in
-// Postgres projection, and the resource graph from the built-in Postgres
-// provider. Each entry here is an opt-in upgrade to a heavier dedicated
-// backend, off by default.
+// The minimal footprint runs the essential core -- the data services, the
+// policy engine, the identity server, the control plane, the console -- and
+// serves the resource graph from the built-in Postgres provider. Each entry
+// here is an opt-in upgrade to a heavier dedicated backend, off by default.
 type ComponentsSpec struct {
-	// authorization deploys OpenFGA and switches the control plane to
-	// policy-engine authorization (fine-grained RBAC). Disabled by default: the
-	// control plane runs the built-in allow-owner authorization arm, which needs
-	// no OpenFGA. Enable this for multi-tenant, per-resource access control.
-	// +optional
-	Authorization *ComponentToggle `json:"authorization,omitempty"`
-
 	// graph configures Neo4j for relationship graph queries.
 	// Disabled by default.
 	// +optional
 	Graph *Neo4jSpec `json:"graph,omitempty"`
-}
-
-// ComponentToggle is a simple on/off switch for optional components.
-type ComponentToggle struct {
-	// enabled controls whether this component is deployed.
-	// +kubebuilder:default=false
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
 }
 
 // OpenBAOSpec configures the bundled secrets manager (OpenBAO).
@@ -822,7 +1183,6 @@ type OpenBAOSpec struct {
 	//   to the user. The component reports Deploying until manually
 	//   initialized and unsealed.
 	// +kubebuilder:default="auto"
-	// +kubebuilder:validation:Enum=auto;manual
 	// +optional
 	InitMode OpenBAOInitMode `json:"initMode,omitempty"`
 
@@ -872,6 +1232,16 @@ type PlantonPlatformStatus struct {
 	// +optional
 	ConsoleURL string `json:"consoleUrl,omitempty"`
 
+	// reachability is what the operator concluded about whether the public
+	// internet reaches the front door: "public" or "private", never "auto".
+	// Published beside consoleUrl by the component that owns the door, so a
+	// person who left spec.ingress.reachability at its default reads the
+	// answer next to the address it is an answer about. Every internet-facing
+	// posture the control plane advertises (the keyless identity issuer,
+	// GitHub webhook delivery) derives from this one word.
+	// +optional
+	Reachability IngressReachability `json:"reachability,omitempty"`
+
 	// license echoes how the license key is delivered to the control plane
 	// (Community, InlineKey, or SecretRef) -- configuration echo like
 	// version, feeding the kubectl column. Whether the key VERIFIES and
@@ -879,6 +1249,37 @@ type PlantonPlatformStatus struct {
 	// entitlements advertisement, never guessed here.
 	// +optional
 	License string `json:"license,omitempty"`
+
+	// email echoes which provider arm spec.email declares (NotConfigured,
+	// SMTP, or Resend) -- configuration echo like license, feeding the
+	// kubectl column. Whether the relay ACCEPTS mail is the control plane's
+	// own answer, checked on demand from its settings page, never guessed
+	// here: the operator has no channel to the relay and must not probe it.
+	// +optional
+	Email string `json:"email,omitempty"`
+
+	// github echoes the declared GitHub hosts and which carry an install App,
+	// e.g. "github.example.com (App), github.com" -- configuration echo like
+	// email, feeding the kubectl column. NotConfigured when spec.github is
+	// absent. Whether GitHub accepts the App's credentials is the control
+	// plane's answer at connection time, never guessed here.
+	// +optional
+	Github string `json:"github,omitempty"`
+
+	// requiredOperatorVersion is the oldest operator release the declared
+	// platform release says it needs, as its published image declares it;
+	// empty when the release declares nothing or the registry could not be
+	// read. When it names a release newer than the running operator, the
+	// VersionSupported condition says so and nothing is rendered.
+	// +optional
+	RequiredOperatorVersion string `json:"requiredOperatorVersion,omitempty"`
+
+	// backup is what the operator knows about the platform database's
+	// backup (see BackupStatus): the one-word state the Backup column prints,
+	// the server name a recovery copies, the recoverability point, and the
+	// last base backup. Read from the database operator's own conditions.
+	// +optional
+	Backup *BackupStatus `json:"backup,omitempty"`
 
 	// components reports the status of each individual component.
 	// +optional
@@ -923,14 +1324,53 @@ type ComponentStatuses struct {
 	Tekton *ComponentStatus `json:"tekton,omitempty"`
 }
 
-// ComponentStatus describes the observed state of an individual component.
+// ComponentStatus describes the observed state of an individual component:
+// its phase, the one-word reason behind it, the object the reason is about,
+// and the sentence a person acts on. A component that is stuck never says
+// only "waiting" -- the reason and message name what is wrong and what to do.
 type ComponentStatus struct {
 	// phase is the lifecycle phase of this component.
 	Phase ComponentPhase `json:"phase"`
 
-	// message provides human-readable detail about the component's current state.
+	// reason is the one-word, machine-readable cause behind the phase (for
+	// example ImagePullFailed, CrashLooping, VolumeUnprovisionable, Healthy).
+	// Each reason has a row in the troubleshooting reference.
+	// +optional
+	Reason ComponentReason `json:"reason,omitempty"`
+
+	// object names the Kubernetes object the reason is about -- the Pod whose
+	// image cannot be pulled, the PersistentVolumeClaim that will not
+	// provision -- so `kubectl describe` on it is the next step. Absent when
+	// the reason is about the component as a whole.
+	// +optional
+	Object *ComponentObjectReference `json:"object,omitempty"`
+
+	// message provides human-readable detail about the component's current
+	// state: what was observed, what it most likely means, and the exact
+	// next step.
 	// +optional
 	Message string `json:"message,omitempty"`
+
+	// lastTransitionTime is when the phase, reason, or object last changed.
+	// It does not move while the same condition persists.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+// ComponentObjectReference names one Kubernetes object in the platform's own
+// namespace (or a sub-operator's) by kind and name. A deliberately small
+// shape: the kind and name are what a person types after `kubectl describe`.
+type ComponentObjectReference struct {
+	// kind is the object's kind (Pod, PersistentVolumeClaim, Deployment, Job).
+	Kind string `json:"kind"`
+
+	// name is the object's name.
+	Name string `json:"name"`
+
+	// namespace is set only when the object lives outside the platform's own
+	// namespace (a sub-operator's controller, for example).
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -938,7 +1378,11 @@ type ComponentStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,description="Deployment lifecycle phase"
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`,description="Deployed platform version"
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.consoleUrl`,description="Web console URL once ingress is admitted"
+// +kubebuilder:printcolumn:name="Reachability",type=string,JSONPath=`.status.reachability`,description="Whether the public internet reaches the front door, as the operator concluded"
 // +kubebuilder:printcolumn:name="License",type=string,JSONPath=`.status.license`,description="License delivery mode (Community when none configured)"
+// +kubebuilder:printcolumn:name="Email",type=string,JSONPath=`.status.email`,description="Email provider as declared (NotConfigured when spec.email is absent)"
+// +kubebuilder:printcolumn:name="GitHub",type=string,JSONPath=`.status.github`,description="GitHub hosts as declared, with (App) where an install App is registered (NotConfigured when spec.github is absent)",priority=1
+// +kubebuilder:printcolumn:name="Backup",type=string,JSONPath=`.status.backup.state`,description="Whether the platform's database is being saved: Healthy, Deploying, Failing, Unavailable, or NotConfigured"
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`,description="Why the platform is in its phase, in plain language"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 

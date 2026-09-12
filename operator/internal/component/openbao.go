@@ -93,11 +93,10 @@ func (o *OpenBAO) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sch
 		return Result{}, fmt.Errorf("checking OpenBAO pod status: %w", err)
 	}
 	if !podRunning {
-		if msg, ok := o.ExplainPendingStorage(ctx, c, planton.Namespace, releaseName); ok {
-			return Result{Ready: false, Message: msg}, nil
-		}
 		log.Info("OpenBAO pod not yet running")
-		return Result{Ready: false, Message: "Waiting for OpenBAO pod"}, nil
+		// The chart's fullnameOverride makes the StatefulSet's name the
+		// release name.
+		return o.NotReady(ctx, c, planton.Namespace, StatefulSetRef(releaseName), "Waiting for OpenBAO pod"), nil
 	}
 
 	if initMode == v1.OpenBAOInitModeManual {

@@ -162,9 +162,10 @@ jobs:
           mkdir -p /tmp/helm-pkg
 
           helm dependency build "${dir}"
-          # enrollment.existingSecret placeholder satisfies the runner chart's
-          # required-token guard during lint; the other charts ignore it.
-          helm lint "${dir}" --set enrollment.existingSecret=lint-placeholder
+          # enrollment.existingSecret satisfies the runner chart's required-token
+          # guard and platform.spec.version the planton chart's required-release
+          # guard during lint; every other chart ignores both.
+          helm lint "${dir}" --set enrollment.existingSecret=lint-placeholder --set platform.spec.version=v0.0.0-lint
 
           # The tag is the version. --version replaces Chart.yaml's development
           # placeholder; --app-version is set only when the caller owns that line

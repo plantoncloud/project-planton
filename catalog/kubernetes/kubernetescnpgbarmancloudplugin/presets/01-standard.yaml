@@ -1,0 +1,29 @@
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: cnpg-barman-plugin
+spec:
+  # The operator's namespace, BY REFERENCE: CloudNativePG only discovers
+  # plugins in its own namespace, so the plugin lands where the operator
+  # resource says it lives -- and the reference orders it after the
+  # operator. Replace "cnpg" with your KubernetesCloudNativePgOperator
+  # resource's name.
+  namespace:
+    valueFrom:
+      name: cnpg
+  # The namespace is the operator's and already exists; the plugin joins it.
+  create_namespace: false
+  chart_version: "0.7.0" # spec default (ships plugin v0.13.0) -- pin deliberately
+  # Chart default -- one plugin replica; extras are leader-elected warm
+  # standbys that shorten failover of the PLUGIN itself, not throughput.
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # WAL archiving falls behind on every database while the plugin is
+  # evicted -- keep it at the operator's priority.
+  priority_class_name: system-cluster-critical

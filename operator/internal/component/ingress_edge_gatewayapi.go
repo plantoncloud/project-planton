@@ -67,15 +67,15 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 		return Result{}, fmt.Errorf("checking for the Gateway API: %w", err)
 	}
 	if !installed {
-		return Result{Ready: false, Message: "the Gateway API is not installed in this cluster (Gateway CRD missing); " +
+		return Refused("the Gateway API is not installed in this cluster (Gateway CRD missing); " +
 			"install the Gateway API CRDs and a Gateway controller (Istio, Envoy Gateway, Cilium, ...), " +
-			"or expose the platform through an Ingress controller with spec.ingress.ingressClassName"}, nil
+			"or expose the platform through an Ingress controller with spec.ingress.ingressClassName"), nil
 	}
 
 	if msg, err := i.preflightTLS(ctx, c, planton); err != nil {
 		return Result{}, err
 	} else if msg != "" {
-		return Result{Ready: false, Message: msg}, nil
+		return Refused(msg), nil
 	}
 
 	gatewayNamespace := ref.Namespace
@@ -90,9 +90,9 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 			if listErr != nil {
 				return Result{}, listErr
 			}
-			return Result{Ready: false, Message: fmt.Sprintf(
+			return Refused(fmt.Sprintf(
 				"Gateway %s/%s not found; available Gateways: %s. Set spec.ingress.gatewayRef to one of them (name and namespace)",
-				gatewayNamespace, ref.Name, available)}, nil
+				gatewayNamespace, ref.Name, available)), nil
 		}
 		return Result{}, fmt.Errorf("reading Gateway %s/%s: %w", gatewayNamespace, ref.Name, err)
 	}
@@ -126,7 +126,7 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 		return Result{}, err
 	}
 	if msg != "" {
-		return Result{Ready: false, Message: msg}, nil
+		return Refused(msg), nil
 	}
 
 	// The certificate arm: ask cert-manager for the hostname's certificate
@@ -156,6 +156,7 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 		GatewayName:      ref.Name,
 		GatewayNamespace: gatewayNamespace,
 		SectionName:      ref.SectionName,
+		RemoteRunners:    remoteRunnersCarried(planton),
 	})
 	if err := i.ApplyManifests(ctx, c, planton, []*unstructured.Unstructured{route}); err != nil {
 		return Result{}, err
@@ -164,7 +165,7 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 	// The URL is published as soon as the listener facts are known -- the
 	// rest of the platform converges while the route is being accepted.
 	url := resources.PublicURL(hostname, facts.https())
-	planton.Status.ConsoleURL = url
+	publishFrontDoor(planton, url)
 
 	if spec.TLS != nil && spec.TLS.Issuer != nil {
 		if msg, err := i.certificateServedByListener(ctx, c, planton, hostname, facts); err != nil {
@@ -185,6 +186,9 @@ func (i *Ingress) reconcileGatewayEdge(ctx context.Context, c client.Client, pla
 	msg = fmt.Sprintf("Console at %s via Gateway %s/%s", url, gatewayNamespace, ref.Name)
 	if !facts.https() {
 		msg += " (unencrypted HTTP; attach to an HTTPS listener for HTTPS)"
+	}
+	if remoteRunnersCarried(planton) {
+		msg += fmt.Sprintf("; remote runners pull deploy work at %s", resources.GRPCEndpoint(url))
 	}
 	log.Info("Gateway route ready", "url", url)
 	return Result{Ready: true, Message: msg}, nil

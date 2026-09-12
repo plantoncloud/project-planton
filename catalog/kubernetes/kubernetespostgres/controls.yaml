@@ -70,7 +70,7 @@ spec:
       field_path: backup
       evidence:
         type: spec_default
-        reference: Unset means no backups exist; configuring backup.object_store with schedules ships continuous WAL archives and scheduled base backups to S3, GCS, or Azure Blob object storage, restorable through the recovery bootstrap.
+        reference: Unset means no backups exist; configuring backup.object_store with schedules ships continuous WAL archives and scheduled base backups to S3, Cloudflare R2, GCS, or Azure Blob object storage, restorable through the recovery bootstrap.
       notes: The 02-production-ha and 03-s3-compatible-backups presets back up daily with WAL archiving; 01-dev-single-instance deliberately has none.
     - control_id: backup-retention-policy
       status: configurable

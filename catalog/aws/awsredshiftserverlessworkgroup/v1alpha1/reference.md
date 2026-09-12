@@ -179,6 +179,12 @@ base capacity. Empty lets AWS use the account's default VPC (only
 meaningful in accounts that still have one). Reference AwsSubnet
 subnet_id outputs or pass literal subnet IDs.
 
+Containment-exempt: on a diagram the workgroup lives inside the
+namespace it serves (the box AWS's own model draws around its
+workgroups); the subnets are where its network interfaces land, and
+the workgroup reaches into that VPC by lines -- the same verdict an
+ECS service carries for its subnets while its cluster places it.
+
 - references: AwsSubnet (`status.outputs.subnet_id`)
 - rule: write as {value: <literal>} or {valueFrom: {kind: AwsSubnet, name: <that resource's name>, fieldPath: status.outputs.subnet_id}} -- a bare string does not parse
 
@@ -319,6 +325,9 @@ CONSUMING VPC's subnets. Empty reuses the workgroup's own
 subnet_ids (which must then be set -- CEL-enforced). Reference
 AwsSubnet subnet_id outputs or pass literal subnet IDs. Changing
 the list replaces the endpoint.
+
+Containment-exempt: these are the consuming VPC's subnets, an access
+path INTO the workgroup; the workgroup is not deployed into them.
 
 - references: AwsSubnet (`status.outputs.subnet_id`)
 - rule: write as {value: <literal>} or {valueFrom: {kind: AwsSubnet, name: <that resource's name>, fieldPath: status.outputs.subnet_id}} -- a bare string does not parse

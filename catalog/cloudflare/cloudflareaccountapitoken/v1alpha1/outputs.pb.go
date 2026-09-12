@@ -34,9 +34,25 @@ type CloudflareAccountApiTokenStackOutputs struct {
 	// token has no value at all. Sensitive both here (machine-readable) and
 	// in the modules' output registration. If the value is lost, rotate:
 	// roll the token (or delete and recreate) to mint a new one.
-	Value         string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// The token as an S3 access key id for Cloudflare R2's S3 API: Cloudflare
+	// defines it as the token's id (the same value as token_id, exported under
+	// the name an S3 client configures). Meaningful only when the token
+	// carries an R2 permission group (Workers R2 Storage Write/Read at the
+	// account, or Workers R2 Storage Bucket Item Write/Read scoped to
+	// buckets); a token without one authorizes nothing on the S3 API. Pair with
+	// r2_secret_access_key, the endpoint of the bucket's jurisdiction, and
+	// region "auto".
+	R2AccessKeyId string `protobuf:"bytes,3,opt,name=r2_access_key_id,json=r2AccessKeyId,proto3" json:"r2_access_key_id,omitempty"`
+	// The token as an S3 secret access key for Cloudflare R2's S3 API:
+	// Cloudflare defines it as the lowercase hex SHA-256 of the token's value
+	// -- exactly the "Secret Access Key" the dashboard shows when the same
+	// token is created there. Derived from `value`, so it shares its lifecycle:
+	// available from the create that minted the token, absent on an imported
+	// token, and rotated by rotating the token. Sensitive.
+	R2SecretAccessKey string `protobuf:"bytes,4,opt,name=r2_secret_access_key,json=r2SecretAccessKey,proto3" json:"r2_secret_access_key,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CloudflareAccountApiTokenStackOutputs) Reset() {
@@ -83,14 +99,30 @@ func (x *CloudflareAccountApiTokenStackOutputs) GetValue() string {
 	return ""
 }
 
+func (x *CloudflareAccountApiTokenStackOutputs) GetR2AccessKeyId() string {
+	if x != nil {
+		return x.R2AccessKeyId
+	}
+	return ""
+}
+
+func (x *CloudflareAccountApiTokenStackOutputs) GetR2SecretAccessKey() string {
+	if x != nil {
+		return x.R2SecretAccessKey
+	}
+	return ""
+}
+
 var File_catalog_cloudflare_cloudflareaccountapitoken_v1alpha1_outputs_proto protoreflect.FileDescriptor
 
 const file_catalog_cloudflare_cloudflareaccountapitoken_v1alpha1_outputs_proto_rawDesc = "" +
 	"\n" +
-	"Ccatalog/cloudflare/cloudflareaccountapitoken/v1alpha1/outputs.proto\x129dev.planton.cloudflare.cloudflareaccountapitoken.v1alpha1\x1a\x1cshared/options/options.proto\"^\n" +
+	"Ccatalog/cloudflare/cloudflareaccountapitoken/v1alpha1/outputs.proto\x129dev.planton.cloudflare.cloudflareaccountapitoken.v1alpha1\x1a\x1cshared/options/options.proto\"\xbe\x01\n" +
 	"%CloudflareAccountApiTokenStackOutputs\x12\x19\n" +
 	"\btoken_id\x18\x01 \x01(\tR\atokenId\x12\x1a\n" +
-	"\x05value\x18\x02 \x01(\tB\x04\xa0\xa6\x1d\x01R\x05valueB\xcc\x03\n" +
+	"\x05value\x18\x02 \x01(\tB\x04\xa0\xa6\x1d\x01R\x05value\x12'\n" +
+	"\x10r2_access_key_id\x18\x03 \x01(\tR\rr2AccessKeyId\x125\n" +
+	"\x14r2_secret_access_key\x18\x04 \x01(\tB\x04\xa0\xa6\x1d\x01R\x11r2SecretAccessKeyB\xcc\x03\n" +
 	"=com.dev.planton.cloudflare.cloudflareaccountapitoken.v1alpha1B\fOutputsProtoP\x01Ztgithub.com/plantonhq/planton/catalog/cloudflare/cloudflareaccountapitoken/v1alpha1;cloudflareaccountapitokenv1alpha1\xa2\x02\x04DPCC\xaa\x029Dev.Planton.Cloudflare.Cloudflareaccountapitoken.V1alpha1\xca\x029Dev\\Planton\\Cloudflare\\Cloudflareaccountapitoken\\V1alpha1\xe2\x02EDev\\Planton\\Cloudflare\\Cloudflareaccountapitoken\\V1alpha1\\GPBMetadata\xea\x02=Dev::Planton::Cloudflare::Cloudflareaccountapitoken::V1alpha1b\x06proto3"
 
 var (

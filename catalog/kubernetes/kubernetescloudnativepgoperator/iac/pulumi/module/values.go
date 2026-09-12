@@ -7,8 +7,8 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// buildHelmValues renders the typed spec into the OPERATOR chart's values
-// map, then merges the spec's helm_values escape hatch over it with Helm
+// buildHelmValues renders the typed spec into the chart's values map, then
+// merges the spec's helm_values escape hatch over it with Helm
 // `-f` semantics (maps deep-merge with the later document winning, lists
 // replace).
 //
@@ -144,8 +144,6 @@ func buildHelmValues(locals *Locals) (map[string]interface{}, error) {
 	}
 
 	// ---- escape hatch (merged LAST, helm -f semantics) --------------------------
-	// Scoped to the OPERATOR chart only — the plugin release renders from
-	// its own typed fields and chart defaults (see buildPluginHelmValues).
 	if spec.GetHelmValues() != "" {
 		overrides := map[string]interface{}{}
 		if err := yaml.Unmarshal([]byte(spec.GetHelmValues()), &overrides); err != nil {
@@ -155,18 +153,4 @@ func buildHelmValues(locals *Locals) (map[string]interface{}, error) {
 	}
 
 	return values, nil
-}
-
-// buildPluginHelmValues renders the typed spec into the PLUGIN chart's
-// values map. The plugin's typed surface is deliberately minimal —
-// container resources only; everything else rides the chart defaults. The
-// helm_values escape hatch does NOT flow here: it scopes to the operator
-// chart (the two charts share value keys like `resources` and `image`, so
-// forwarding one document to both would misconfigure the plugin).
-func buildPluginHelmValues(locals *Locals) map[string]interface{} {
-	values := map[string]interface{}{}
-	if r := resourcesMap(locals.Spec.GetBarmanCloudPlugin().GetResources()); r != nil {
-		values["resources"] = r
-	}
-	return values
 }

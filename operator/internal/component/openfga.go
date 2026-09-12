@@ -36,12 +36,10 @@ type OpenFGA struct{ Base }
 func (o *OpenFGA) Name() string                                { return "openfga" }
 func (o *OpenFGA) Dependencies(_ *v1.PlantonPlatform) []string { return []string{"postgresql"} }
 
-// IsEnabled reports whether policy-engine authorization is turned on. The
-// minimal footprint runs the control plane's built-in allow-owner arm, so
-// OpenFGA is opt-in via spec.components.authorization.
-func (o *OpenFGA) IsEnabled(planton *v1.PlantonPlatform) bool {
-	return isAuthorizationEnabled(planton)
-}
+// IsEnabled is always true: the policy engine is part of every platform, like
+// its database. Every request the control plane authorizes is answered by it,
+// so there is no platform shape that runs without it.
+func (o *OpenFGA) IsEnabled(_ *v1.PlantonPlatform) bool { return true }
 
 func (o *OpenFGA) Reconcile(ctx context.Context, c client.Client, _ *runtime.Scheme, planton *v1.PlantonPlatform) (Result, error) {
 	log := logf.FromContext(ctx).WithValues("component", o.Name())
@@ -70,7 +68,7 @@ func (o *OpenFGA) Reconcile(ctx context.Context, c client.Client, _ *runtime.Sch
 	}
 	if !ready {
 		log.Info("OpenFGA not ready")
-		return Result{Ready: false, Message: "Waiting for OpenFGA server"}, nil
+		return o.NotReady(ctx, c, planton.Namespace, DeploymentRef(deployName), "Waiting for OpenFGA server"), nil
 	}
 
 	bootstrapped, err := o.ensureFGABootstrap(ctx, c, planton)

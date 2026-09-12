@@ -184,6 +184,15 @@ The deployment stage injects the built image into every manifest that receives o
 
 The three ways a workload can pull, and when to use each, are in [Pulling Private Images](/docs/connections/container-registries#pulling-private-images).
 
+## How the URL Is Found
+
+Once an environment's resources have applied, the deployment record lists every address the environment answers at, and the service page's environment card links the first one. An address comes from two places, and only two:
+
+- **What a resource reported back after it applied.** Each kind's module exports what it knows: a Cloud Run service its `run.app` URL, a load balancer its DNS name, an Ingress or an HTTPRoute the first hostname it routes. Discovery reads those outputs — never the manifest you wrote — because for most kinds the address does not exist until the cloud creates it.
+- **What the environment declares.** When the environment carries a serving domain and the service a `deploy.hostname`, the platform composes the hostname, fills it into the carrier beside your workload (an empty Ingress or HTTPRoute host, a Cloud Run domain mapping, an ALB listener rule), and lists that address.
+
+A workload alone — a Deployment, an ECS service, a Cloud Function without a URL — is never an address. When neither source yields one, the card and the run say so in one sentence and name the kinds that would give the environment an address, so the fix is one of two moves: declare a serving domain on the environment, or add a resource that carries an address beside the workload. Rollout verification probes the addresses it finds and records whether each answered; an environment with nothing to probe is `unverifiable` with that reason, never a false green.
+
 <!-- SCREENSHOT: Pipeline deployment stage
   Page: /{org}/service/{slug}/pipelines/runs/{id}
   Action: Show a pipeline run with the deployment stage in progress or completed

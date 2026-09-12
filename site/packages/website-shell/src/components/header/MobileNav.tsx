@@ -12,6 +12,7 @@ import {
   Psychology as AgentFleetIcon,
   Terminal as CliIcon,
   Code as OpenSourceIcon,
+  Laptop as DesktopAppIcon,
   Assignment as CatalogIcon,
   MenuBook as DocsIcon,
   School as TutorialsIcon,
@@ -25,6 +26,7 @@ import { ShellDrawer } from './styled';
 import { MenuAccordion } from './MenuAccordion';
 import { MegaMenuItem } from './MegaMenuItem';
 import { MobileAuthButtons } from './AuthButtons';
+import { MobileDownloadLink } from './DownloadLink';
 import { DiscordButton } from '../shared/DiscordButton';
 import {
   menuProduct,
@@ -38,13 +40,16 @@ import {
 const iconSx = { fontSize: { xs: 16, md: 24 } } as const;
 
 const productIcons: Record<string, React.ReactNode> = {
-  InfraHub: <InfraHubIcon sx={iconSx} />,
-  ServiceHub: <ServiceHubIcon sx={iconSx} />,
+  // Keyed by the menu label exactly as navigation.ts spells it; a key that
+  // drifts from the label renders the item without its icon.
+  'Infra Hub': <InfraHubIcon sx={iconSx} />,
+  'Service Hub': <ServiceHubIcon sx={iconSx} />,
   'Cloud Catalog': <CatalogIcon sx={iconSx} />,
   Runner: <RunnerIcon sx={iconSx} />,
   Security: <SecurityIcon sx={iconSx} />,
   'Agent Fleet': <AgentFleetIcon sx={iconSx} />,
   CLI: <CliIcon sx={iconSx} />,
+  'Planton Desktop': <DesktopAppIcon sx={iconSx} />,
   'Open Source': <OpenSourceIcon sx={iconSx} />,
 };
 
@@ -171,6 +176,7 @@ export function MobileNav() {
             {/* Discord + Auth */}
             <Stack sx={{ gap: 1.5 }}>
               <DiscordButton sx={{ color: 'text.secondary', width: '100%', justifyContent: 'center' }} />
+              <MobileDownloadLink />
               <MobileAuthButtons />
             </Stack>
           </Stack>

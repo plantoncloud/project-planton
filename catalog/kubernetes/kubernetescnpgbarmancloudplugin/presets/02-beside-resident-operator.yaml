@@ -1,0 +1,25 @@
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: cnpg-barman-plugin
+spec:
+  # A CloudNativePG ALREADY runs on this cluster, installed by another hand
+  # (a self-hosted platform operator, Helm, GitOps) and without a backup
+  # plugin. There is no operator RESOURCE to reference, so the operator's
+  # namespace is a literal -- find it with:
+  #   kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg
+  # "cnpg-system" is the upstream convention.
+  namespace:
+    value: cnpg-system
+  # The namespace belongs to the resident operator; the plugin joins it.
+  create_namespace: false
+  chart_version: "0.7.0" # spec default (ships plugin v0.13.0); needs CloudNativePG 1.26+
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  priority_class_name: system-cluster-critical

@@ -1,0 +1,30 @@
+# The baseline install beside the catalog's operator: cert-manager and the
+# CloudNativePG operator arrive through the kind's registry prerequisites
+# (the operator from its own install profile, "e2e-cnpg-fixture", owning
+# cnpg-system), and the plugin lands in the operator's namespace BY
+# REFERENCE -- the composition shape a chart writes, proven live: the
+# reference resolves to the operator's namespace output and the plugin's
+# Service becomes discoverable to it. create_namespace stays false (the
+# operator fixture owns the namespace; the plugin joins it).
+#
+# The verifier asserts the plugin Deployment Available, the plugin Service
+# present with its discovery label, and the ObjectStore CRD Established; on
+# destroy, that the plugin Deployment is gone and the CRD remains (the
+# chart's keep posture -- a designed keep, asserted, never a leak).
+apiVersion: kubernetes.planton.dev/v1alpha1
+kind: KubernetesCnpgBarmanCloudPlugin
+metadata:
+  name: e2e-barman-plugin
+spec:
+  namespace:
+    valueFrom:
+      kind: KubernetesCloudNativePgOperator
+      name: e2e-cnpg-fixture
+      fieldPath: status.outputs.namespace
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

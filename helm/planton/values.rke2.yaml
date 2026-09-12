@@ -2,6 +2,7 @@
 #
 #   helm install planton oci://ghcr.io/plantonhq/charts/planton \
 #     --namespace planton --create-namespace \
+#     --set platform.spec.version=<release> \
 #     --values https://raw.githubusercontent.com/plantonhq/planton/main/helm/planton/values.rke2.yaml
 #
 # Active below: only what is true of every stock RKE2 cluster. RKE2 ships
@@ -12,6 +13,7 @@
 
 platform:
   spec:
+    # version: <release>   # REQUIRED -- the platform release to install (set it on the command line above)
     # -- Storage (see the README's "Storage" section). RKE2 ships no storage
     # provisioner and enterprise backends often mark no class as default --
     # name yours explicitly. If your backend enforces a minimum volume size

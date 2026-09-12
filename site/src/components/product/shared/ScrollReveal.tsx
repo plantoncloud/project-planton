@@ -1,7 +1,7 @@
 'use client';
 
 import { FC, ReactNode, useRef } from 'react';
-import { motion, useInView } from 'framer-motion';
+import { motion, useInView, useReducedMotion } from 'framer-motion';
 
 type Direction = 'up' | 'down' | 'left' | 'right';
 
@@ -39,13 +39,17 @@ export const ScrollReveal: FC<ScrollRevealProps> = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once, margin: '-60px' });
-  const offset = getOffset(direction, distance);
+  // A reader who asked their OS for less motion gets the content where it
+  // is, at full opacity, with no travel -- the reveal is decoration, never
+  // the only way the content appears.
+  const reduceMotion = useReducedMotion();
+  const offset = reduceMotion ? { x: 0, y: 0 } : getOffset(direction, distance);
 
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity: 0, x: offset.x, y: offset.y }}
-      animate={isInView ? { opacity: 1, x: 0, y: 0 } : { opacity: 0, x: offset.x, y: offset.y }}
+      initial={reduceMotion ? false : { opacity: 0, x: offset.x, y: offset.y }}
+      animate={isInView || reduceMotion ? { opacity: 1, x: 0, y: 0 } : { opacity: 0, x: offset.x, y: offset.y }}
       transition={{ duration, delay, ease: [0.25, 0.1, 0.25, 1] }}
       className={className}
     >

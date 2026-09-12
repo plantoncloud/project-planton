@@ -19,38 +19,30 @@
 locals {
   # Chart identity — must stay byte-identical with the Pulumi module's vars:
   # cross-engine chart drift deploys two different products from one
-  # manifest. ONE repository serves BOTH charts — the upstream project
-  # publishes the operator and the Barman Cloud plugin side by side.
-  helm_chart_repo   = "https://cloudnative-pg.github.io/charts"
-  helm_chart_name   = "cloudnative-pg"
-  plugin_chart_name = "plugin-barman-cloud"
+  # manifest. The CloudNativePG project's repository also serves the Barman
+  # Cloud plugin chart, which its own kind installs.
+  helm_chart_repo = "https://cloudnative-pg.github.io/charts"
+  helm_chart_name = "cloudnative-pg"
 
   # Release name FIXED to "cnpg": the operator registers cluster-scoped
   # CRDs and mutating/validating webhooks whose service name is baked into
   # the chart ("cnpg-webhook-service" — embedded in the webhook certificate
   # and not configurable), so a second installation would fight over both.
-  # One operator per cluster is an upstream constraint. The plugin release
-  # name is fixed for the same singleton reason (its gRPC service name
-  # "barman-cloud" is baked into its TLS certificate).
-  release_name        = "cnpg"
-  plugin_release_name = local.plugin_chart_name
+  # One operator per cluster is an upstream constraint.
+  release_name = "cnpg"
 
-  # Chart versions resolved to the pinned defaults when unset, so both
-  # engines install the same charts whether or not the platform's
-  # defaulting middleware ran — mirrors of the Pulumi module's
-  # DefaultChartVersion / DefaultPluginChartVersion. Chart and app versions
-  # move SEPARATELY (operator chart 0.29.0 ships operator 1.30.0; plugin
-  # chart 0.7.0 ships plugin v0.13.0) — the chart pins govern, and each
-  # release carries its own pin.
-  chart_version        = coalesce(try(var.spec.chart_version, null), "0.29.0")
-  plugin_chart_version = coalesce(try(var.spec.barman_cloud_plugin.chart_version, null), "0.7.0")
+  # Chart version resolved to the pinned default when unset, so both
+  # engines install the same chart whether or not the platform's
+  # defaulting middleware ran — mirror of the Pulumi module's
+  # DefaultChartVersion. Chart and app versions move SEPARATELY (chart
+  # 0.29.0 ships operator 1.30.0) — the chart pin governs.
+  chart_version = coalesce(try(var.spec.chart_version, null), "0.29.0")
 
-  barman_plugin_enabled = try(var.spec.barman_cloud_plugin.enabled, false)
-
+  # The Barman Cloud plugin kind installs into this same namespace.
   namespace = var.spec.namespace
 
   # Resource-identity labels stamped on the namespace this module creates
-  # (never injected into the charts' own resources — Helm owns those).
+  # (never injected into the chart's own resources — Helm owns those).
   labels = merge(
     {
       "planton.ai/resource"      = "true"
@@ -176,35 +168,6 @@ locals {
         for s in var.spec.image_pull_secrets : { name = s }
       ] : null
       image = length(local.image_values) > 0 ? local.image_values : null
-    } : k => v if v != null
-  }
-
-  # ---- plugin chart values (twin of the Pulumi module's buildPluginHelmValues)
-  # The plugin's typed surface is deliberately minimal — container
-  # resources only; everything else rides the chart defaults. The
-  # helm_values escape hatch does NOT flow here: it scopes to the operator
-  # chart (the two charts share value keys like `resources` and `image`,
-  # so forwarding one document to both would misconfigure the plugin).
-  plugin_resources = try(var.spec.barman_cloud_plugin.resources, null) == null ? null : {
-    for k, v in {
-      limits = try(var.spec.barman_cloud_plugin.resources.limits, null) == null ? null : {
-        for lk, lv in {
-          cpu    = try(var.spec.barman_cloud_plugin.resources.limits.cpu, "") != "" ? var.spec.barman_cloud_plugin.resources.limits.cpu : null
-          memory = try(var.spec.barman_cloud_plugin.resources.limits.memory, "") != "" ? var.spec.barman_cloud_plugin.resources.limits.memory : null
-        } : lk => lv if lv != null
-      }
-      requests = try(var.spec.barman_cloud_plugin.resources.requests, null) == null ? null : {
-        for rk, rv in {
-          cpu    = try(var.spec.barman_cloud_plugin.resources.requests.cpu, "") != "" ? var.spec.barman_cloud_plugin.resources.requests.cpu : null
-          memory = try(var.spec.barman_cloud_plugin.resources.requests.memory, "") != "" ? var.spec.barman_cloud_plugin.resources.requests.memory : null
-        } : rk => rv if rv != null
-      }
-    } : k => v if v != null && length(v) > 0
-  }
-
-  plugin_typed_values = {
-    for k, v in {
-      resources = local.plugin_resources != null && length(local.plugin_resources) > 0 ? local.plugin_resources : null
     } : k => v if v != null
   }
 }

@@ -1,0 +1,78 @@
+# Control profile: this component's posture against every control in the
+# central catalog (catalog/_compliance/controls-catalog.yaml). Every control
+# is examined; not_applicable states why. Evidence is verifiable against the
+# spec contract and the official modules. Schema:
+# compliance/componentcontrolprofile/v1.
+apiVersion: compliance.planton.dev/v1
+kind: ComponentControlProfile
+metadata:
+  name: kubernetescnpgbarmancloudplugin
+spec:
+  controls:
+    - control_id: enc-at-rest
+      status: not_applicable
+      notes: The plugin stores no data of its own -- its state is the ObjectStore custom resources it reconciles, held in the cluster's etcd. Backup data at rest is a property of the object store each KubernetesPostgres backup block points at (bucket encryption is that store's setting).
+    - control_id: enc-at-rest-cmk
+      status: not_applicable
+      notes: No data at rest to key (see enc-at-rest); customer-managed keys for backup buckets are configured on the bucket resources the databases' backup blocks reference.
+    - control_id: enc-in-transit
+      status: enforced_by_default
+      evidence:
+        type: module_default
+        reference: The operator-to-plugin gRPC channel is TLS on both sides -- the chart renders a self-signed Issuer plus server and client Certificates unconditionally (templates/certificate-issuer.yaml, server-certificate.yaml, client-certificate.yaml) and mounts the issued Secrets into the plugin pod; the modules never disable it. This is why cert-manager is a registry prerequisite.
+      notes: Transport to the object store is the sidecar's HTTPS to the store endpoint, configured per database on the KubernetesPostgres backup block (an S3-compatible endpoint_url decides its own scheme there).
+    - control_id: no-public-access
+      status: enforced_by_default
+      evidence:
+        type: module_default
+        reference: The modules render no external exposure -- the plugin's only Service is the in-cluster gRPC endpoint the operator dials (ClusterIP, port 9090); the spec offers no ingress or LoadBalancer seam.
+    - control_id: restricted-ingress
+      status: not_applicable
+      notes: The plugin serves no client-facing traffic to restrict; its only inbound caller is the CloudNativePG operator in the same namespace. Kubernetes NetworkPolicies (separate resources) can fence that path if required.
+    - control_id: edge-protection
+      status: not_applicable
+      notes: A cluster-internal controller serves no HTTP edge traffic -- web application firewalls do not apply.
+    - control_id: rbac
+      status: enforced_by_default
+      evidence:
+        type: module_default
+        reference: The chart's RBAC (rbac.create, the default the modules keep) is a ClusterRole scoped to what the plugin does -- ObjectStores and their status/finalizers, read access to Backups, Cluster finalizers, the Secrets its sidecars use, and the per-database Roles/RoleBindings it creates -- plus a namespaced leader-election Role (templates/rbac.yaml, templates/additional-rbac/leader_election.yaml).
+      notes: Access to the plugin's own resources is governed by the target cluster's Kubernetes RBAC.
+    - control_id: workload-identity
+      status: not_applicable
+      notes: The plugin process itself calls no cloud APIs. The sidecar it injects authenticates to the object store AS THE DATABASE POD -- keyless workload identity or declared keys are configured per database on KubernetesPostgres resources (their backup and workload_identity fields), not here.
+    - control_id: no-legacy-auth
+      status: not_applicable
+      notes: The plugin exposes no authentication surface of its own -- no credentials, no user-facing endpoint. Its management plane is the Kubernetes API, governed by the cluster's RBAC.
+    - control_id: strong-user-auth
+      status: not_applicable
+      notes: The component itself enforces no end-user sign-in -- it packages no human sign-in surface; any credentials it carries are workload or administrative access, whose posture rbac and workload-identity carry.
+    - control_id: audit-logging
+      status: not_applicable
+      notes: The plugin's actions are Kubernetes API operations -- reconciling ObjectStores, creating Secrets and Roles for database pods -- captured by the target cluster's audit policy; the spec models no separate audit-log seam.
+    - control_id: monitoring-integration
+      status: not_applicable
+      notes: The chart at this pin renders no metrics Service or PodMonitor for the plugin process; backup health is observed on each database (the Cluster's continuous-archiving condition and Backup phases, owned by KubernetesPostgres resources).
+    - control_id: backup-recovery
+      status: not_applicable
+      notes: The plugin holds no data to back up; its own configuration is this manifest, re-appliable at any time. It IS the backup ENGINE -- every KubernetesPostgres backup block and object-store recovery runs through it -- but what gets backed up, where, and on what schedule is declared on the KubernetesPostgres resources.
+    - control_id: backup-retention-policy
+      status: not_applicable
+      notes: No backups exist at this layer; retention is declared per database on KubernetesPostgres resources (see backup-recovery).
+    - control_id: multi-zone-ha
+      status: configurable
+      field_path: replicas
+      evidence:
+        type: spec_default
+        reference: replicas defaults to 1; extra replicas are leader-elected warm standbys that shorten failover of the plugin itself (the chart deploys with the Recreate strategy). Kubernetes spreads them across nodes subject to the cluster's scheduling.
+      notes: A plugin outage pauses WAL archiving and backups only -- managed databases keep serving and resume archiving when the plugin returns. Both presets run one replica.
+    - control_id: deletion-protection
+      status: not_applicable
+      notes: "Neither Kubernetes nor the chart offers a deletion-protection flag on the release. The blast radius of deletion is bounded upstream: the chart stamps helm.sh/resource-policy: keep on the ObjectStore CRD, so uninstalling never deletes the ObjectStore resources databases point at, and a re-install with the same release name adopts the kept CRD."
+    - control_id: managed-patching
+      status: configurable
+      field_path: chart_version
+      evidence:
+        type: spec_default
+        reference: Unset installs the pinned default chart (0.7.0, which ships plugin v0.13.0); upgrades are deliberate chart_version changes re-running the release with the new chart. Plugin v0.13.0 requires CloudNativePG 1.26 or later (1.27 or later recommended upstream).
+      notes: Plugin upgrades roll the plugin Deployment (Recreate); the sidecar image the databases pull follows the new chart's appVersion on their next instance rollout.

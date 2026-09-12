@@ -27,16 +27,13 @@ func (cp *ControlPlane) Dependencies(planton *v1.PlantonPlatform) []string {
 	// discovery at startup -- the identity server must be serving before the
 	// JVM comes up, or the Spring context fails and the pod crash-loops
 	// through no fault of its own.
-	deps := []string{"postgresql", "redis", "temporal", "identity"}
-	// With policy-engine authorization enabled, the control plane's FGA
-	// store/model env comes from the openfga component's bootstrap ConfigMap
+	// The policy engine is unconditional because authorization is: every
+	// request the control plane serves is answered by OpenFGA, and its store
+	// id reaches the pod through the openfga component's bootstrap ConfigMap
 	// (ConfigMapKeyRef) -- the pod literally cannot start before that exists,
 	// so the dependency makes the wait an explained status instead of a
-	// CreateContainerConfigError. The minimal footprint keeps no dependency:
-	// its arms run no policy engine.
-	if isAuthorizationEnabled(planton) {
-		deps = append(deps, "openfga")
-	}
+	// CreateContainerConfigError.
+	deps := []string{"postgresql", "redis", "temporal", "identity", "openfga"}
 	// With the vault component enabled, the control plane's VAULT_TOKEN is a
 	// SecretKeyRef into the openbao init Secret -- same tie as the FGA
 	// ConfigMap above: depend on it so the wait is an explained status, and
@@ -55,6 +52,44 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 	ownerRef := cp.OwnerReferenceFor(planton)
 
 	cfg := cp.buildConfig(planton, ownerRef)
+
+	// Every Secret spec.email names must exist with its keys BEFORE the
+	// Deployment projects them, or the pod sits in FailedMount with no reason
+	// anyone can read. A finding is reported as this component's message and
+	// the pod is rendered as if no email were declared: the platform keeps
+	// running, invitations stay links, and the person reads exactly which
+	// Secret to create. The 30-second requeue picks it up when it appears.
+	emailPreflight, err := preflightEmailSecrets(ctx, c, planton)
+	if err != nil {
+		return Result{}, fmt.Errorf("preflighting email Secrets: %w", err)
+	}
+	if emailPreflight != "" {
+		cfg.Email = nil
+	}
+
+	// The GitHub declaration follows the same discipline: every App Secret
+	// is preflighted, a host whose App cannot be honored keeps its place with
+	// the reason beside it, and the facts ConfigMap the control plane mounts
+	// is written every pass so a corrected declaration is live without a
+	// pod roll.
+	doorPublic := false
+	if posture, resolved := frontDoorPosture(planton); resolved {
+		doorPublic = posture.Public()
+	}
+	githubBinding, githubRefusal, err := resolveGithub(ctx, c, planton, doorPublic)
+	if err != nil {
+		return Result{}, fmt.Errorf("preflighting GitHub App Secrets: %w", err)
+	}
+	cfg.Github = githubBinding
+	facts, err := resources.GithubFactsConfigMap(planton.Name, planton.Namespace,
+		resources.GithubFactsFrom(githubBinding, doorPublic), ownerRef)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := cp.ApplyTypedObject(ctx, c, facts); err != nil {
+		return Result{}, fmt.Errorf("applying GitHub facts ConfigMap: %w", err)
+	}
+
 	if cfg.Identity == nil {
 		// Unreachable in a healthy pass (the identity dependency implies a
 		// resolved front-door URL), but a Deployment without the identity arm
@@ -112,7 +147,18 @@ func (cp *ControlPlane) Reconcile(ctx context.Context, c client.Client, _ *runti
 	}
 	if !ready {
 		log.Info("ControlPlane not ready")
-		return Result{Ready: false, Message: "Waiting for ControlPlane Deployment"}, nil
+		return cp.NotReady(ctx, c, planton.Namespace, DeploymentRef(deployName), "Waiting for ControlPlane Deployment"), nil
+	}
+
+	// A healthy pod under a declaration that could not be honored is not
+	// Ready: "Ready" means what the manifest declared is what runs.
+	if emailPreflight != "" {
+		log.Info("ControlPlane running without the declared email", "reason", emailPreflight)
+		return Refused(emailPreflight), nil
+	}
+	if githubRefusal != "" {
+		log.Info("ControlPlane running without a declared GitHub App", "reason", githubRefusal)
+		return Refused(githubRefusal), nil
 	}
 
 	log.Info("ControlPlane ready")
@@ -160,10 +206,9 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 
 	cfg.SecretBackend = effectiveSecretBackend(planton)
 	cfg.License = effectiveLicense(planton)
+	cfg.Email = effectiveEmail(planton)
 
-	if isAuthorizationEnabled(planton) {
-		cfg.OpenFGA = resources.OpenFGAConnection(planton.Name, planton.Namespace)
-	}
+	cfg.OpenFGA = resources.OpenFGAConnection(planton.Name, planton.Namespace)
 
 	if isNeo4jEnabled(planton) {
 		conn := resources.Neo4jConnection(planton.Name, planton.Namespace)
@@ -185,15 +230,6 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 	// controlplane component depends on identity, which does not report Ready
 	// until the URL has resolved (and the gateway URL is deterministic).
 	if publicURL, resolved := frontDoorURL(planton); resolved && publicURL != "" {
-		// The trusting-team arm is the default -- no policy engine runs, so
-		// every signed-in teammate may act while ownership/operator records
-		// still land in Postgres. Enabling the authorization component
-		// upgrades to the real engine (its connection is wired above and the
-		// boot backfill mirrors the Postgres records into it).
-		authorizationProvider := "allow-authenticated"
-		if isAuthorizationEnabled(planton) {
-			authorizationProvider = "openfga"
-		}
 		realm := identityRealm(planton)
 		cfg.Identity = &resources.IdentityBinding{
 			IssuerURL: resources.IdentityIssuerURL(publicURL, realm),
@@ -206,7 +242,6 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 			InternalIssuerURL:     resources.IdentityInternalIssuerURL(planton.Name, planton.Namespace, realm),
 			Hostname:              publicHostname(publicURL),
 			UsersClientSecretName: resources.IdentityUsersClientSecretName(planton.Name),
-			AuthorizationProvider: authorizationProvider,
 			Bootstrap:             effectiveBootstrap(planton),
 		}
 		// First-run setup mode keys on exactly spec.identity.adminEmail being
@@ -229,6 +264,37 @@ func (cp *ControlPlane) buildConfig(planton *v1.PlantonPlatform, ownerRef *metav
 		cfg.Storage = &resources.StorageBinding{
 			RelayPublicBaseURL:   publicURL,
 			RelayInternalBaseURL: resources.ControlPlaneRelayInternalBaseURL(planton.Name, planton.Namespace),
+		}
+
+		// The front door is the keyless identity issuer, and every posture
+		// that needs an inbound path from the internet derives from the ONE
+		// posture computed for it -- never from a hand-set literal. The
+		// posture resolves exactly when the URL does (same inputs), so it is
+		// always known here.
+		posture, _ := frontDoorPosture(planton)
+		cfg.WebIdentity = &resources.WebIdentityBinding{
+			IssuerURL:    posture.URL,
+			Offered:      posture.KeylessOffered(),
+			ClosedReason: posture.KeylessClosedReason(),
+		}
+		cfg.GithubWebhooks = &resources.GithubWebhooksBinding{
+			Reachable:   posture.Public(),
+			ReceiverURL: resources.GithubWebhookReceiverURL(publicURL),
+		}
+		cfg.Console = &resources.ConsoleBinding{URL: posture.URL}
+
+		// Remote runners ride the same door: when the install opened them and
+		// this door carries native gRPC, the queue and the API are advertised
+		// at the door's gRPC endpoint (the ingress component routes the
+		// queue's workflow service beside the API). A door that cannot carry
+		// it leaves the binding nil -- the control plane then refuses remote
+		// enrollment with the reason, and the ingress status names the door.
+		if remoteRunnersCarried(planton) {
+			endpoint := resources.GRPCEndpoint(publicURL)
+			cfg.RemoteRunners = &resources.RemoteRunnersBinding{
+				PlantonAPIEndpoint: endpoint,
+				TemporalEndpoint:   endpoint,
+			}
 		}
 	}
 
@@ -361,10 +427,6 @@ func isVaultEnabled(p *v1.PlantonPlatform) bool {
 func publicHostname(publicURL string) string {
 	host := strings.TrimPrefix(publicURL, "https://")
 	return strings.TrimPrefix(host, "http://")
-}
-
-func isAuthorizationEnabled(p *v1.PlantonPlatform) bool {
-	return p.Spec.Components != nil && p.Spec.Components.Authorization != nil && p.Spec.Components.Authorization.Enabled
 }
 
 func isNeo4jEnabled(p *v1.PlantonPlatform) bool {

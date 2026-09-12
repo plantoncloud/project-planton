@@ -76,6 +76,42 @@ type DependencyState struct {
 // runs in reverse across the merged chain.
 const scenarioPrerequisitesAnnotation = "planton.dev/e2e-prerequisites"
 
+// ScenarioPrerequisiteInstallManifestAnnotation lets a scenario SUBSTITUTE the
+// install profile of a kind in its prerequisite chain: for this scenario, the
+// named kind installs from the named manifest instead of the consumer-scoped
+// override or the kind's published profile. The value is a comma-separated
+// list of `<Kind>=<repo-relative manifest path>` entries.
+//
+// This is a different thing from a manifest-path entry in e2e-prerequisites:
+// that one is an EXTRA INSTANCE (it never marks the kind as scheduled), so a
+// scenario could add a second copy of a kind but never say "install this kind
+// DIFFERENTLY here". Real clusters need exactly that: a lane cluster can
+// need a prerequisite in a shape its consumer-wide profile does not describe
+// (a profile that creates and owns a namespace that, on this cluster, is
+// someone else's), and no consumer-wide profile can express a per-lane
+// truth. The substitute takes the kind's slot in the graph (its own edges
+// expand normally; its e2e-prerequisites annotation is read like any install
+// manifest's); the kind's other consumers are untouched.
+const ScenarioPrerequisiteInstallManifestAnnotation = "planton.dev/e2e-prerequisite-install-manifest"
+
+// ScenarioResidentPrerequisitesAnnotation lets a scenario declare that a kind
+// in its prerequisite chain is ALREADY PRESENT on the lane cluster and must
+// be neither deployed nor torn down: the kind is pruned from the graph (and
+// its own edges with it, unless another prerequisite reaches them). The
+// value is a comma-separated list of kind names.
+//
+// A resident is a property of a real cluster, never of a harness-owned one:
+// the batch EKS cluster carried its own load-balancer controller, the GKE
+// management cluster carries cert-manager and CloudNativePG from the Planton
+// operator. Deploying a second copy beside a resident is exactly the
+// collision the singleton kinds forbid. The declaration is a promise the
+// scenario makes about the cluster it targets; the runner cannot verify it,
+// so a scenario that declares residents must also pin itself to a
+// real-cluster profile (the provider entrypoints enforce this — nothing is
+// resident on a cluster the harness creates), and a false promise fails at
+// deploy with the missing resident's own error.
+const ScenarioResidentPrerequisitesAnnotation = "planton.dev/e2e-resident-prerequisites"
+
 // teardownAttemptsAnnotation lets a prerequisite's install manifest raise the
 // destroy retry budget for ITS OWN teardown above the global default. It
 // exists for producer-side releases that are measured in TENS OF MINUTES —
@@ -142,8 +178,38 @@ func ResolveDependencies(repoRoot, componentProvider, component, scenarioManifes
 		roots = append(roots, d)
 	}
 
+	substitutes, err := scenarioInstallManifestSubstitutes(repoRoot, scenarioManifestPath)
+	if err != nil {
+		return nil, err
+	}
+	residents, err := scenarioResidentPrerequisites(scenarioManifestPath)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range residents {
+		if r == kind {
+			return nil, errors.Errorf("scenario %s declares the component's own kind %s as resident (the component under test is what the scenario deploys)", scenarioManifestPath, component)
+		}
+		if _, substituted := substitutes[r]; substituted {
+			return nil, errors.Errorf("scenario %s declares %s both resident (%s) and installed from a substitute manifest (%s) — a kind is either already on the cluster or installed here, not both", scenarioManifestPath, r.String(), ScenarioResidentPrerequisitesAnnotation, ScenarioPrerequisiteInstallManifestAnnotation)
+		}
+	}
+
+	resolver := &chainResolver{
+		repoRoot:          repoRoot,
+		componentProvider: componentProvider,
+		component:         component,
+		substitutes:       substitutes,
+	}
+
+	// Residents are pre-marked visited: the graph walk skips a visited kind
+	// and never returns it, which prunes the resident AND stops the walk
+	// from descending into its edges through it — exactly "already there".
 	visited := make(map[cloudresourcekind.CloudResourceKind]bool)
-	prereqs, err := expandPrerequisiteGraph(repoRoot, componentProvider, component, roots, visited)
+	for _, r := range residents {
+		visited[r] = true
+	}
+	prereqs, err := resolver.expandPrerequisiteGraph(roots, visited)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +217,7 @@ func ResolveDependencies(repoRoot, componentProvider, component, scenarioManifes
 	var deps []Dependency
 	for _, p := range prereqs {
 		slug := strings.ToLower(p.String())
-		manifestPath, err := prerequisiteManifestPath(repoRoot, componentProvider, component, slug)
+		manifestPath, err := resolver.prerequisiteManifestPath(slug)
 		if err != nil {
 			return nil, err
 		}
@@ -187,13 +253,13 @@ func ResolveDependencies(repoRoot, componentProvider, component, scenarioManifes
 			continue
 		}
 		entryKind := crkreflect.KindFromString(slug)
-		pre, err := expandPrerequisiteGraph(repoRoot, componentProvider, component, crkreflect.Prerequisites(entryKind), visited)
+		pre, err := resolver.expandPrerequisiteGraph(crkreflect.Prerequisites(entryKind), visited)
 		if err != nil {
 			return nil, err
 		}
 		for _, p := range pre {
 			pSlug := strings.ToLower(p.String())
-			manifestPath, err := prerequisiteManifestPath(repoRoot, componentProvider, component, pSlug)
+			manifestPath, err := resolver.prerequisiteManifestPath(pSlug)
 			if err != nil {
 				return nil, err
 			}
@@ -202,6 +268,20 @@ func ResolveDependencies(repoRoot, componentProvider, component, scenarioManifes
 		deps = append(deps, Dependency{KindSlug: slug, ManifestPath: full})
 	}
 	return deps, nil
+}
+
+// chainResolver carries one scenario's view of the prerequisite chain: whose
+// consumer scope the install profiles are read in, and which kinds this
+// scenario installs from a substitute manifest instead. Residents never reach
+// it — they are pruned before the walk by pre-marking them visited.
+type chainResolver struct {
+	repoRoot          string
+	componentProvider string
+	component         string
+
+	// substitutes maps a kind to the absolute manifest path this scenario
+	// installs it from (ScenarioPrerequisiteInstallManifestAnnotation).
+	substitutes map[cloudresourcekind.CloudResourceKind]string
 }
 
 // expandPrerequisiteGraph topologically orders the root prerequisites plus
@@ -216,7 +296,7 @@ func ResolveDependencies(repoRoot, componentProvider, component, scenarioManifes
 // skipped, and newly visited kinds are added to it), so a scenario's
 // manifest-path entries can extend one chain without re-deploying fixtures
 // the graph already ordered. Only NEWLY visited kinds are returned.
-func expandPrerequisiteGraph(repoRoot, componentProvider, component string, roots []cloudresourcekind.CloudResourceKind, visited map[cloudresourcekind.CloudResourceKind]bool) ([]cloudresourcekind.CloudResourceKind, error) {
+func (r *chainResolver) expandPrerequisiteGraph(roots []cloudresourcekind.CloudResourceKind, visited map[cloudresourcekind.CloudResourceKind]bool) ([]cloudresourcekind.CloudResourceKind, error) {
 	var result []cloudresourcekind.CloudResourceKind
 	if visited == nil {
 		visited = make(map[cloudresourcekind.CloudResourceKind]bool)
@@ -226,7 +306,7 @@ func expandPrerequisiteGraph(repoRoot, componentProvider, component string, root
 	var visit func(k cloudresourcekind.CloudResourceKind) error
 	visit = func(k cloudresourcekind.CloudResourceKind) error {
 		if inStack[k] {
-			return errors.Errorf("prerequisite cycle detected at %s while resolving dependencies for %s", k.String(), component)
+			return errors.Errorf("prerequisite cycle detected at %s while resolving dependencies for %s", k.String(), r.component)
 		}
 		if visited[k] {
 			return nil
@@ -234,7 +314,7 @@ func expandPrerequisiteGraph(repoRoot, componentProvider, component string, root
 		inStack[k] = true
 
 		edges := append([]cloudresourcekind.CloudResourceKind{}, crkreflect.Prerequisites(k)...)
-		manifestDeclared, err := installManifestPrerequisites(repoRoot, componentProvider, component, k)
+		manifestDeclared, err := r.installManifestPrerequisites(k)
 		if err != nil {
 			return err
 		}
@@ -270,12 +350,13 @@ func expandPrerequisiteGraph(repoRoot, componentProvider, component string, root
 // swallowing it here never hides a failure. An annotation naming an unknown
 // kind, however, errors immediately -- silently skipping it would deploy the
 // manifest without a fixture it relies on.
-func installManifestPrerequisites(repoRoot, componentProvider, consumer string, k cloudresourcekind.CloudResourceKind) ([]cloudresourcekind.CloudResourceKind, error) {
+func (r *chainResolver) installManifestPrerequisites(k cloudresourcekind.CloudResourceKind) ([]cloudresourcekind.CloudResourceKind, error) {
 	slug := strings.ToLower(k.String())
 	// The consumer scoping matters here too: annotations are read from the
 	// manifest that will actually deploy, which may be a consumer-scoped
-	// override rather than the kind's published profile.
-	manifestPath, err := prerequisiteManifestPath(repoRoot, componentProvider, consumer, slug)
+	// override (or the scenario's substitute) rather than the kind's
+	// published profile.
+	manifestPath, err := r.prerequisiteManifestPath(slug)
 	if err != nil {
 		return nil, nil
 	}
@@ -323,6 +404,9 @@ func installManifestPrerequisites(repoRoot, componentProvider, consumer string, 
 
 // prerequisiteManifestPath returns the manifest used to install a prerequisite,
 // in order of preference (e2e assets live at each component's root):
+//   - the scenario's substitute for the kind
+//     (ScenarioPrerequisiteInstallManifestAnnotation) — a per-scenario truth
+//     about the lane cluster, above every consumer-wide profile;
 //   - <consumer>/e2e/prerequisites/<dep>.yaml — a consumer-scoped
 //     override, for when the same prerequisite kind needs a different install
 //     shape for different consumers (e.g. GcpGlobalAddress as an EXTERNAL VIP
@@ -333,6 +417,16 @@ func installManifestPrerequisites(repoRoot, componentProvider, consumer string, 
 //
 // Errors if none exist, so a missing install profile fails loudly rather than
 // silently skipping a required dependency.
+func (r *chainResolver) prerequisiteManifestPath(slug string) (string, error) {
+	if substitute, ok := r.substitutes[crkreflect.KindFromString(slug)]; ok {
+		return substitute, nil
+	}
+	return prerequisiteManifestPath(r.repoRoot, r.componentProvider, r.component, slug)
+}
+
+// prerequisiteManifestPath is the consumer-scoped lookup behind
+// chainResolver.prerequisiteManifestPath: the consumer's override, else the
+// dependency's published profile, else its minimal scenario.
 func prerequisiteManifestPath(repoRoot, componentProvider, consumer, slug string) (string, error) {
 	if consumer != "" {
 		if _, err := crkreflect.ComponentVersionDir(consumer); err != nil {
@@ -702,6 +796,99 @@ func scenarioDeclaredPrerequisites(manifestPath string) ([]cloudresourcekind.Clo
 		kinds = append(kinds, kind)
 	}
 	return kinds, paths, nil
+}
+
+// scenarioInstallManifestSubstitutes reads the scenario's
+// e2e-prerequisite-install-manifest annotation into a kind -> absolute
+// manifest path map. Every entry is `<Kind>=<repo-relative path>`; the kind
+// must be registered, the path must exist, and the manifest at the path must
+// declare that same kind — a substitute that installs a different kind than
+// the slot it takes would silently leave the real prerequisite missing.
+func scenarioInstallManifestSubstitutes(repoRoot, manifestPath string) (map[cloudresourcekind.CloudResourceKind]string, error) {
+	if manifestPath == "" {
+		return nil, nil
+	}
+	raw, err := manifestAnnotation(manifestPath, ScenarioPrerequisiteInstallManifestAnnotation)
+	if err != nil {
+		return nil, errors.Wrapf(err, "reading scenario manifest %s", manifestPath)
+	}
+	if raw == "" {
+		return nil, nil
+	}
+
+	substitutes := make(map[cloudresourcekind.CloudResourceKind]string)
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		kindName, rel, ok := strings.Cut(token, "=")
+		kindName, rel = strings.TrimSpace(kindName), strings.TrimSpace(rel)
+		if !ok || kindName == "" || rel == "" {
+			return nil, errors.Errorf("scenario %s: %s entry %q must be <Kind>=<repo-relative manifest path>", manifestPath, ScenarioPrerequisiteInstallManifestAnnotation, token)
+		}
+		kind := crkreflect.KindFromString(kindName)
+		if kind == cloudresourcekind.CloudResourceKind_unspecified {
+			return nil, errors.Errorf("scenario %s: %s names unknown kind %q", manifestPath, ScenarioPrerequisiteInstallManifestAnnotation, kindName)
+		}
+		full := filepath.Join(repoRoot, rel)
+		if !pathExists(full) {
+			return nil, errors.Errorf("scenario %s: %s substitute for %s not found at %s", manifestPath, ScenarioPrerequisiteInstallManifestAnnotation, kind.String(), full)
+		}
+		declaredSlug, err := manifestKindSlug(full)
+		if err != nil {
+			return nil, errors.Wrapf(err, "scenario %s: %s substitute for %s", manifestPath, ScenarioPrerequisiteInstallManifestAnnotation, kind.String())
+		}
+		if declaredSlug != strings.ToLower(kind.String()) {
+			return nil, errors.Errorf("scenario %s: %s substitute for %s declares kind %s — a substitute must install the kind whose slot it takes", manifestPath, ScenarioPrerequisiteInstallManifestAnnotation, kind.String(), declaredSlug)
+		}
+		if _, dup := substitutes[kind]; dup {
+			return nil, errors.Errorf("scenario %s: %s names %s twice", manifestPath, ScenarioPrerequisiteInstallManifestAnnotation, kind.String())
+		}
+		substitutes[kind] = full
+	}
+	return substitutes, nil
+}
+
+// scenarioResidentPrerequisites reads the scenario's
+// e2e-resident-prerequisites annotation: the kinds already present on the
+// lane cluster, to be pruned from the chain. Unknown kind names error loudly.
+func scenarioResidentPrerequisites(manifestPath string) ([]cloudresourcekind.CloudResourceKind, error) {
+	if manifestPath == "" {
+		return nil, nil
+	}
+	raw, err := manifestAnnotation(manifestPath, ScenarioResidentPrerequisitesAnnotation)
+	if err != nil {
+		return nil, errors.Wrapf(err, "reading scenario manifest %s", manifestPath)
+	}
+	if raw == "" {
+		return nil, nil
+	}
+
+	var kinds []cloudresourcekind.CloudResourceKind
+	for _, token := range strings.Split(raw, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		kind := crkreflect.KindFromString(token)
+		if kind == cloudresourcekind.CloudResourceKind_unspecified {
+			return nil, errors.Errorf("scenario %s declares unknown kind %q in the %s annotation", manifestPath, token, ScenarioResidentPrerequisitesAnnotation)
+		}
+		kinds = append(kinds, kind)
+	}
+	return kinds, nil
+}
+
+// ScenarioDeclaresResidents reports whether a scenario manifest declares any
+// resident prerequisites — the provider entrypoints use it to refuse the
+// declaration on harness-owned clusters, where nothing is resident.
+func ScenarioDeclaresResidents(manifestPath string) (bool, error) {
+	residents, err := scenarioResidentPrerequisites(manifestPath)
+	if err != nil {
+		return false, err
+	}
+	return len(residents) > 0, nil
 }
 
 // manifestKindSlug reads the kind a manifest file declares and returns its
