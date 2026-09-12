@@ -242,9 +242,15 @@ message AzureDataFactoryLinkedServiceAzureBlobStorage {
   // no-secret form: authentication comes from managed identity
   // (use_managed_identity) or a service principal. Azure stores it as
   // a secure string (mirrored: marked sensitive).
+  //
+  // A linked service is the factory's connection definition for a store it
+  // reads from and writes to; it never lives inside the account, so on a
+  // diagram the reference is access, not placement -- the same rule its Key
+  // Vault references already carry.
   dev.planton.shared.foreignkey.v1.StringValueOrRef service_endpoint = 4 [
     (dev.planton.shared.options.sensitive) = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.primary_blob_endpoint"
   ];
 
@@ -681,9 +687,14 @@ message AzureDataFactoryLinkedServiceDataLakeStorageGen2 {
   // The Data Lake endpoint URL (https://account.dfs.core.windows.net)
   // -- defaults to referencing an AzureStorageAccount's
   // primary_dfs_endpoint output.
+  //
+  // A linked service is the factory's connection definition for a store it
+  // reads from and writes to; it never lives inside the account, so on a
+  // diagram the reference is access, not placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef url = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.primary_dfs_endpoint"
   ];
 
@@ -733,10 +744,13 @@ message AzureDataFactoryLinkedServiceDataLakeStorageGen2 {
 message AzureDataFactoryLinkedServiceKeyVault {
   // The Key Vault, by ARM ID -- defaults to referencing an
   // AzureKeyVault's key_vault_id output. The modules derive the
-  // vault's base URI from it, exactly as the provider does.
+  // vault's base URI from it, exactly as the provider does. A linked
+  // service POINTS AT the vault and lives in its factory, so the
+  // reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 }

@@ -534,6 +534,11 @@ type AzureDataFactoryLinkedServiceAzureBlobStorage struct {
 	// no-secret form: authentication comes from managed identity
 	// (use_managed_identity) or a service principal. Azure stores it as
 	// a secure string (mirrored: marked sensitive).
+	//
+	// A linked service is the factory's connection definition for a store it
+	// reads from and writes to; it never lives inside the account, so on a
+	// diagram the reference is access, not placement -- the same rule its Key
+	// Vault references already carry.
 	ServiceEndpoint *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=service_endpoint,json=serviceEndpoint,proto3" json:"service_endpoint,omitempty"`
 	// Holds the SAS token in Key Vault (used with sas_uri: the URI
 	// carries the address, the vault carries the token).
@@ -1623,6 +1628,10 @@ type AzureDataFactoryLinkedServiceDataLakeStorageGen2 struct {
 	// The Data Lake endpoint URL (https://account.dfs.core.windows.net)
 	// -- defaults to referencing an AzureStorageAccount's
 	// primary_dfs_endpoint output.
+	//
+	// A linked service is the factory's connection definition for a store it
+	// reads from and writes to; it never lives inside the account, so on a
+	// diagram the reference is access, not placement.
 	Url *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
 	// Authenticate as the factory's managed identity -- the no-secret
 	// mode. Unspecified applies false. One of the three authentication
@@ -1725,7 +1734,9 @@ type AzureDataFactoryLinkedServiceKeyVault struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The Key Vault, by ARM ID -- defaults to referencing an
 	// AzureKeyVault's key_vault_id output. The modules derive the
-	// vault's base URI from it, exactly as the provider does.
+	// vault's base URI from it, exactly as the provider does. A linked
+	// service POINTS AT the vault and lives in its factory, so the
+	// reference is access, not placement, on a diagram.
 	KeyVaultId    *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=key_vault_id,json=keyVaultId,proto3" json:"key_vault_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2689,12 +2700,12 @@ const file_catalog_azure_azuredatafactorylinkedservice_v1alpha1_spec_proto_rawDe
 	"&AzureDataFactoryLinkedServiceBasicAuth\x12\"\n" +
 	"\busername\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\busername\x12&\n" +
 	"\bpassword\x18\x02 \x01(\tB\n" +
-	"\xbaH\x03\xc8\x01\x01\xa0\xa6\x1d\x01R\bpassword\"\xae\x0f\n" +
+	"\xbaH\x03\xc8\x01\x01\xa0\xa6\x1d\x01R\bpassword\"\xb2\x0f\n" +
 	"-AzureDataFactoryLinkedServiceAzureBlobStorage\x121\n" +
 	"\x11connection_string\x18\x01 \x01(\tB\x04\xa0\xa6\x1d\x01R\x10connectionString\x12\xf9\x01\n" +
 	"\x1aconnection_string_insecure\x18\x02 \x01(\tB\xba\x01\xaa\xa6\x1d\xb5\x01The deliberately-PLAIN-TEXT connection form (the provider's own contrast to connection_string): its contract is carrying NO secret material, and Azure stores and returns it readableR\x18connectionStringInsecure\x12\x1d\n" +
-	"\asas_uri\x18\x03 \x01(\tB\x04\xa0\xa6\x1d\x01R\x06sasUri\x12\x90\x01\n" +
-	"\x10service_endpoint\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xa0\xa6\x1d\x01\x88\xd4a\xd9\x0f\x92\xd4a$status.outputs.primary_blob_endpointR\x0fserviceEndpoint\x12\xab\x01\n" +
+	"\asas_uri\x18\x03 \x01(\tB\x04\xa0\xa6\x1d\x01R\x06sasUri\x12\x94\x01\n" +
+	"\x10service_endpoint\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xa0\xa6\x1d\x01\x88\xd4a\xd9\x0f\x92\xd4a$status.outputs.primary_blob_endpoint\x98\xd4a\x01R\x0fserviceEndpoint\x12\xab\x01\n" +
 	"\x1esas_token_linked_key_vault_key\x18\x05 \x01(\v2h.dev.planton.azure.azuredatafactorylinkedservice.v1alpha1.AzureDataFactoryLinkedServiceKeyVaultSecretRefR\x19sasTokenLinkedKeyVaultKey\x12\xbb\x01\n" +
 	"&service_principal_linked_key_vault_key\x18\x06 \x01(\v2h.dev.planton.azure.azuredatafactorylinkedservice.v1alpha1.AzureDataFactoryLinkedServiceKeyVaultSecretRefR!servicePrincipalLinkedKeyVaultKey\x12]\n" +
 	"\fstorage_kind\x18\a \x01(\tB:\xbaH7r5R\x00R\aStorageR\tStorageV2R\vBlobStorageR\x10BlockBlobStorageR\vstorageKind\x12@\n" +
@@ -2804,9 +2815,9 @@ const file_catalog_azure_azuredatafactorylinkedservice_v1alpha1_spec_proto_rawDe
 	"\x1eintegration_runtime_parameters\x18\x03 \x03(\v2\x7f.dev.planton.azure.azuredatafactorylinkedservice.v1alpha1.AzureDataFactoryLinkedServiceCustom.IntegrationRuntimeParametersEntryR\x1cintegrationRuntimeParameters\x1aO\n" +
 	"!IntegrationRuntimeParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfb\t\n" +
-	"0AzureDataFactoryLinkedServiceDataLakeStorageGen2\x12x\n" +
-	"\x03url\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB2\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a#status.outputs.primary_dfs_endpointR\x03url\x12@\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xff\t\n" +
+	"0AzureDataFactoryLinkedServiceDataLakeStorageGen2\x12|\n" +
+	"\x03url\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB6\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a#status.outputs.primary_dfs_endpoint\x98\xd4a\x01R\x03url\x12@\n" +
 	"\x14use_managed_identity\x18\x02 \x01(\bB\t\x8a\xa6\x1d\x05falseH\x00R\x12useManagedIdentity\x88\x01\x01\x124\n" +
 	"\x13storage_account_key\x18\x03 \x01(\tB\x04\xa0\xa6\x1d\x01R\x11storageAccountKey\x12\xfa\x01\n" +
 	"\x14service_principal_id\x18\x04 \x01(\tB\xc7\x01\xbaH\xc3\x01\xba\x01\xbf\x01\n" +
@@ -2815,9 +2826,9 @@ const file_catalog_azure_azuredatafactorylinkedservice_v1alpha1_spec_proto_rawDe
 	"\x06tenant\x18\x06 \x01(\tR\x06tenant:\xec\x04\xbaH\xe8\x04\x1a\xfc\x02\n" +
 	"1data_factory_linked_service_gen2_exactly_one_auth\x12\xa0\x01Set exactly one authentication mode -- use_managed_identity, storage_account_key, or a service principal (service_principal_id + service_principal_key + tenant)\x1a\xa3\x01((has(this.use_managed_identity) && this.use_managed_identity) ? 1 : 0) + (this.storage_account_key != '' ? 1 : 0) + (this.service_principal_id != '' ? 1 : 0) == 1\x1a\xe6\x01\n" +
 	",data_factory_linked_service_gen2_sp_complete\x12ZA service principal needs service_principal_id, service_principal_key, and tenant together\x1aZthis.service_principal_id == '' || (this.service_principal_key != '' && this.tenant != '')B\x17\n" +
-	"\x15_use_managed_identity\"\xaa\x01\n" +
-	"%AzureDataFactoryLinkedServiceKeyVault\x12\x80\x01\n" +
-	"\fkey_vault_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_idR\n" +
+	"\x15_use_managed_identity\"\xae\x01\n" +
+	"%AzureDataFactoryLinkedServiceKeyVault\x12\x84\x01\n" +
+	"\fkey_vault_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_id\x98\xd4a\x01R\n" +
 	"keyVaultId\"\x94\t\n" +
 	"\"AzureDataFactoryLinkedServiceKusto\x12-\n" +
 	"\x0ekusto_endpoint\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\rkustoEndpoint\x126\n" +

@@ -152,6 +152,10 @@ type AzureCosmosdbSqlRoleDefinitionSpec struct {
 	//
 	//	assignableScopes:
 	//	  - value: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/{account}/dbs/app-data
+	//
+	// Where a role MAY BE ASSIGNED is not where the definition lives (that is
+	// `cosmosdb_account_id`), so on a diagram these references are access,
+	// not placement.
 	AssignableScopes []*v1.StringValueOrRef `protobuf:"bytes,4,rep,name=assignable_scopes,json=assignableScopes,proto3" json:"assignable_scopes,omitempty"`
 	// The permission blocks defining what this role allows. Azure evaluates
 	// them as a union: an operation is permitted if any block's data actions
@@ -315,13 +319,13 @@ var File_catalog_azure_azurecosmosdbsqlroledefinition_v1alpha1_spec_proto protor
 
 const file_catalog_azure_azurecosmosdbsqlroledefinition_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"@catalog/azure/azurecosmosdbsqlroledefinition/v1alpha1/spec.proto\x129dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xbc\x05\n" +
+	"@catalog/azure/azurecosmosdbsqlroledefinition/v1alpha1/spec.proto\x129dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xc0\x05\n" +
 	"\"AzureCosmosdbSqlRoleDefinitionSpec\x12\x95\x01\n" +
 	"\x13cosmosdb_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xf0\x0f\x92\xd4a\"status.outputs.cosmosdb_account_idR\x11cosmosdbAccountId\x12'\n" +
 	"\trole_name\x18\x02 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\broleName\x12q\n" +
-	"\x04type\x18\x03 \x01(\x0e2].dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1.AzureCosmosdbSqlRoleDefinitionTypeR\x04type\x12\x94\x01\n" +
-	"\x11assignable_scopes\x18\x04 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB3\xbaH\x05\x92\x01\x02\b\x01\x88\xd4a\xf0\x0f\x92\xd4a\"status.outputs.cosmosdb_account_idR\x10assignableScopes\x12\x8f\x01\n" +
+	"\x04type\x18\x03 \x01(\x0e2].dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1.AzureCosmosdbSqlRoleDefinitionTypeR\x04type\x12\x98\x01\n" +
+	"\x11assignable_scopes\x18\x04 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB7\xbaH\x05\x92\x01\x02\b\x01\x88\xd4a\xf0\x0f\x92\xd4a\"status.outputs.cosmosdb_account_id\x98\xd4a\x01R\x10assignableScopes\x12\x8f\x01\n" +
 	"\vpermissions\x18\x05 \x03(\v2c.dev.planton.azure.azurecosmosdbsqlroledefinition.v1alpha1.AzureCosmosdbSqlRoleDefinitionPermissionB\b\xbaH\x05\x92\x01\x02\b\x01R\vpermissions\x129\n" +
 	"\x12role_definition_id\x18\x06 \x01(\tB\v\xbaH\b\xd8\x01\x01r\x03\xb0\x01\x01R\x10roleDefinitionId\"]\n" +
 	"(AzureCosmosdbSqlRoleDefinitionPermission\x121\n" +

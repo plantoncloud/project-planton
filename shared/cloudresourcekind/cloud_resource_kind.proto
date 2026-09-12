@@ -3707,11 +3707,18 @@ enum CloudResourceKind {
   // account, the single-service accounts) needs no other Azure
   // resource; subnets (network rules), Key Vault keys (CMK), storage
   // accounts and user-assigned identities are optional references.
+  // A container kind: every model deployment and every project is an
+  // ARM child created onto the account
+  // (accounts/{account}/deployments/{name}, .../projects/{name}), so a
+  // diagram draws them inside it. The subnets the account admits
+  // through its network ACLs or injects agent compute into are access,
+  // never placement (containment_exempt on those fields).
   AzureCognitiveAccount = 2160 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azcog"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_ai_ml
   }];
 
@@ -3738,6 +3745,12 @@ enum CloudResourceKind {
   // The workspace REQUIRES all three companion services at creation
   // (default storage, secrets vault, telemetry) -- genuine
   // deploy-order prerequisites, each with its own fixture profile.
+  // A container kind: datastores, compute clusters and instances, and
+  // online and batch endpoints are ARM children of the workspace
+  // (workspaces/{ws}/datastores|computes|onlineEndpoints|batchEndpoints/{name}),
+  // so a diagram draws them inside it. The companion services it
+  // names are reaches (containment_exempt on those fields), and so is
+  // the subnet its serverless compute or a compute's nodes attach to.
   AzureMachineLearningWorkspace = 2163 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
@@ -3748,6 +3761,7 @@ enum CloudResourceKind {
       AzureKeyVault,
       AzureApplicationInsights
     ]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // An ARM child of its workspace. The storage target (container,
@@ -3782,6 +3796,11 @@ enum CloudResourceKind {
   // The hub REQUIRES both companion services at creation (secrets
   // vault, default storage) -- genuine deploy-order prerequisites,
   // each with its own fixture profile.
+  // A container kind: every AI Foundry project is created inside its
+  // hub and deploys into the hub's resource group (the project spec
+  // carries none), so a diagram draws the projects inside the hub. The
+  // vault and storage account the hub names are reaches
+  // (containment_exempt on those fields).
   AzureAiFoundry = 2167 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
@@ -3791,6 +3810,7 @@ enum CloudResourceKind {
       AzureKeyVault,
       AzureStorageAccount
     ]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // Deploys into its hub's resource group (the provider derives the
@@ -3813,11 +3833,17 @@ enum CloudResourceKind {
   // stable scoring address applications call. azurerm carries no ML
   // endpoint resources; the modules write the raw ARM shape at a
   // pinned api-version (azapi / azure-native).
+  // A container kind in its turn: every online deployment is an ARM
+  // child created under the endpoint whose traffic map routes to it
+  // (.../onlineEndpoints/{endpoint}/deployments/{name}) and cannot
+  // exist without it, so a diagram draws the deployments inside the
+  // endpoint, inside the workspace.
   AzureMachineLearningOnlineEndpoint = 2170 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azmloe"
     prerequisites: [AzureMachineLearningWorkspace]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // An ARM child of its endpoint (.../deployments/{name}) -- the
@@ -3833,11 +3859,18 @@ enum CloudResourceKind {
   // stable address batch scoring jobs are submitted to. azurerm
   // carries no ML endpoint resources; the modules write the raw ARM
   // shape at a pinned api-version (azapi / azure-native).
+  // A container kind in its turn: every batch deployment is an ARM
+  // child created under the endpoint whose default-deployment pointer
+  // routes to it (.../batchEndpoints/{endpoint}/deployments/{name}),
+  // so a diagram draws the deployments inside the endpoint, inside
+  // the workspace. The compute cluster a deployment runs on is a
+  // reach, not a room.
   AzureMachineLearningBatchEndpoint = 2172 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azmlbe"
     prerequisites: [AzureMachineLearningWorkspace]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // An ARM child of its endpoint (.../deployments/{name}) -- the

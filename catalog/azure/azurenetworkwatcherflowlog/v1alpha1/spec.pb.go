@@ -75,7 +75,10 @@ type AzureNetworkWatcherFlowLogSpec struct {
 	// The storage account flow-log files land in -- references an
 	// AzureStorageAccount's ARM id. Creating the flow log writes a
 	// lifecycle-management rule on this account that OVERWRITES existing
-	// rules (see the spec note). Updatable in place.
+	// rules (see the spec note). Updatable in place. Containment-exempt: the
+	// flow log WRITES to the account and lives in its Network Watcher's
+	// resource group, so on a diagram it is drawn beside the account with a
+	// line to it, never inside it.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// Whether the flow log actively records. Unspecified applies true --
 	// a flow log exists to record; set false to pause collection while
@@ -373,14 +376,14 @@ var File_catalog_azure_azurenetworkwatcherflowlog_v1alpha1_spec_proto protorefle
 
 const file_catalog_azure_azurenetworkwatcherflowlog_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"<catalog/azure/azurenetworkwatcherflowlog/v1alpha1/spec.proto\x125dev.planton.azure.azurenetworkwatcherflowlog.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xd7\x0f\n" +
+	"<catalog/azure/azurenetworkwatcherflowlog/v1alpha1/spec.proto\x125dev.planton.azure.azurenetworkwatcherflowlog.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xdb\x0f\n" +
 	"\x1eAzureNetworkWatcherFlowLogSpec\x12\"\n" +
 	"\x06region\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x06region\x12\xae\x02\n" +
 	"\x04name\x18\x02 \x01(\tB\x99\x02\xbaH\x95\x02\xba\x01\x8a\x02\n" +
 	"\x14flow_log_name_format\x12\xaa\x01Flow log names start with a letter or number, end with a letter, number, or underscore, and may contain alphanumerics, underscores, periods, and hyphens (1-80 characters)\x1aEthis == '' || this.matches('^[^\\\\W_]$|^[^\\\\W_][\\\\w.\\\\-]{0,78}[\\\\w]$')\xc8\x01\x01r\x02\x18PR\x04name\x12h\n" +
-	"\x12target_resource_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x06\xbaH\x03\xc8\x01\x01R\x10targetResourceId\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12'\n" +
+	"\x12target_resource_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x06\xbaH\x03\xc8\x01\x01R\x10targetResourceId\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12'\n" +
 	"\aenabled\x18\x05 \x01(\bB\b\x8a\xa6\x1d\x04trueH\x00R\aenabled\x88\x01\x01\x12-\n" +
 	"\aversion\x18\x06 \x01(\x05B\x0e\xbaH\x06\x1a\x04\x18\x02(\x01\x8a\xa6\x1d\x011H\x01R\aversion\x88\x01\x01\x12\x93\x01\n" +
 	"\x10retention_policy\x18\a \x01(\v2`.dev.planton.azure.azurenetworkwatcherflowlog.v1alpha1.AzureNetworkWatcherFlowLogRetentionPolicyB\x06\xbaH\x03\xc8\x01\x01R\x0fretentionPolicy\x12\x8e\x01\n" +

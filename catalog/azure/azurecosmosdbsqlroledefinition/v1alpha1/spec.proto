@@ -84,9 +84,14 @@ message AzureCosmosdbSqlRoleDefinitionSpec {
   // the account ID (references cannot append path suffixes), e.g.:
   //   assignableScopes:
   //     - value: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/{account}/dbs/app-data
+  //
+  // Where a role MAY BE ASSIGNED is not where the definition lives (that is
+  // `cosmosdb_account_id`), so on a diagram these references are access,
+  // not placement.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef assignable_scopes = 4 [
     (buf.validate.field).repeated.min_items = 1,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureCosmosdbAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.cosmosdb_account_id"
   ];
 

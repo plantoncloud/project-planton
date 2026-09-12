@@ -298,12 +298,19 @@ type AzureMachineLearningWorkspaceSpec struct {
 	// to, by ARM ID. Fixed at creation.
 	ApplicationInsightsId *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=application_insights_id,json=applicationInsightsId,proto3" json:"application_insights_id,omitempty"`
 	// The Key Vault the workspace stores its secrets in (connection
-	// credentials, compute SSH keys), by ARM ID. Fixed at creation.
+	// credentials, compute SSH keys), by ARM ID. Fixed at creation. The
+	// workspace WRITES INTO the vault and lives in its own resource group,
+	// so the reference is access, not placement, on a diagram.
 	KeyVaultId *v1.StringValueOrRef `protobuf:"bytes,5,opt,name=key_vault_id,json=keyVaultId,proto3" json:"key_vault_id,omitempty"`
 	// The storage account backing the workspace's artifacts and its two
 	// built-in datastores, by ARM ID. Must be a general-purpose account
 	// WITHOUT hierarchical namespace (ARM rejects Data Lake Gen2
 	// accounts as default workspace storage). Fixed at creation.
+	//
+	// The workspace READS and WRITES this account as its default storage and
+	// lives in its own resource group, so on a diagram the reference is
+	// access, not placement -- the same rule its key_vault_id already
+	// carries.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,6,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The workspace's managed identity. REQUIRED -- the workspace
 	// accesses its companion services (storage, key vault, insights)
@@ -770,7 +777,9 @@ func (x *AzureMachineLearningWorkspaceFeatureStore) GetOnlineConnectionName() st
 // The whole block is fixed at creation.
 type AzureMachineLearningWorkspaceEncryption struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The Key Vault holding the encryption key, by ARM ID.
+	// The Key Vault holding the encryption key, by ARM ID. The workspace
+	// UNWRAPS its key through the vault and never lives in it, so the
+	// reference is access, not placement, on a diagram.
 	KeyVaultId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=key_vault_id,json=keyVaultId,proto3" json:"key_vault_id,omitempty"`
 	// The Key Vault key (data-plane URL, e.g.
 	// "https://{vault}.vault.azure.net/keys/{name}"). Reference an
@@ -902,6 +911,10 @@ type AzureMachineLearningWorkspaceServerlessCompute struct {
 	// The subnet serverless compute nodes are placed in, by ARM ID.
 	// Required when public_ip_enabled is false and the workspace's
 	// public network access is disabled.
+	// On a diagram the workspace lives in its resource group and its
+	// serverless nodes attach to this subnet, so the reference is
+	// access, not placement -- a workspace is never drawn inside the
+	// subnet it injects compute into (the Azure-SSIS runtime's rule).
 	SubnetId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	// Whether serverless compute nodes get public IPs. The provider's
 	// default is false (no public IPs). NOTE (update behavior): the
@@ -1186,16 +1199,16 @@ var File_catalog_azure_azuremachinelearningworkspace_v1alpha1_spec_proto protore
 
 const file_catalog_azure_azuremachinelearningworkspace_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"?catalog/azure/azuremachinelearningworkspace/v1alpha1/spec.proto\x128dev.planton.azure.azuremachinelearningworkspace.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\x90\"\n" +
+	"?catalog/azure/azuremachinelearningworkspace/v1alpha1/spec.proto\x128dev.planton.azure.azuremachinelearningworkspace.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\x98\"\n" +
 	"!AzureMachineLearningWorkspaceSpec\x12\"\n" +
 	"\x06region\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x06region\x12\x8c\x01\n" +
 	"\x0eresource_group\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_nameR\rresourceGroup\x12>\n" +
 	"\x04name\x18\x03 \x01(\tB*\xbaH'\xc8\x01\x01r\"2 ^[a-zA-Z0-9][a-zA-Z0-9_-]{2,32}$R\x04name\x12\xa1\x01\n" +
-	"\x17application_insights_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\x83\x10\x92\xd4a&status.outputs.application_insights_idR\x15applicationInsightsId\x12\x80\x01\n" +
-	"\fkey_vault_id\x18\x05 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_idR\n" +
-	"keyVaultId\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x06 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12\x83\x01\n" +
+	"\x17application_insights_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\x83\x10\x92\xd4a&status.outputs.application_insights_idR\x15applicationInsightsId\x12\x84\x01\n" +
+	"\fkey_vault_id\x18\x05 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_id\x98\xd4a\x01R\n" +
+	"keyVaultId\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x06 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12\x83\x01\n" +
 	"\bidentity\x18\a \x01(\v2_.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceIdentityB\x06\xbaH\x03\xc8\x01\x01R\bidentity\x12o\n" +
 	"\x04kind\x18\b \x01(\x0e2[.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceKindR\x04kind\x12\x88\x01\n" +
 	"\rfeature_store\x18\t \x01(\v2c.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceFeatureStoreR\ffeatureStore\x12\x9c\x01\n" +
@@ -1236,17 +1249,17 @@ const file_catalog_azure_azuremachinelearningworkspace_v1alpha1_spec_proto_rawDe
 	")AzureMachineLearningWorkspaceFeatureStore\x12C\n" +
 	"\x1ecomputer_spark_runtime_version\x18\x01 \x01(\tR\x1bcomputerSparkRuntimeVersion\x126\n" +
 	"\x17offline_connection_name\x18\x02 \x01(\tR\x15offlineConnectionName\x124\n" +
-	"\x16online_connection_name\x18\x03 \x01(\tR\x14onlineConnectionName\"\xba\x03\n" +
-	"'AzureMachineLearningWorkspaceEncryption\x12\x80\x01\n" +
-	"\fkey_vault_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_idR\n" +
+	"\x16online_connection_name\x18\x03 \x01(\tR\x14onlineConnectionName\"\xbe\x03\n" +
+	"'AzureMachineLearningWorkspaceEncryption\x12\x84\x01\n" +
+	"\fkey_vault_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\xd5\x0f\x92\xd4a\x1bstatus.outputs.key_vault_id\x98\xd4a\x01R\n" +
 	"keyVaultId\x12w\n" +
 	"\x06key_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\xe9\x0f\x92\xd4a\x1dstatus.outputs.versionless_idR\x05keyId\x12\x92\x01\n" +
 	"\x19user_assigned_identity_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB#\x88\xd4a\x8c\x10\x92\xd4a\x1astatus.outputs.identity_idR\x16userAssignedIdentityId\"\xfe\x01\n" +
 	"+AzureMachineLearningWorkspaceManagedNetwork\x12\x8b\x01\n" +
 	"\x0eisolation_mode\x18\x01 \x01(\x0e2d.dev.planton.azure.azuremachinelearningworkspace.v1alpha1.AzureMachineLearningWorkspaceIsolationModeR\risolationMode\x12A\n" +
-	"\x1dprovision_on_creation_enabled\x18\x02 \x01(\bR\x1aprovisionOnCreationEnabled\"\xd0\x01\n" +
-	".AzureMachineLearningWorkspaceServerlessCompute\x12r\n" +
-	"\tsubnet_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\x12*\n" +
+	"\x1dprovision_on_creation_enabled\x18\x02 \x01(\bR\x1aprovisionOnCreationEnabled\"\xd4\x01\n" +
+	".AzureMachineLearningWorkspaceServerlessCompute\x12v\n" +
+	"\tsubnet_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\bsubnetId\x12*\n" +
 	"\x11public_ip_enabled\x18\x02 \x01(\bR\x0fpublicIpEnabled\"\x86\x01\n" +
 	"-AzureMachineLearningWorkspaceFqdnOutboundRule\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +

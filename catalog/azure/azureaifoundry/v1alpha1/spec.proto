@@ -58,10 +58,13 @@ message AzureAiFoundrySpec {
   ];
 
   // The Key Vault the hub stores its secrets in (connection
-  // credentials, project secrets), by ARM ID. Fixed at creation.
+  // credentials, project secrets), by ARM ID. Fixed at creation. The hub
+  // WRITES INTO the vault and lives in its own resource group, so the
+  // reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 4 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 
@@ -69,9 +72,15 @@ message AzureAiFoundrySpec {
   // by ARM ID. Use a general-purpose account WITHOUT hierarchical
   // namespace -- the hub is an ML workspace at ARM, which rejects
   // Data Lake Gen2 accounts as default storage. Fixed at creation.
+  //
+  // The hub READS and WRITES this account as its default workspace storage
+  // and lives in its own resource group, so on a diagram the reference is
+  // access, not placement -- the same rule its key_vault_id already
+  // carries.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 5 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 
@@ -189,10 +198,13 @@ enum AzureAiFoundryIdentityType {
 // Customer-managed-key encryption for the hub's data at rest. The
 // whole block is fixed at creation.
 message AzureAiFoundryEncryption {
-  // The Key Vault holding the encryption key, by ARM ID.
+  // The Key Vault holding the encryption key, by ARM ID. The hub UNWRAPS
+  // its key through the vault and never lives in it, so the reference is
+  // access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 

@@ -70,10 +70,14 @@ message AzureNetworkWatcherFlowLogSpec {
   // The storage account flow-log files land in -- references an
   // AzureStorageAccount's ARM id. Creating the flow log writes a
   // lifecycle-management rule on this account that OVERWRITES existing
-  // rules (see the spec note). Updatable in place.
+  // rules (see the spec note). Updatable in place. Containment-exempt: the
+  // flow log WRITES to the account and lives in its Network Watcher's
+  // resource group, so on a diagram it is drawn beside the account with a
+  // line to it, never inside it.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 4 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 

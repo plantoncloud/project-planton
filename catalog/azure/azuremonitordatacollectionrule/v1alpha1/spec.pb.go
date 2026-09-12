@@ -1619,6 +1619,10 @@ type AzureMonitorDataCollectionRuleEventHubDestination struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The destination Event Hub, by ARM resource ID. Can be a literal
 	// ARM ID or a reference to an AzureEventHub output.
+	//
+	// Collected data is DELIVERED into the hub; the rule lives in its own
+	// resource group, so on a diagram the reference is access, not
+	// placement -- the diagnostic setting's rule.
 	EventHubId    *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=event_hub_id,json=eventHubId,proto3" json:"event_hub_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1737,6 +1741,10 @@ type AzureMonitorDataCollectionRuleStorageBlobDestination struct {
 	ContainerName string `protobuf:"bytes,2,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
 	// The destination storage account, by ARM resource ID. Can be a
 	// literal ARM ID or a reference to an AzureStorageAccount output.
+	//
+	// Collected data is DELIVERED into this account; the rule lives in its
+	// own resource group, so on a diagram the reference is access, not
+	// placement -- the diagnostic setting's rule.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -1802,6 +1810,10 @@ type AzureMonitorDataCollectionRuleStorageTableDirect struct {
 	TableName string `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
 	// The destination storage account, by ARM resource ID. Can be a
 	// literal ARM ID or a reference to an AzureStorageAccount output.
+	//
+	// Collected data is DELIVERED into this account; the rule lives in its
+	// own resource group, so on a diagram the reference is access, not
+	// placement -- the diagnostic setting's rule.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -2184,29 +2196,29 @@ const file_catalog_azure_azuremonitordatacollectionrule_v1alpha1_spec_proto_rawD
 	"\x15workspace_resource_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\x82\x10\x92\xd4a\x1bstatus.outputs.workspace_idR\x13workspaceResourceId\"S\n" +
 	"1AzureMonitorDataCollectionRuleAzureMonitorMetrics\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\"\xd6\x01\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\"\xda\x01\n" +
 	"1AzureMonitorDataCollectionRuleEventHubDestination\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x12\x80\x01\n" +
-	"\fevent_hub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\x9d\x10\x92\xd4a\x1bstatus.outputs.event_hub_idR\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x12\x84\x01\n" +
+	"\fevent_hub_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\xbaH\x03\xc8\x01\x01\x88\xd4a\x9d\x10\x92\xd4a\x1bstatus.outputs.event_hub_id\x98\xd4a\x01R\n" +
 	"eventHubId\"\xb8\x01\n" +
 	",AzureMonitorDataCollectionRuleMonitorAccount\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x12h\n" +
-	"\x12monitor_account_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x06\xbaH\x03\xc8\x01\x01R\x10monitorAccountId\"\x9e\x02\n" +
+	"\x12monitor_account_id\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\x06\xbaH\x03\xc8\x01\x01R\x10monitorAccountId\"\xa2\x02\n" +
 	"4AzureMonitorDataCollectionRuleStorageBlobDestination\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x121\n" +
 	"\x0econtainer_name\x18\x02 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\rcontainerName\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\"\x92\x02\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\rcontainerName\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\"\x96\x02\n" +
 	"0AzureMonitorDataCollectionRuleStorageTableDirect\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\x04name\x12)\n" +
 	"\n" +
 	"table_name\x18\x02 \x01(\tB\n" +
-	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\ttableName\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\"\xfe\x01\n" +
+	"\xbaH\a\xc8\x01\x01r\x02\x10\x01R\ttableName\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\"\xfe\x01\n" +
 	"&AzureMonitorDataCollectionRuleDataFlow\x12(\n" +
 	"\astreams\x18\x01 \x03(\tB\x0e\xbaH\v\x92\x01\b\b\x01\"\x04r\x02\x10\x01R\astreams\x122\n" +
 	"\fdestinations\x18\x02 \x03(\tB\x0e\xbaH\v\x92\x01\b\b\x01\"\x04r\x02\x10\x01R\fdestinations\x12,\n" +

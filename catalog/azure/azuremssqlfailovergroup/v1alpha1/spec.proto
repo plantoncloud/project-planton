@@ -79,10 +79,13 @@ message AzureMssqlFailoverGroupSpec {
 // A partner (secondary) server in a failover group.
 message AzureMssqlFailoverGroupPartnerServer {
   // The partner logical server, in a different region than the primary.
-  // Defaults to referencing an AzureMssqlServer's server_id output.
+  // Defaults to referencing an AzureMssqlServer's server_id output. The
+  // group is created ON its primary and replicates TO this server, so on a
+  // diagram this reference is access, not placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef server_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureMssqlServer,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.server_id"
   ];
 }

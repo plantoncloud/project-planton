@@ -427,9 +427,14 @@ message AzureCognitiveAccountVirtualNetworkRule {
   // The subnet's ARM ID. The subnet needs the
   // "Microsoft.CognitiveServices" service endpoint enabled (or set
   // ignore_missing_vnet_service_endpoint).
+  // On a diagram this is a firewall rule -- the account admits traffic
+  // from the subnet and lives in its resource group -- so the
+  // reference is access, not placement (every PaaS kind's
+  // network-rule subnets carry the same mark).
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 
@@ -468,9 +473,14 @@ message AzureCognitiveAccountNetworkInjection {
   // behavior): Azure removes the subnet's service association link
   // asynchronously after the account deletes -- the subnet cannot be
   // deleted until that completes (the module waits).
+  // On a diagram the account lives in its resource group and its
+  // agents' compute attaches to this subnet, so the reference is
+  // access, not placement -- the account is never drawn inside the
+  // subnet it injects into (the Azure-SSIS runtime's rule).
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 2 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 }
@@ -478,9 +488,14 @@ message AzureCognitiveAccountNetworkInjection {
 // One user-owned storage attachment.
 message AzureCognitiveAccountStorage {
   // The storage account's ARM ID.
+  //
+  // The account reads training data and writes results here and lives in
+  // its own resource group, so on a diagram the reference is access, not
+  // placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 

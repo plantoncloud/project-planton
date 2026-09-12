@@ -358,7 +358,8 @@ type AzureDataProtectionBackupInstanceKubernetesCluster struct {
 	// cluster must carry the AKS Backup extension and its
 	// trusted-access role binding to the vault before create -- an
 	// apply-time contract Azure enforces, not something this spec can
-	// check.
+	// check. The backup instance PROTECTS the cluster and lives in its
+	// vault, so the reference is access, not placement, on a diagram.
 	KubernetesClusterId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=kubernetes_cluster_id,json=kubernetesClusterId,proto3" json:"kubernetes_cluster_id,omitempty"`
 	// The resource group (by name) where Azure Backup stores the
 	// cluster's snapshots. Fixed at creation.
@@ -721,9 +722,9 @@ const file_catalog_azure_azuredataprotectionbackupinstance_v1alpha1_spec_proto_r
 	"\adisk_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\xbaH\x03\xc8\x01\x01\x88\xd4a\xe7\x0f\x92\xd4a\x16status.outputs.disk_idR\x06diskId\x12\xaa\x01\n" +
 	"\x1csnapshot_resource_group_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_name\x98\xd4a\x01R\x19snapshotResourceGroupName\x12G\n" +
 	"\x18snapshot_subscription_id\x18\x03 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01H\x00R\x16snapshotSubscriptionId\x88\x01\x01B\x1b\n" +
-	"\x19_snapshot_subscription_id\"\xbe\x04\n" +
-	"2AzureDataProtectionBackupInstanceKubernetesCluster\x12\x90\x01\n" +
-	"\x15kubernetes_cluster_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\xd1\x0f\x92\xd4a\x19status.outputs.cluster_idR\x13kubernetesClusterId\x12\xaa\x01\n" +
+	"\x19_snapshot_subscription_id\"\xc2\x04\n" +
+	"2AzureDataProtectionBackupInstanceKubernetesCluster\x12\x94\x01\n" +
+	"\x15kubernetes_cluster_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\xd1\x0f\x92\xd4a\x19status.outputs.cluster_id\x98\xd4a\x01R\x13kubernetesClusterId\x12\xaa\x01\n" +
 	"\x1csnapshot_resource_group_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_name\x98\xd4a\x01R\x19snapshotResourceGroupName\x12\xc7\x01\n" +
 	"\x1cbackup_datasource_parameters\x18\x03 \x01(\v2\x84\x01.dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceKubernetesClusterDatasourceParametersR\x1abackupDatasourceParameters\"\xc4\x03\n" +
 	"FAzureDataProtectionBackupInstanceKubernetesClusterDatasourceParameters\x12/\n" +

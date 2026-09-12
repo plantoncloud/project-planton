@@ -5449,7 +5449,9 @@ type AzureAksClusterIngressApplicationGateway struct {
 	// gateway, e.g. "10.225.0.0/24" (at least /27).
 	SubnetCidr string `protobuf:"bytes,3,opt,name=subnet_cidr,json=subnetCidr,proto3" json:"subnet_cidr,omitempty"`
 	// Existing subnet to host the new gateway -- must be dedicated to it
-	// and at least /27.
+	// and at least /27. The add-on's GATEWAY lives in this subnet; the
+	// cluster does not, so the reference is access, not placement, on a
+	// diagram -- the cluster's own node subnet places it.
 	SubnetId      *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -6834,14 +6836,14 @@ const file_catalog_azure_azureakscluster_v1alpha1_spec_proto_rawDesc = "" +
 	"\x1alog_analytics_workspace_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\x82\x10\x92\xd4a\x1bstatus.outputs.workspace_idR\x17logAnalyticsWorkspaceId\"w\n" +
 	"\x1dAzureAksClusterMonitorMetrics\x12/\n" +
 	"\x13annotations_allowed\x18\x01 \x01(\tR\x12annotationsAllowed\x12%\n" +
-	"\x0elabels_allowed\x18\x02 \x01(\tR\rlabelsAllowed\"\xd1\x04\n" +
+	"\x0elabels_allowed\x18\x02 \x01(\tR\rlabelsAllowed\"\xd5\x04\n" +
 	"(AzureAksClusterIngressApplicationGateway\x12\x81\x01\n" +
 	"\n" +
 	"gateway_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB.\x88\xd4a\xe0\x0f\x92\xd4a%status.outputs.application_gateway_idR\tgatewayId\x12!\n" +
 	"\fgateway_name\x18\x02 \x01(\tR\vgatewayName\x12\x1f\n" +
 	"\vsubnet_cidr\x18\x03 \x01(\tR\n" +
-	"subnetCidr\x12r\n" +
-	"\tsubnet_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId:\xe8\x01\xbaH\xe4\x01\x1a\xe1\x01\n" +
+	"subnetCidr\x12v\n" +
+	"\tsubnet_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\bsubnetId:\xe8\x01\xbaH\xe4\x01\x1a\xe1\x01\n" +
 	"\x1baks_agic_exactly_one_anchor\x12ZSet exactly one of gateway_id, subnet_cidr, or subnet_id to anchor the Application Gateway\x1af(has(this.gateway_id) ? 1 : 0) + (this.subnet_cidr != '' ? 1 : 0) + (has(this.subnet_id) ? 1 : 0) == 1\"K\n" +
 	" AzureAksClusterAciConnectorLinux\x12'\n" +
 	"\vsubnet_name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\n" +

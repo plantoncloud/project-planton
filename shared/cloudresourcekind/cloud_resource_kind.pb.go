@@ -1346,6 +1346,12 @@ const (
 	// account, the single-service accounts) needs no other Azure
 	// resource; subnets (network rules), Key Vault keys (CMK), storage
 	// accounts and user-assigned identities are optional references.
+	// A container kind: every model deployment and every project is an
+	// ARM child created onto the account
+	// (accounts/{account}/deployments/{name}, .../projects/{name}), so a
+	// diagram draws them inside it. The subnets the account admits
+	// through its network ACLs or injects agent compute into are access,
+	// never placement (containment_exempt on those fields).
 	CloudResourceKind_AzureCognitiveAccount CloudResourceKind = 2160
 	// An ARM child of its account: a model deployment (which model
 	// runs, at which throughput class) exists only on an Azure AI
@@ -1357,6 +1363,12 @@ const (
 	// The workspace REQUIRES all three companion services at creation
 	// (default storage, secrets vault, telemetry) -- genuine
 	// deploy-order prerequisites, each with its own fixture profile.
+	// A container kind: datastores, compute clusters and instances, and
+	// online and batch endpoints are ARM children of the workspace
+	// (workspaces/{ws}/datastores|computes|onlineEndpoints|batchEndpoints/{name}),
+	// so a diagram draws them inside it. The companion services it
+	// names are reaches (containment_exempt on those fields), and so is
+	// the subnet its serverless compute or a compute's nodes attach to.
 	CloudResourceKind_AzureMachineLearningWorkspace CloudResourceKind = 2163
 	// An ARM child of its workspace. The storage target (container,
 	// filesystem or share) is scenario-declared via the
@@ -1372,6 +1384,11 @@ const (
 	// The hub REQUIRES both companion services at creation (secrets
 	// vault, default storage) -- genuine deploy-order prerequisites,
 	// each with its own fixture profile.
+	// A container kind: every AI Foundry project is created inside its
+	// hub and deploys into the hub's resource group (the project spec
+	// carries none), so a diagram draws the projects inside the hub. The
+	// vault and storage account the hub names are reaches
+	// (containment_exempt on those fields).
 	CloudResourceKind_AzureAiFoundry CloudResourceKind = 2167
 	// Deploys into its hub's resource group (the provider derives the
 	// group from the hub reference -- the project spec carries none).
@@ -1381,6 +1398,11 @@ const (
 	// stable scoring address applications call. azurerm carries no ML
 	// endpoint resources; the modules write the raw ARM shape at a
 	// pinned api-version (azapi / azure-native).
+	// A container kind in its turn: every online deployment is an ARM
+	// child created under the endpoint whose traffic map routes to it
+	// (.../onlineEndpoints/{endpoint}/deployments/{name}) and cannot
+	// exist without it, so a diagram draws the deployments inside the
+	// endpoint, inside the workspace.
 	CloudResourceKind_AzureMachineLearningOnlineEndpoint CloudResourceKind = 2170
 	// An ARM child of its endpoint (.../deployments/{name}) -- the
 	// running copy of a model the endpoint's traffic map routes to.
@@ -1389,6 +1411,12 @@ const (
 	// stable address batch scoring jobs are submitted to. azurerm
 	// carries no ML endpoint resources; the modules write the raw ARM
 	// shape at a pinned api-version (azapi / azure-native).
+	// A container kind in its turn: every batch deployment is an ARM
+	// child created under the endpoint whose default-deployment pointer
+	// routes to it (.../batchEndpoints/{endpoint}/deployments/{name}),
+	// so a diagram draws the deployments inside the endpoint, inside
+	// the workspace. The compute cluster a deployment runs on is a
+	// reach, not a room.
 	CloudResourceKind_AzureMachineLearningBatchEndpoint CloudResourceKind = 2172
 	// An ARM child of its endpoint (.../deployments/{name}) -- the
 	// job recipe (model, compute, batching behavior) the endpoint's
@@ -4242,7 +4270,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\xf7\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\x81\xdc\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4625,20 +4653,20 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x19AzureVpnGatewayConnection\x10\xe8\x10\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\bazvpngwc:\x04\xe7\x10\xe9\x10P\xcd\x01\x125\n" +
 	"\fAzureVpnSite\x10\xe9\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazvpnsite:\x02\xe4\x10P\xcd\x01\x12C\n" +
 	"\x1aAzurePointToSiteVpnGateway\x10\xea\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazp2sgw:\x04\xe5\x10\xeb\x10P\xcd\x01\x12B\n" +
-	"\x1bAzureVpnServerConfiguration\x10\xeb\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazvpnsc:\x02\xd0\x0fP\xcd\x01\x12:\n" +
-	"\x15AzureCognitiveAccount\x10\xf0\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azcog:\x02\xd0\x0fP\xd0\x01\x12>\n" +
+	"\x1bAzureVpnServerConfiguration\x10\xeb\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazvpnsc:\x02\xd0\x0fP\xcd\x01\x12<\n" +
+	"\x15AzureCognitiveAccount\x10\xf0\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azcog0\x01:\x02\xd0\x0fP\xd0\x01\x12>\n" +
 	"\x18AzureCognitiveDeployment\x10\xf1\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcogd:\x02\xf0\x10P\xd0\x01\x12B\n" +
-	"\x1cAzureCognitiveAccountProject\x10\xf2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcogp:\x02\xf0\x10P\xd0\x01\x12H\n" +
-	"\x1dAzureMachineLearningWorkspace\x10\xf3\x10\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\x05azmlw:\b\xd0\x0f\xd9\x0f\xd5\x0f\x83\x10P\xd0\x01\x12C\n" +
+	"\x1cAzureCognitiveAccountProject\x10\xf2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcogp:\x02\xf0\x10P\xd0\x01\x12J\n" +
+	"\x1dAzureMachineLearningWorkspace\x10\xf3\x10\x1a&\xa2\xf7\x04\"\b\r\x12\bv1alpha1\"\x05azmlw0\x01:\b\xd0\x0f\xd9\x0f\xd5\x0f\x83\x10P\xd0\x01\x12C\n" +
 	"\x1dAzureMachineLearningDatastore\x10\xf4\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlds:\x02\xf3\x10P\xd0\x01\x12H\n" +
 	"\"AzureMachineLearningComputeCluster\x10\xf5\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlcc:\x02\xf3\x10P\xd0\x01\x12I\n" +
-	"#AzureMachineLearningComputeInstance\x10\xf6\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlci:\x02\xf3\x10P\xd0\x01\x127\n" +
-	"\x0eAzureAiFoundry\x10\xf7\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\x05azaif:\x06\xd0\x0f\xd5\x0f\xd9\x0fP\xd0\x01\x12;\n" +
+	"#AzureMachineLearningComputeInstance\x10\xf6\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlci:\x02\xf3\x10P\xd0\x01\x129\n" +
+	"\x0eAzureAiFoundry\x10\xf7\x10\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\x05azaif0\x01:\x06\xd0\x0f\xd5\x0f\xd9\x0fP\xd0\x01\x12;\n" +
 	"\x15AzureAiFoundryProject\x10\xf8\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azaifp:\x02\xf7\x10P\xd0\x01\x128\n" +
-	"\x12AzureSearchService\x10\xf9\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azsrch:\x02\xd0\x0fP\xd0\x01\x12H\n" +
-	"\"AzureMachineLearningOnlineEndpoint\x10\xfa\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmloe:\x02\xf3\x10P\xd0\x01\x12J\n" +
-	"$AzureMachineLearningOnlineDeployment\x10\xfb\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlod:\x02\xfa\x10P\xd0\x01\x12G\n" +
-	"!AzureMachineLearningBatchEndpoint\x10\xfc\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbe:\x02\xf3\x10P\xd0\x01\x12I\n" +
+	"\x12AzureSearchService\x10\xf9\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azsrch:\x02\xd0\x0fP\xd0\x01\x12J\n" +
+	"\"AzureMachineLearningOnlineEndpoint\x10\xfa\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azmloe0\x01:\x02\xf3\x10P\xd0\x01\x12J\n" +
+	"$AzureMachineLearningOnlineDeployment\x10\xfb\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlod:\x02\xfa\x10P\xd0\x01\x12I\n" +
+	"!AzureMachineLearningBatchEndpoint\x10\xfc\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azmlbe0\x01:\x02\xf3\x10P\xd0\x01\x12I\n" +
 	"#AzureMachineLearningBatchDeployment\x10\xfd\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbd:\x02\xfc\x10P\xd0\x01\x12A\n" +
 	"\x1aAzureRecoveryServicesVault\x10\xff\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azrsv0\x01:\x02\xd0\x0fP\xd4\x01\x128\n" +
 	"\x13AzureBackupPolicyVm\x10\x80\x11\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azbpv:\x02\xff\x10P\xd4\x01\x12>\n" +

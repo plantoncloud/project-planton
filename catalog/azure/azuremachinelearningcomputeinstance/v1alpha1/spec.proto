@@ -86,8 +86,13 @@ message AzureMachineLearningComputeInstanceSpec {
   // The subnet the instance is placed in, by ARM ID. Only legal when
   // the workspace does NOT use a managed network (Azure then networks
   // the instance itself). Fixed at creation.
+  // On a diagram the instance is an ARM child of its workspace
+  // (workspaces/{ws}/computes/{name}) and lives there; the subnet is
+  // where its network interface attaches, so the reference is access,
+  // not placement (the compute cluster's and the AKS node pool's rule).
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 9 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 
