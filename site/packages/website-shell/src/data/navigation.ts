@@ -30,7 +30,7 @@ export const menuProduct: MenuItem[] = [
   { label: 'Security', subLabel: 'Secrets, IAM, and audit - built into every layer', href: '/features/security' },
   { label: 'Agent Fleet', subLabel: 'AI agents, purpose-built for infrastructure', href: '/features/agent-fleet' },
   { label: 'CLI', subLabel: 'Command your cloud from the terminal', href: '/features/cli' },
-  { label: 'Planton Desktop', subLabel: 'The whole platform on your laptop, free forever', href: '/features/desktop' },
+  { label: 'Desktop', subLabel: 'The whole platform on your laptop, free forever', href: '/features/desktop' },
   { label: 'Open Source', subLabel: 'The open-source core of Planton', href: '/features/open-source' },
 ];
 

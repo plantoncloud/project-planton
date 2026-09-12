@@ -12,10 +12,8 @@ import {
   PrimaryButton,
 } from '@/components/landing-page/v3-2026-01-02-1000/shared';
 import { POSITIONING } from '@/data/positioning';
-import { DESKTOP_BREW_COMMAND, DESKTOP_DOWNLOAD_PATH, DESKTOP_PLATFORMS, DESKTOP_PLATFORM_BY_ID } from '@/data/desktop-download';
-import { CopyCommand } from './copy-command';
+import { DESKTOP_DOWNLOAD_PATH, DESKTOP_PLATFORMS } from '@/data/desktop-download';
 import { LANDING_SCREENSHOTS, type LandingScreenshot } from './landing-screenshots';
-import { useDetectedPlatform } from './use-detected-platform';
 
 // A real capture of the app in its own window chrome, framed only by the
 // kit's border. When the scene has no capture yet the section simply has no
@@ -38,19 +36,21 @@ export const Screenshot: FC<{ shot: LandingScreenshot | null; className?: string
     </Box>
   ) : null;
 
-// The platforms line states exactly what the install page offers today, from
-// the same data, so the two surfaces can never disagree about Windows.
-const platformsLine = (): string => {
+// One caption, from the same data the install page reads, so the landing page
+// never promises a platform or a one-command install the install page does
+// not show: which platforms have an installer today, which have a live
+// one-command install, and the macOS signing fact.
+const waysLine = (): string => {
   const on = DESKTOP_PLATFORMS.filter((p) => p.available).map((p) => (p.minimum.startsWith(p.name) ? p.minimum : `${p.name} with ${p.minimum}`));
   const off = DESKTOP_PLATFORMS.filter((p) => !p.available).map((p) => p.name);
-  const offClause = off.length ? ` ${off.join(' and ')} returns with the next release.` : '';
-  return `Today for ${on.join(' and ')}.${offClause} Signed and notarized on macOS.`;
+  const oneCommand = DESKTOP_PLATFORMS.filter((p) => p.available && p.installCommand.status === 'live').map((p) => p.name);
+  const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+  const offClause = off.length ? ` ${list(off)} returns with the next release.` : '';
+  const commandClause = oneCommand.length ? ` One command on ${list(oneCommand)}.` : '';
+  return `Today for ${list(on)}.${offClause}${commandClause} Signed and notarized on macOS.`;
 };
 
 export const LandingHero: FC = () => {
-  const detected = useDetectedPlatform();
-  const platform = detected ? DESKTOP_PLATFORM_BY_ID[detected] : null;
-  const ctaLabel = platform?.available ? `Download for ${platform.name}` : 'Download Planton Desktop';
   const shot = LANDING_SCREENSHOTS.home;
 
   return (
@@ -70,12 +70,14 @@ export const LandingHero: FC = () => {
 
           <Box className="flex flex-col items-center gap-4 mt-8">
             <Link href={DESKTOP_DOWNLOAD_PATH}>
-              <PrimaryButton className="!px-8 !py-3 !text-base">{ctaLabel}</PrimaryButton>
+              <PrimaryButton className="!px-8 !py-3 !text-base">Download Desktop App</PrimaryButton>
             </Link>
-            <Box className="hidden sm:block">
-              <CopyCommand command={DESKTOP_BREW_COMMAND} label="Copy the Homebrew command" />
-            </Box>
-            <Typography className="text-xs text-[#666] max-w-xl">{platformsLine()}</Typography>
+            <Typography className="text-xs text-[#666] max-w-xl">
+              {waysLine()}{' '}
+              <Link href={DESKTOP_DOWNLOAD_PATH} className="underline decoration-[#3a3a3a] hover:text-[#a0a0a0]">
+                Every platform on the install page.
+              </Link>
+            </Typography>
           </Box>
         </Box>
 

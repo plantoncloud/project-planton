@@ -28,7 +28,7 @@ export const ThreeWaysToRun: FC = () => {
   const ways: { badge: string; title: string; description: string; href?: string; cta?: string }[] = [
     {
       badge: 'Free Forever',
-      title: 'Planton Desktop',
+      title: 'Desktop App',
       description:
         'Runs on your laptop, deploys with the cloud logins already on your machine. Free forever, including commercial use — no account required.',
       href: DESKTOP_LANDING_PATH,

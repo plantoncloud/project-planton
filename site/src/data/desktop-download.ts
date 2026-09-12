@@ -62,6 +62,21 @@ export interface DesktopPlatform {
    * adds the Gatekeeper and notarization checks the signed build passes.
    */
   verifyCommands: readonly string[];
+  /**
+   * The platform's preferred one-command install, which the install page
+   * leads with when `status` is `live`. `pending` means the method is built
+   * but not yet published or listed (an installer script the next release
+   * uploads; a winget listing awaiting review), and the page must not print a
+   * command that would fail -- it shows the direct download alone until then.
+   */
+  installCommand: {
+    /** The block's heading on the card, e.g. "Or With Homebrew". */
+    title: string;
+    lines: readonly string[];
+    /** One or two sentences under the block: what the command does and why it is shaped this way. */
+    note: string;
+    status: 'live' | 'pending';
+  };
 }
 
 /**
@@ -80,9 +95,29 @@ export const DOWNLOADS_BASE = 'https://downloads.planton.app/desktop';
 /** The version-free alias directory the release pipeline republishes on every stable release. */
 export const DOWNLOADS_LATEST = `${DOWNLOADS_BASE}/latest`;
 
-/** The Homebrew cask. It declares the `planton` CLI formula as a dependency, so one command installs both. */
-export const DESKTOP_BREW_COMMAND = 'brew install plantonhq/tap/planton-desktop';
+/**
+ * The Homebrew install, as three lines. Homebrew 6 loads a third-party tap's
+ * casks only after the tap is trusted, and our cask depends on the tap's
+ * `planton` formula, so the fully qualified one-liner (`brew install
+ * plantonhq/tap/planton-desktop`) would trust the cask and then fail on the
+ * dependency. Tap, trust, install -- in that order -- is the shape that works,
+ * and the same three lines are printed by the release notes and the release
+ * levers so no surface teaches a broken command.
+ */
+export const DESKTOP_BREW_INSTALL_LINES: readonly string[] = [
+  'brew tap plantonhq/tap',
+  'brew trust --tap plantonhq/tap',
+  'brew install --cask planton-desktop',
+];
 export const DESKTOP_BREW_UPGRADE_COMMAND = 'brew upgrade planton-desktop';
+
+/** The Linux installer: reads the release pointer, verifies checksums, installs the .deb or the AppImage. */
+export const DESKTOP_LINUX_INSTALL_URL = `${DOWNLOADS_BASE}/install.sh`;
+export const DESKTOP_LINUX_INSTALL_COMMAND = `curl -fsSL ${DESKTOP_LINUX_INSTALL_URL} | sh`;
+
+/** The winget package, once the listing on microsoft/winget-pkgs is approved. */
+export const DESKTOP_WINGET_ID = 'Planton.Desktop';
+export const DESKTOP_WINGET_INSTALL_COMMAND = `winget install ${DESKTOP_WINGET_ID}`;
 
 /** The one command that installs the Planton skills into every coding agent on the machine. */
 export const AGENT_SKILLS_INSTALL_COMMAND = 'npx skills add plantonhq/skills';
@@ -106,10 +141,17 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
       { text: 'Open the disk image and drag Planton to Applications. The app is signed and notarized, so it opens without a warning.' },
     ],
     verifyCommands: [
-      'shasum -a 256 ~/Downloads/planton-desktop-universal-macos.dmg',
-      'spctl --assess --type open --context context:primary-signature -v ~/Downloads/planton-desktop-universal-macos.dmg',
+      'cd ~/Downloads',
+      'shasum -a 256 planton-desktop-universal-macos.dmg',
+      'spctl --assess --type open --context context:primary-signature -v planton-desktop-universal-macos.dmg',
       'xcrun stapler validate /Applications/Planton.app',
     ],
+    installCommand: {
+      title: 'Or with Homebrew',
+      lines: DESKTOP_BREW_INSTALL_LINES,
+      note: 'Homebrew 6 asks you to trust a third-party tap before it loads anything from it. plantonhq/tap holds only Planton\u2019s cask and formulae, and the cask installs the planton CLI with the app.',
+      status: 'live',
+    },
   },
   {
     id: 'windows',
@@ -134,6 +176,13 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
       },
     ],
     verifyCommands: ['certutil -hashfile planton-desktop-windows-x64-setup.exe SHA256'],
+    installCommand: {
+      title: 'Or with winget',
+      lines: [DESKTOP_WINGET_INSTALL_COMMAND],
+      note: 'winget verifies the installer\u2019s hash and runs it silently, so there is no SmartScreen interstitial.',
+      // Pending the first listing's review on microsoft/winget-pkgs.
+      status: 'pending',
+    },
   },
   {
     id: 'linux',
@@ -162,6 +211,13 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
       { text: 'On Debian and Ubuntu, install the .deb with your package manager.', command: 'sudo apt install ./planton-desktop-linux-amd64.deb' },
     ],
     verifyCommands: ['sha256sum planton-desktop-linux-amd64.AppImage', 'sha256sum planton-desktop-linux-amd64.deb'],
+    installCommand: {
+      title: 'Or with One Command',
+      lines: [DESKTOP_LINUX_INSTALL_COMMAND],
+      note: 'The script reads the release pointer, verifies the download against the release\u2019s checksums before anything runs, installs the .deb on Debian and Ubuntu and the AppImage elsewhere, and never prompts. Read it first at the same address.',
+      // Pending the next release, which publishes the script beside the installers.
+      status: 'pending',
+    },
   },
 ];
 

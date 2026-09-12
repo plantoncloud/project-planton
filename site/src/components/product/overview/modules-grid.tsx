@@ -93,7 +93,7 @@ const modules: ProductModuleCardProps[] = [
   },
   {
     icon: <DesktopIcon />,
-    title: 'Planton Desktop',
+    title: 'Desktop',
     pain: 'Your coding agent can already create cloud infrastructure -- and leave you with resources you cannot explain, permissions nobody derived, and a password that went through the chat.',
     solution: 'The whole platform on your laptop, deploying to your own cloud with the logins already on your machine. Verifiable, recorded, reusable. Free for individuals, including commercial use.',
     href: DESKTOP_LANDING_PATH,

@@ -49,7 +49,7 @@ const productIcons: Record<string, React.ReactNode> = {
   Security: <SecurityIcon sx={iconSx} />,
   'Agent Fleet': <AgentFleetIcon sx={iconSx} />,
   CLI: <CliIcon sx={iconSx} />,
-  'Planton Desktop': <DesktopAppIcon sx={iconSx} />,
+  'Desktop': <DesktopAppIcon sx={iconSx} />,
   'Open Source': <OpenSourceIcon sx={iconSx} />,
 };
 

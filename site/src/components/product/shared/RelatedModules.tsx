@@ -63,7 +63,7 @@ const allModules: Record<string, ModuleInfo> = {
   },
   desktop: {
     icon: <DesktopIcon sx={{ fontSize: 20 }} />,
-    title: 'Planton Desktop',
+    title: 'Desktop',
     description: 'The whole platform on your laptop, free forever.',
     href: DESKTOP_LANDING_PATH,
   },

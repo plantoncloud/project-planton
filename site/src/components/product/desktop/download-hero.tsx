@@ -15,7 +15,6 @@ import {
   BodyText,
 } from '@/components/landing-page/v3-2026-01-02-1000/shared';
 import {
-  DESKTOP_BREW_COMMAND,
   DESKTOP_PLATFORMS,
   desktopChecksumsUrl,
   type DesktopArtifact,
@@ -24,6 +23,7 @@ import {
 } from '@/data/desktop-download';
 import { DESKTOP_RELEASE, formatDownloadSize } from '@/data/desktop-release';
 import { CopyCommand } from './copy-command';
+import { CommandBlock } from './command-block';
 
 interface DownloadHeroProps {
   platform: DesktopPlatform;
@@ -112,6 +112,8 @@ const PlatformCard: FC<{ platform: DesktopPlatform; version: string | null }> = 
   ];
   const primarySize = artifactSize(primary);
 
+  const command = platform.installCommand;
+
   return (
     <Card hover={false} className="max-w-2xl mx-auto !p-8 md:!p-10">
       <Box id={`platform-${platform.id}`} role="tabpanel" className="flex flex-col items-center text-center">
@@ -151,15 +153,6 @@ const PlatformCard: FC<{ platform: DesktopPlatform; version: string | null }> = 
           ))}
         </Typography>
 
-        {platform.id === 'macos' && (
-          <Box className="mt-6 flex flex-col items-center gap-2">
-            <Typography className="text-xs text-[#666]">
-              Or with Homebrew, which also installs the <code className="font-mono text-[#a0a0a0]">planton</code> CLI
-            </Typography>
-            <CopyCommand command={DESKTOP_BREW_COMMAND} label="Copy the Homebrew command" />
-          </Box>
-        )}
-
         <Box className="mt-6 flex flex-col items-center gap-3 max-w-lg">
           {platform.installSteps.map((step) => (
             <Box key={step.text} className="flex flex-col items-center gap-2">
@@ -168,6 +161,16 @@ const PlatformCard: FC<{ platform: DesktopPlatform; version: string | null }> = 
             </Box>
           ))}
         </Box>
+
+        {command.status === 'live' && (
+          // The installer is the door; the command is its equal for people who
+          // live in a terminal, directly beneath it. Phones cannot run it.
+          <Box className="hidden sm:block w-full max-w-xl mt-8 text-left">
+            <Typography className="text-xs font-semibold text-[#ededed] mb-2 text-center">{command.title}</Typography>
+            <CommandBlock commands={command.lines} label={`Copy the ${platform.name} install command`} />
+            <Typography className="text-xs text-[#a0a0a0] mt-3 text-center">{command.note}</Typography>
+          </Box>
+        )}
       </Box>
     </Card>
   );

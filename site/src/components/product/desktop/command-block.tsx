@@ -14,11 +14,13 @@ interface CommandBlockProps {
 
 // Several commands a person types in order, with one copy affordance for the
 // lot, in a chrome bar above the text like CodeTabs so it never sits on a
-// command. Long lines wrap only between tokens: each space-separated token is
-// held on one line, so a path or a flag value never splits at one of its own
-// hyphens and a person can tell a wrapped line from a character they must
-// type. What is copied is the plain text, not the markup. The single-line
-// sibling is CopyCommand; the tabbed one is the shared CodeTabs.
+// command. Long lines wrap between tokens first: each space-separated token is
+// an inline block, so a path or a flag value moves to the next line whole
+// rather than splitting at one of its own hyphens, and only a token wider than
+// the block itself is allowed to break inside (overflow-wrap: anywhere) --
+// nothing is ever clipped. What is copied is the plain text, not the markup.
+// The single-line sibling is CopyCommand; the tabbed one is the shared
+// CodeTabs.
 export const CommandBlock: FC<CommandBlockProps> = ({ commands, label, className = '' }) => {
   const [copied, setCopied] = useState(false);
   const text = commands.join('\n');
@@ -47,7 +49,7 @@ export const CommandBlock: FC<CommandBlockProps> = ({ commands, label, className
         {commands.map((command, i) => (
           <span key={command} className="block">
             {command.split(' ').map((token, j) => (
-              <span key={`${i}-${j}`} className="whitespace-nowrap">
+              <span key={`${i}-${j}`} className="inline-block [overflow-wrap:anywhere]">
                 {j > 0 ? ' ' : ''}
                 {token}
               </span>

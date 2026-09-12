@@ -16,7 +16,7 @@ const paths: Record<string, string> = {
   Security: '/features/security',
   'Agent Fleet': '/features/agent-fleet',
   CLI: '/features/cli',
-  'Planton Desktop': '/features/desktop',
+  'Desktop': '/features/desktop',
   'Open Source': '/features/open-source',
 };
 
