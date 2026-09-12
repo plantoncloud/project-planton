@@ -22,10 +22,9 @@
  *
  * Per-platform `available` is a deliberate hand switch, not a computed fact:
  * it is flipped off when a published installer is known to be wrong (the
- * Windows alias served a cache-warm build stamped 0.0.0-warm on 2026-09-11)
- * and back on once a release has proven the alias -- download it, read its
- * version resource, then flip. The site must never offer a link it knows is
- * broken.
+ * Windows alias once served a cache-warm build stamped 0.0.0-warm) and back
+ * on once a release has proven the alias -- download it, read its version
+ * resource, then flip. The site must never offer a link it knows is broken.
  */
 
 export type DesktopPlatformId = 'macos' | 'windows' | 'linux';
@@ -116,9 +115,10 @@ export const DESKTOP_PLATFORMS: readonly DesktopPlatform[] = [
     id: 'windows',
     name: 'Windows',
     minimum: 'Windows 10 or newer',
-    // Off until a release republishes a real installer under the alias; the
-    // one there now is a cache-warm build (see the header comment).
-    available: false,
+    // On since the v0.0.62 release republished the alias with a real
+    // installer (its version resource reads 0.0.62; the earlier alias served
+    // a cache-warm build, see the header comment).
+    available: true,
     artifacts: [
       {
         label: 'Download for Windows',
