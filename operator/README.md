@@ -28,6 +28,8 @@ spec:
 
 `spec.version` names a Planton platform release as `vMAJOR.MINOR.PATCH`; the API server refuses any other shape. The operator runs releases from a floor upward: a version older than the oldest it supports is refused before anything is created, with the reason in the resource's `MESSAGE` column and a `VersionSupported` condition, and a platform already running is left untouched. The operator's first log line (`Platform version floor`) names the floor. To run a custom build, keep `spec.version` at a release and set `image.tag` on the component: the version names the contract, the tag names the bytes.
 
+`spec.email` tells the platform how to send mail through the adopter's own provider, and one declaration powers both of the install's senders. It carries a sender identity (`from.address`, `from.name`, an optional `replyTo`) and exactly one provider: an SMTP relay (`host`, `port`, `security` as `starttls` | `tls` | `none`, and one way in -- a `kubernetes.io/basic-auth` Secret named by `credentialsSecretName`, an OAuth 2.0 client-credentials grant under `oauth2` for tenants that no longer accept passwords, or no credential for an allow-listed relay -- plus an optional private CA bundle by Secret reference) or a Resend account (`apiKeySecretRef`). Admission refuses a contradictory block in words: two providers or none, two ways in, credentials over a plaintext connection. The operator carries the declaration to the control plane as environment plus one projected volume of credential files that rotate in place (no secret value ever rides as an environment variable), preflights every referenced Secret and key -- a missing one renders the control plane as if no email were declared and reports the component not Ready with the Secret, its type, and the field to remove named -- and echoes what is declared in `status.email` and the `EMAIL` column (`NotConfigured` | `SMTP` | `Resend`; configuration, never a delivery verdict). The same declaration owns the bundled identity server's mail settings by key, with the credential rotated through a fingerprint and the relay CA in its truststore, so "Forgot password?" is on the sign-in page exactly when an email can be sent; with nothing declared the realm carries no relay and reset stays off, and a relay typed into the identity server's admin console is reverted on the next reconcile. With nothing declared the control plane is also handed two setup hints -- the Secret command and the `spec.email` fragment for this platform's own name and namespace -- which its Email settings page shows in place of a dead button.
+
 `config/samples/` holds a minimal declaration, a lite profile for Kind, and a full profile that exercises every optional arm.
 
 ## How It Reconciles
@@ -98,7 +100,7 @@ internal/platformversion/        The platform-version floor and its verdicts
 internal/singleton/              The one-operator-per-cluster guard
 internal/bootstrap/              First-boot bootstrapping the operator performs for the platform
 internal/keycloak/               Realm and client convergence for the bundled identity server
-internal/keycloaklogintheme/     The sign-in theme served by the identity server (README)
+internal/keycloaklogintheme/     The sign-in and email themes served by the identity server (README)
 config/                          Kubebuilder scaffolding: generated CRDs and RBAC, samples, kustomize
 hack/                            Generators (the chart's CRD templates) and the lab directory fixture
 test/chart                       The chart render test (inside make test)
