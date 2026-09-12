@@ -68,7 +68,7 @@ on both engines) for anything beyond it.
 |---|---|---|---|
 | `namespace` | yes | — | Installation namespace (literal or KubernetesNamespace reference); `planton-operator` is the convention |
 | `create_namespace` | no | `false` | Create (and own) the namespace with governance labels |
-| `chart_version` | no | `0.13.0` | Exact-semver chart pin; floored at `0.8.0` |
+| `chart_version` | no | `0.15.0` | Exact-semver chart pin; floored at `0.8.0` |
 | `crds.install` | no | `true` | Install the two definitions with the release (false = another owner already has them) |
 | `crds.keep_on_uninstall` | no | `true` | Keep the definitions, and every platform behind them, when the resource is destroyed |
 | `replicas` | no | `1` | Leader-elected warm standbys — operator failover, not throughput |
@@ -95,7 +95,7 @@ spec:
   namespace:
     value: planton-operator
   create_namespace: true
-  chart_version: "0.13.0"
+  chart_version: "0.15.0"
 ```
 
 Then declare platforms with KubernetesPlantonPlatform resources — the

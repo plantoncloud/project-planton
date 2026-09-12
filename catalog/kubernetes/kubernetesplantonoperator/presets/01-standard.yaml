@@ -6,4 +6,4 @@ spec:
   namespace:
     value: planton-operator # the convention; only the manager lives here
   create_namespace: true # the module creates (and owns) the namespace
-  chart_version: "0.13.0" # the catalog-validated pin — pin deliberately
+  chart_version: "0.15.0" # the catalog-validated pin — pin deliberately
