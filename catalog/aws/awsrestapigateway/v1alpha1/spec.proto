@@ -468,9 +468,16 @@ message AwsRestApiGatewayAuthorizer {
 
   // Cognito user pools whose tokens the authorizer accepts, for
   // COGNITO_USER_POOLS authorizers.
+  //
+  // Containment-exempt: the API authorizes callers AGAINST the pool; it is
+  // not deployed into it. On a diagram the pool is a room its clients and
+  // identity providers live in, and the API stands outside with a line in
+  // -- the same verdict the HTTP API's JWT issuer and the ALB listener's
+  // Cognito action already carry.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef provider_arns = 5 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsCognitoUserPool,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.user_pool_arn"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.user_pool_arn",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // Where the token/identity lives on the request. Omitted = the AWS

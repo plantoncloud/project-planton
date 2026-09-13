@@ -8,9 +8,6 @@ contained dev.planton._test.testcloudresourcekubernetes.v1alpha1.TestCloudResour
 contained dev.planton.aws.awsalb.v1alpha1.AwsAlbSpec.subnets -> AwsSubnet
 contained dev.planton.aws.awsapprunnerservice.v1alpha1.AwsAppRunnerServiceVpcIngressConnection.vpc_id -> AwsVpc
 contained dev.planton.aws.awsapprunnervpcconnector.v1alpha1.AwsAppRunnerVpcConnectorSpec.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncCognitoUserPoolAuth.user_pool_id -> AwsCognitoUserPool
-contained dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncDatasourceEventbridge.event_bus_arn -> AwsEventBridgeBus
-contained dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncEventsCognitoAuth.user_pool_id -> AwsCognitoUserPool
 contained dev.planton.aws.awsautoscalinggroup.v1alpha1.AwsAutoScalingGroupSpec.subnets -> AwsSubnet
 contained dev.planton.aws.awsbatchcomputeenvironment.v1alpha1.AwsBatchComputeResources.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsbatchcomputeenvironment.v1alpha1.AwsBatchEksConfiguration.eks_cluster_arn -> AwsEksCluster
@@ -88,7 +85,6 @@ contained dev.planton.aws.awsrdsproxy.v1alpha1.AwsRdsProxySpec.vpc_subnet_ids ->
 contained dev.planton.aws.awsrediselasticache.v1alpha1.AwsRedisElasticacheSpec.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsredshiftcluster.v1alpha1.AwsRedshiftClusterSpec.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupSpec.namespace_name -> AwsRedshiftServerlessNamespace
-contained dev.planton.aws.awsrestapigateway.v1alpha1.AwsRestApiGatewayAuthorizer.provider_arns -> AwsCognitoUserPool
 contained dev.planton.aws.awsroute53dnsrecord.v1alpha1.AwsRoute53DnsRecordSpec.zone_id -> AwsRoute53Zone
 contained dev.planton.aws.awsroute53resolverendpoint.v1alpha1.AwsRoute53ResolverEndpointIpAddress.subnet_id -> AwsSubnet
 contained dev.planton.aws.awsroute53resolverendpoint.v1alpha1.AwsRoute53ResolverEndpointRule.vpc_ids -> AwsVpc
@@ -654,6 +650,9 @@ contained dev.planton.kubernetes.kubernetesvelero.v1alpha1.KubernetesVeleroSpec.
 contained dev.planton.openfga.openfgaauthorizationmodel.v1alpha1.OpenFgaAuthorizationModelSpec.store_id -> OpenFgaStore
 contained dev.planton.openfga.openfgarelationshiptuple.v1alpha1.OpenFgaRelationshipTupleSpec.store_id -> OpenFgaStore
 exempt    dev.planton.aws.awsalb.v1alpha1.AwsAlbDns.route53_zone_id -> AwsRoute53Zone
+exempt    dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncCognitoUserPoolAuth.user_pool_id -> AwsCognitoUserPool
+exempt    dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncDatasourceEventbridge.event_bus_arn -> AwsEventBridgeBus
+exempt    dev.planton.aws.awsappsyncapi.v1alpha1.AwsAppSyncEventsCognitoAuth.user_pool_id -> AwsCognitoUserPool
 exempt    dev.planton.aws.awsbatchjobdefinition.v1alpha1.AwsBatchJobDefinitionEfsVolume.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awscertmanagercert.v1alpha1.AwsCertManagerCertSpec.route53_hosted_zone_id -> AwsRoute53Zone
 exempt    dev.planton.aws.awsclientvpn.v1alpha1.AwsClientVpnRoute.target_subnet_id -> AwsSubnet
@@ -678,6 +677,7 @@ exempt    dev.planton.aws.awsopensearchdomain.v1alpha1.AwsOpenSearchDomainCognit
 exempt    dev.planton.aws.awsredshiftcluster.v1alpha1.AwsRedshiftClusterEndpointAuthorization.vpc_ids -> AwsVpc
 exempt    dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupEndpointAccess.subnet_ids -> AwsSubnet
 exempt    dev.planton.aws.awsredshiftserverlessworkgroup.v1alpha1.AwsRedshiftServerlessWorkgroupSpec.subnet_ids -> AwsSubnet
+exempt    dev.planton.aws.awsrestapigateway.v1alpha1.AwsRestApiGatewayAuthorizer.provider_arns -> AwsCognitoUserPool
 exempt    dev.planton.aws.awsroute53zone.v1alpha1.AwsRoute53ZoneVpcAssociation.vpc_id -> AwsVpc
 exempt    dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainEfsFileSystemConfig.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awssesconfigurationset.v1alpha1.AwsSesConfigurationSetEventDestination.event_bus -> AwsEventBridgeBus

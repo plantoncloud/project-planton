@@ -619,6 +619,12 @@ type AwsRestApiGatewayAuthorizer struct {
 	CredentialsArn *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=credentials_arn,json=credentialsArn,proto3" json:"credentials_arn,omitempty"`
 	// Cognito user pools whose tokens the authorizer accepts, for
 	// COGNITO_USER_POOLS authorizers.
+	//
+	// Containment-exempt: the API authorizes callers AGAINST the pool; it is
+	// not deployed into it. On a diagram the pool is a room its clients and
+	// identity providers live in, and the API stands outside with a line in
+	// -- the same verdict the HTTP API's JWT issuer and the ALB listener's
+	// Cognito action already carry.
 	ProviderArns []*v1.StringValueOrRef `protobuf:"bytes,5,rep,name=provider_arns,json=providerArns,proto3" json:"provider_arns,omitempty"`
 	// Where the token/identity lives on the request. Omitted = the AWS
 	// default "method.request.header.Authorization". REQUEST authorizers
@@ -2075,15 +2081,15 @@ const file_catalog_aws_awsrestapigateway_v1alpha1_spec_proto_rawDesc = "" +
 	"!AwsRestApiGatewayRequestValidator\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x122\n" +
 	"\x15validate_request_body\x18\x02 \x01(\bR\x13validateRequestBody\x12>\n" +
-	"\x1bvalidate_request_parameters\x18\x03 \x01(\bR\x19validateRequestParameters\"\x8f\n" +
+	"\x1bvalidate_request_parameters\x18\x03 \x01(\bR\x19validateRequestParameters\"\x94\n" +
 	"\n" +
 	"\x1bAwsRestApiGatewayAuthorizer\x12\x1e\n" +
 	"\x04name\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x01R\x04name\x12=\n" +
 	"\x04type\x18\x02 \x01(\tB)\xbaH&r$R\x05TOKENR\aREQUESTR\x12COGNITO_USER_POOLSR\x04type\x12\x82\x01\n" +
 	"\x11lambda_invoke_uri\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB\"\x88\xd4a\xf1\a\x92\xd4a\x19status.outputs.invoke_arnR\x0flambdaInvokeUri\x12}\n" +
-	"\x0fcredentials_arn\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB \x88\xd4a\xf0\a\x92\xd4a\x17status.outputs.role_arnR\x0ecredentialsArn\x12~\n" +
-	"\rprovider_arns\x18\x05 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xcc\b\x92\xd4a\x1cstatus.outputs.user_pool_arnR\fproviderArns\x12'\n" +
+	"\x0fcredentials_arn\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB \x88\xd4a\xf0\a\x92\xd4a\x17status.outputs.role_arnR\x0ecredentialsArn\x12\x82\x01\n" +
+	"\rprovider_arns\x18\x05 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\x88\xd4a\xcc\b\x92\xd4a\x1cstatus.outputs.user_pool_arn\x98\xd4a\x01R\fproviderArns\x12'\n" +
 	"\x0fidentity_source\x18\x06 \x01(\tR\x0eidentitySource\x12D\n" +
 	"\x1eidentity_validation_expression\x18\a \x01(\tR\x1cidentityValidationExpression\x12=\n" +
 	"\x12result_ttl_seconds\x18\b \x01(\x05B\n" +
