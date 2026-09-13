@@ -1269,6 +1269,11 @@ type AwsSagemakerDomainSpaceCustomFileSystem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The EFS file system to mount. The file system must have mount targets in
 	// the domain's VPC.
+	//
+	// Containment-exempt: a space MOUNTS the file system; the domain is not
+	// deployed inside it. On a diagram the domain stands in its VPC with a
+	// line to the file system -- the verdict the domain-level
+	// AwsSagemakerDomainEfsFileSystemConfig.file_system_id already carries.
 	FileSystemId  *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=file_system_id,json=fileSystemId,proto3" json:"file_system_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3288,9 +3293,9 @@ const file_catalog_aws_awssagemakerdomain_v1alpha1_spec_proto_rawDesc = "" +
 	"\ridle_settings\x18\x02 \x01(\v2P.dev.planton.aws.awssagemakerdomain.v1alpha1.AwsSagemakerDomainSpaceIdleSettingsR\fidleSettings\"\x8a\x01\n" +
 	"#AwsSagemakerDomainSpaceIdleSettings\x12G\n" +
 	"\x17idle_timeout_in_minutes\x18\x01 \x01(\x05B\v\xbaH\b\x1a\x06\x18\xa0\x8a (<H\x00R\x14idleTimeoutInMinutes\x88\x01\x01B\x1a\n" +
-	"\x18_idle_timeout_in_minutes\"\xb2\x01\n" +
-	"'AwsSagemakerDomainSpaceCustomFileSystem\x12\x86\x01\n" +
-	"\x0efile_system_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\xc2\b\x92\xd4a\x1dstatus.outputs.file_system_idR\ffileSystemId\"b\n" +
+	"\x18_idle_timeout_in_minutes\"\xb6\x01\n" +
+	"'AwsSagemakerDomainSpaceCustomFileSystem\x12\x8a\x01\n" +
+	"\x0efile_system_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xc2\b\x92\xd4a\x1dstatus.outputs.file_system_id\x98\xd4a\x01R\ffileSystemId\"b\n" +
 	"\x1eAwsSagemakerDomainSpaceStorage\x12@\n" +
 	"\x15ebs_volume_size_in_gb\x18\x01 \x01(\x05B\x0e\xbaH\v\xc8\x01\x01\x1a\x06\x18\x80\x80\x01(\x05R\x11ebsVolumeSizeInGb\"\x84\x06\n" +
 	"'AwsSagemakerDomainJupyterLabAppSettings\x12\x7f\n" +
