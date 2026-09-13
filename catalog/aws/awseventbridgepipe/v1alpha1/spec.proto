@@ -504,13 +504,19 @@ message AwsEventBridgePipeSelfManagedKafkaCredentials {
 message AwsEventBridgePipeSelfManagedKafkaVpc {
   // The subnets the client uses (at most 16). Reference AwsSubnet
   // subnet_id outputs or pass literal subnet-... ids.
+  //
+  // Containment-exempt: the pipe is a managed service that reaches INTO
+  // the VPC to poll the brokers; it is not deployed into the subnets. On a
+  // diagram the pipe stands outside the network with a line in -- the same
+  // verdict a Lambda function's VPC subnets carry.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef subnets = 1 [
     (buf.validate.field).repeated = {
       min_items: 1
       max_items: 16
     },
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsSubnet,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // The security groups attached to the client (at most 5). Reference
@@ -844,13 +850,19 @@ message AwsEventBridgePipeCapacityProviderStrategy {
 message AwsEventBridgePipeEcsNetworkConfiguration {
   // The subnets tasks launch into (at most 16). Reference AwsSubnet
   // subnet_id outputs or pass literal subnet-... ids.
+  //
+  // Containment-exempt: these subnets place the ECS TASKS the pipe
+  // launches, not the pipe itself, which is a managed service outside the
+  // network. On a diagram the pipe stands beside the VPC with a line in --
+  // the verdict an EventBridge rule's ECS target subnets already carry.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef subnets = 1 [
     (buf.validate.field).repeated = {
       min_items: 1
       max_items: 16
     },
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsSubnet,
-    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
+    (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id",
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true
   ];
 
   // The security groups attached to tasks (at most 5). Unset uses the

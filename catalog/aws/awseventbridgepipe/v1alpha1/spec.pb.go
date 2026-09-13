@@ -1071,6 +1071,11 @@ type AwsEventBridgePipeSelfManagedKafkaVpc struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The subnets the client uses (at most 16). Reference AwsSubnet
 	// subnet_id outputs or pass literal subnet-... ids.
+	//
+	// Containment-exempt: the pipe is a managed service that reaches INTO
+	// the VPC to poll the brokers; it is not deployed into the subnets. On a
+	// diagram the pipe stands outside the network with a line in -- the same
+	// verdict a Lambda function's VPC subnets carry.
 	Subnets []*v1.StringValueOrRef `protobuf:"bytes,1,rep,name=subnets,proto3" json:"subnets,omitempty"`
 	// The security groups attached to the client (at most 5). Reference
 	// AwsSecurityGroup security_group_id outputs or pass literal sg-...
@@ -2013,6 +2018,11 @@ type AwsEventBridgePipeEcsNetworkConfiguration struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The subnets tasks launch into (at most 16). Reference AwsSubnet
 	// subnet_id outputs or pass literal subnet-... ids.
+	//
+	// Containment-exempt: these subnets place the ECS TASKS the pipe
+	// launches, not the pipe itself, which is a managed service outside the
+	// network. On a diagram the pipe stands beside the VPC with a line in --
+	// the verdict an EventBridge rule's ECS target subnets already carry.
 	Subnets []*v1.StringValueOrRef `protobuf:"bytes,1,rep,name=subnets,proto3" json:"subnets,omitempty"`
 	// The security groups attached to tasks (at most 5). Unset uses the
 	// VPC's default. Reference AwsSecurityGroup security_group_id
@@ -3640,9 +3650,9 @@ const file_catalog_aws_awseventbridgepipe_v1alpha1_spec_proto_rawDesc = "" +
 	"\x1bclient_certificate_tls_auth\x18\x02 \x01(\tB'\xbaH$\xd8\x01\x01r\x1f2\x1d^arn:aws.*:secretsmanager:.*$R\x18clientCertificateTlsAuth\x12V\n" +
 	"\x13sasl_scram_256_auth\x18\x03 \x01(\tB'\xbaH$\xd8\x01\x01r\x1f2\x1d^arn:aws.*:secretsmanager:.*$R\x10saslScram256Auth\x12V\n" +
 	"\x13sasl_scram_512_auth\x18\x04 \x01(\tB'\xbaH$\xd8\x01\x01r\x1f2\x1d^arn:aws.*:secretsmanager:.*$R\x10saslScram512Auth:\xa9\x02\xbaH\xa5\x02\x1a\xa2\x02\n" +
-	"\x1bsmk_credentials.exactly_one\x12hset exactly one of basic_auth, client_certificate_tls_auth, sasl_scram_256_auth, and sasl_scram_512_auth\x1a\x98\x01[this.basic_auth != '', this.client_certificate_tls_auth != '', this.sasl_scram_256_auth != '', this.sasl_scram_512_auth != ''].filter(x, x).size() == 1\"\xb3\x02\n" +
-	"%AwsEventBridgePipeSelfManagedKafkaVpc\x12y\n" +
-	"\asubnets\x18\x01 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB+\xbaH\a\x92\x01\x04\b\x01\x10\x10\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\asubnets\x12\x8e\x01\n" +
+	"\x1bsmk_credentials.exactly_one\x12hset exactly one of basic_auth, client_certificate_tls_auth, sasl_scram_256_auth, and sasl_scram_512_auth\x1a\x98\x01[this.basic_auth != '', this.client_certificate_tls_auth != '', this.sasl_scram_256_auth != '', this.sasl_scram_512_auth != ''].filter(x, x).size() == 1\"\xb7\x02\n" +
+	"%AwsEventBridgePipeSelfManagedKafkaVpc\x12}\n" +
+	"\asubnets\x18\x01 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB/\xbaH\a\x92\x01\x04\b\x01\x10\x10\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\asubnets\x12\x8e\x01\n" +
 	"\x0fsecurity_groups\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x05\x92\x01\x02\x10\x05\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x0esecurityGroups\"\xc1\x03\n" +
 	"*AwsEventBridgePipeActiveMqSourceParameters\x12)\n" +
 	"\n" +
@@ -3738,9 +3748,9 @@ const file_catalog_aws_awseventbridgepipe_v1alpha1_spec_proto_rawDesc = "" +
 	"\xbaH\ar\x05\x10\x01\x18\xff\x01R\x10capacityProvider\x12\x1f\n" +
 	"\x04base\x18\x02 \x01(\x05B\v\xbaH\b\x1a\x06\x18\xa0\x8d\x06(\x00R\x04base\x12\"\n" +
 	"\x06weight\x18\x03 \x01(\x05B\n" +
-	"\xbaH\a\x1a\x05\x18\xe8\a(\x00R\x06weight\"\xe1\x02\n" +
-	")AwsEventBridgePipeEcsNetworkConfiguration\x12y\n" +
-	"\asubnets\x18\x01 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB+\xbaH\a\x92\x01\x04\b\x01\x10\x10\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\asubnets\x12\x8e\x01\n" +
+	"\xbaH\a\x1a\x05\x18\xe8\a(\x00R\x06weight\"\xe5\x02\n" +
+	")AwsEventBridgePipeEcsNetworkConfiguration\x12}\n" +
+	"\asubnets\x18\x01 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB/\xbaH\a\x92\x01\x04\b\x01\x10\x10\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\asubnets\x12\x8e\x01\n" +
 	"\x0fsecurity_groups\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x05\x92\x01\x02\x10\x05\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x0esecurityGroups\x12(\n" +
 	"\x10assign_public_ip\x18\x03 \x01(\bR\x0eassignPublicIp\"\x82\x06\n" +
 	"\"AwsEventBridgePipeEcsTaskOverrides\x12\x84\x01\n" +

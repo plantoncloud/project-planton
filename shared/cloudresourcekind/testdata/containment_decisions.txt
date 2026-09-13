@@ -47,10 +47,7 @@ contained dev.planton.aws.awseksfargateprofile.v1alpha1.AwsEksFargateProfileSpec
 contained dev.planton.aws.awseksnodegroup.v1alpha1.AwsEksNodeGroupSpec.cluster_name -> AwsEksCluster
 contained dev.planton.aws.awseksnodegroup.v1alpha1.AwsEksNodeGroupSpec.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awselasticfilesystem.v1alpha1.AwsElasticFileSystemMountTarget.subnet_id -> AwsSubnet
-contained dev.planton.aws.awseventbridgepipe.v1alpha1.AwsEventBridgePipeEcsNetworkConfiguration.subnets -> AwsSubnet
-contained dev.planton.aws.awseventbridgepipe.v1alpha1.AwsEventBridgePipeSelfManagedKafkaVpc.subnets -> AwsSubnet
 contained dev.planton.aws.awseventbridgerule.v1alpha1.AwsEventBridgeRuleSpec.event_bus_name -> AwsEventBridgeBus
-contained dev.planton.aws.awseventbridgescheduler.v1alpha1.AwsEventBridgeScheduleNetworkConfiguration.subnets -> AwsSubnet
 contained dev.planton.aws.awsfsxdatarepositoryassociation.v1alpha1.AwsFsxDataRepositoryAssociationSpec.file_system_id -> AwsFsxLustreFileSystem
 contained dev.planton.aws.awsfsxlustrefilesystem.v1alpha1.AwsFsxLustreFileSystemSpec.subnet_id -> AwsSubnet
 contained dev.planton.aws.awsfsxontapfilesystem.v1alpha1.AwsFsxOntapFileSystemSpec.preferred_subnet_id -> AwsSubnet
@@ -661,7 +658,10 @@ exempt    dev.planton.aws.awsecscluster.v1alpha1.AwsEcsClusterManagedInstancesNe
 exempt    dev.planton.aws.awsecsservice.v1alpha1.AwsEcsServiceNetwork.subnets -> AwsSubnet
 exempt    dev.planton.aws.awsecstaskdefinition.v1alpha1.AwsEcsTaskDefinitionEfsVolume.file_system_id -> AwsElasticFileSystem
 exempt    dev.planton.aws.awselasticfilesystem.v1alpha1.AwsElasticFileSystemReplication.destination_file_system_id -> AwsElasticFileSystem
+exempt    dev.planton.aws.awseventbridgepipe.v1alpha1.AwsEventBridgePipeEcsNetworkConfiguration.subnets -> AwsSubnet
+exempt    dev.planton.aws.awseventbridgepipe.v1alpha1.AwsEventBridgePipeSelfManagedKafkaVpc.subnets -> AwsSubnet
 exempt    dev.planton.aws.awseventbridgerule.v1alpha1.AwsEventBridgeEcsNetworkConfiguration.subnets -> AwsSubnet
+exempt    dev.planton.aws.awseventbridgescheduler.v1alpha1.AwsEventBridgeScheduleNetworkConfiguration.subnets -> AwsSubnet
 exempt    dev.planton.aws.awsfsxontapfilesystem.v1alpha1.AwsFsxOntapFileSystemSpec.route_table_ids -> AwsSubnet
 exempt    dev.planton.aws.awsfsxopenzfsfilesystem.v1alpha1.AwsFsxOpenzfsFileSystemSpec.route_table_ids -> AwsSubnet
 exempt    dev.planton.aws.awshttpapigateway.v1alpha1.AwsHttpApiGatewayJwtConfig.issuer -> AwsCognitoUserPool
