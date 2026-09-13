@@ -948,8 +948,15 @@ func (x *AwsBedrockAgentCorePrivateEndpoint) GetSelfManagedLattice() *AwsBedrock
 type AwsBedrockAgentCoreManagedVpcEndpoint struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The VPC to route through.
+	//
+	// Containment-exempt: a managed endpoint is a private PATH through the
+	// VPC to a private provider or backend; the runtime is not deployed inside
+	// it. On a diagram it stands where its own network places it, with a
+	// line into the VPC -- the verdict a Lambda's VPC subnets and an
+	// EventBridge pipe's task subnets already carry.
 	VpcId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=vpc_id,json=vpcId,proto3" json:"vpc_id,omitempty"`
 	// Subnets for the managed endpoint's network interfaces (at least one).
+	// Containment-exempt for the same reason as the VPC above.
 	SubnetIds []*v1.StringValueOrRef `protobuf:"bytes,2,rep,name=subnet_ids,json=subnetIds,proto3" json:"subnet_ids,omitempty"`
 	// Security groups on the endpoint interfaces (max 5).
 	SecurityGroupIds []*v1.StringValueOrRef `protobuf:"bytes,3,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
@@ -1371,11 +1378,11 @@ const file_catalog_aws_awsbedrockagentcoreruntime_v1alpha1_spec_proto_rawDesc = 
 	"\vmanaged_vpc\x18\x01 \x01(\v2Z.dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpointR\n" +
 	"managedVpc\x12\x89\x01\n" +
 	"\x14self_managed_lattice\x18\x02 \x01(\v2W.dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreLatticeEndpointR\x12selfManagedLattice:\xac\x01\xbaH\xa8\x01\x1a\xa5\x01\n" +
-	"\x1cprivate_endpoint_exactly_one\x12Lprivate endpoint must set exactly one of managed_vpc or self_managed_lattice\x1a7has(this.managed_vpc) != has(this.self_managed_lattice)\"\xe2\x05\n" +
-	"%AwsBedrockAgentCoreManagedVpcEndpoint\x12o\n" +
-	"\x06vpc_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB$\xbaH\x03\xc8\x01\x01\x88\xd4a\xf8\a\x92\xd4a\x15status.outputs.vpc_idR\x05vpcId\x12\x7f\n" +
+	"\x1cprivate_endpoint_exactly_one\x12Lprivate endpoint must set exactly one of managed_vpc or self_managed_lattice\x1a7has(this.managed_vpc) != has(this.self_managed_lattice)\"\xeb\x05\n" +
+	"%AwsBedrockAgentCoreManagedVpcEndpoint\x12s\n" +
+	"\x06vpc_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\xf8\a\x92\xd4a\x15status.outputs.vpc_id\x98\xd4a\x01R\x05vpcId\x12\x83\x01\n" +
 	"\n" +
-	"subnet_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\b\xc8\x01\x01\x92\x01\x02\b\x01\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\tsubnetIds\x12\x93\x01\n" +
+	"subnet_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\b\xc8\x01\x01\x92\x01\x02\b\x01\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\tsubnetIds\x12\x93\x01\n" +
 	"\x12security_group_ids\x18\x03 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x05\x92\x01\x02\x10\x05\x88\xd4a\xf7\a\x92\xd4a status.outputs.security_group_idR\x10securityGroupIds\x12J\n" +
 	"\x18endpoint_ip_address_type\x18\x04 \x01(\tB\x11\xbaH\x0er\fR\x04IPV4R\x04IPV6R\x15endpointIpAddressType\x122\n" +
 	"\x0erouting_domain\x18\x05 \x01(\tB\v\xbaH\b\xd8\x01\x01r\x03\x18\xff\x01R\rroutingDomain\x12x\n" +

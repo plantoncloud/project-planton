@@ -15,12 +15,6 @@ contained dev.planton.aws.awsautoscalinggroup.v1alpha1.AwsAutoScalingGroupSpec.s
 contained dev.planton.aws.awsbatchcomputeenvironment.v1alpha1.AwsBatchComputeResources.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsbatchcomputeenvironment.v1alpha1.AwsBatchEksConfiguration.eks_cluster_arn -> AwsEksCluster
 contained dev.planton.aws.awsbedrockagentcoreevaluation.v1alpha1.AwsBedrockAgentCoreHarnessVpcConfig.subnets -> AwsSubnet
-contained dev.planton.aws.awsbedrockagentcoreevaluation.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsbedrockagentcoreevaluation.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.vpc_id -> AwsVpc
-contained dev.planton.aws.awsbedrockagentcoregateway.v1alpha1.AwsBedrockAgentCoreGatewayManagedVpcEndpoint.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsbedrockagentcoregateway.v1alpha1.AwsBedrockAgentCoreGatewayManagedVpcEndpoint.vpc_id -> AwsVpc
-contained dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.subnet_ids -> AwsSubnet
-contained dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.vpc_id -> AwsVpc
 contained dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreVpcConfig.subnets -> AwsSubnet
 contained dev.planton.aws.awsbedrockagentcoretools.v1alpha1.AwsBedrockAgentCoreToolVpcConfig.subnets -> AwsSubnet
 contained dev.planton.aws.awsbedrockcustommodel.v1alpha1.AwsBedrockCustomModelVpcConfig.subnet_ids -> AwsSubnet
@@ -655,6 +649,12 @@ contained dev.planton.openfga.openfgaauthorizationmodel.v1alpha1.OpenFgaAuthoriz
 contained dev.planton.openfga.openfgarelationshiptuple.v1alpha1.OpenFgaRelationshipTupleSpec.store_id -> OpenFgaStore
 exempt    dev.planton.aws.awsalb.v1alpha1.AwsAlbDns.route53_zone_id -> AwsRoute53Zone
 exempt    dev.planton.aws.awsbatchjobdefinition.v1alpha1.AwsBatchJobDefinitionEfsVolume.file_system_id -> AwsElasticFileSystem
+exempt    dev.planton.aws.awsbedrockagentcoreevaluation.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.subnet_ids -> AwsSubnet
+exempt    dev.planton.aws.awsbedrockagentcoreevaluation.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.vpc_id -> AwsVpc
+exempt    dev.planton.aws.awsbedrockagentcoregateway.v1alpha1.AwsBedrockAgentCoreGatewayManagedVpcEndpoint.subnet_ids -> AwsSubnet
+exempt    dev.planton.aws.awsbedrockagentcoregateway.v1alpha1.AwsBedrockAgentCoreGatewayManagedVpcEndpoint.vpc_id -> AwsVpc
+exempt    dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.subnet_ids -> AwsSubnet
+exempt    dev.planton.aws.awsbedrockagentcoreruntime.v1alpha1.AwsBedrockAgentCoreManagedVpcEndpoint.vpc_id -> AwsVpc
 exempt    dev.planton.aws.awscertmanagercert.v1alpha1.AwsCertManagerCertSpec.route53_hosted_zone_id -> AwsRoute53Zone
 exempt    dev.planton.aws.awsclientvpn.v1alpha1.AwsClientVpnRoute.target_subnet_id -> AwsSubnet
 exempt    dev.planton.aws.awsecscluster.v1alpha1.AwsEcsClusterManagedInstancesNetworkConfiguration.subnets -> AwsSubnet

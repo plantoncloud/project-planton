@@ -230,17 +230,26 @@ message AwsBedrockAgentCoreGatewayPrivateEndpoint {
 // path through your VPC.
 message AwsBedrockAgentCoreGatewayManagedVpcEndpoint {
   // The VPC to route through.
+  //
+  // Containment-exempt: a managed endpoint is a private PATH through the
+  // VPC to a private provider or backend; the gateway is not deployed inside
+  // it. On a diagram it stands where its own network places it, with a
+  // line into the VPC -- the verdict a Lambda's VPC subnets and an
+  // EventBridge pipe's task subnets already carry.
   dev.planton.shared.foreignkey.v1.StringValueOrRef vpc_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsVpc,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.vpc_id"
   ];
 
   // Subnets for the managed endpoint's network interfaces (at least one).
+  // Containment-exempt for the same reason as the VPC above.
   repeated dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_ids = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).repeated.min_items = 1,
     (dev.planton.shared.foreignkey.v1.default_kind) = AwsSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 
