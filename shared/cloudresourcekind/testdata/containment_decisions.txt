@@ -65,7 +65,6 @@ contained dev.planton.aws.awshttpapivpclink.v1alpha1.AwsHttpApiVpcLinkSpec.subne
 contained dev.planton.aws.awsinternetgateway.v1alpha1.AwsInternetGatewaySpec.vpc_id -> AwsVpc
 contained dev.planton.aws.awslaunchtemplate.v1alpha1.AwsLaunchTemplateSecondaryInterface.secondary_subnet_id -> AwsSubnet
 contained dev.planton.aws.awslbtargetgroup.v1alpha1.AwsLbTargetGroupSpec.vpc_id -> AwsVpc
-contained dev.planton.aws.awsmanagedprometheusscraper.v1alpha1.AwsManagedPrometheusScraperEksSource.cluster_arn -> AwsEksCluster
 contained dev.planton.aws.awsmanagedprometheusscraper.v1alpha1.AwsManagedPrometheusScraperEksSource.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsmanagedprometheusscraper.v1alpha1.AwsManagedPrometheusScraperVpcSource.subnet_ids -> AwsSubnet
 contained dev.planton.aws.awsmemcachedelasticache.v1alpha1.AwsMemcachedElasticacheSpec.subnet_ids -> AwsSubnet
@@ -673,6 +672,7 @@ exempt    dev.planton.aws.awslblistener.v1alpha1.AwsLbListenerActionAuthenticate
 exempt    dev.planton.aws.awslblistener.v1alpha1.AwsLbListenerActionAuthenticateCognito.user_pool_domain -> AwsCognitoUserPool
 exempt    dev.planton.aws.awslblistenerrule.v1alpha1.AwsLbListenerRuleActionAuthenticateCognito.user_pool_arn -> AwsCognitoUserPool
 exempt    dev.planton.aws.awslblistenerrule.v1alpha1.AwsLbListenerRuleActionAuthenticateCognito.user_pool_domain -> AwsCognitoUserPool
+exempt    dev.planton.aws.awsmanagedprometheusscraper.v1alpha1.AwsManagedPrometheusScraperEksSource.cluster_arn -> AwsEksCluster
 exempt    dev.planton.aws.awsnlb.v1alpha1.AwsNlbDns.route53_zone_id -> AwsRoute53Zone
 exempt    dev.planton.aws.awsopensearchdomain.v1alpha1.AwsOpenSearchDomainCognitoOptions.user_pool_id -> AwsCognitoUserPool
 exempt    dev.planton.aws.awsredshiftcluster.v1alpha1.AwsRedshiftClusterEndpointAuthorization.vpc_ids -> AwsVpc

@@ -166,6 +166,12 @@ type AwsManagedPrometheusScraperEksSource struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The EKS cluster to scrape. Reference an AwsEksCluster cluster_arn
 	// output or pass a literal ARN.
+	//
+	// Containment-exempt: the scraper READS the cluster's metrics; its
+	// collectors run on AWS-managed interfaces in the subnets below, never
+	// as workloads inside the cluster. On a diagram the scraper stands where
+	// its subnets place it, with a line to the cluster it scrapes -- the
+	// verdict every other reader of a room already carries.
 	ClusterArn *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=cluster_arn,json=clusterArn,proto3" json:"cluster_arn,omitempty"`
 	// Subnets the scraper's collectors place into (the cluster's
 	// subnets). Reference AwsSubnet subnet_id outputs or pass literal
@@ -429,9 +435,9 @@ const file_catalog_aws_awsmanagedprometheusscraper_v1alpha1_spec_proto_rawDesc =
 	"\x17spec.exactly_one_source\x122configure exactly one of source_eks and source_vpc\x1a,has(this.source_eks) != has(this.source_vpc)\x1a\xa6\x01\n" +
 	"\x1cspec.exactly_one_destination\x12Econfigure exactly one of amp_workspace_arn and cloudwatch_dataset_arn\x1a?has(this.amp_workspace_arn) != has(this.cloudwatch_dataset_arn)\x1a\xd5\x01\n" +
 	"-spec.vpc_source_requires_scrape_configuration\x12jscrape_configuration is required with source_vpc - AWS's default configuration exists only for EKS sources\x1a8!has(this.source_vpc) || this.scrape_configuration != ''\x1a\xd9\x01\n" +
-	"\x1cspec.role_configuration_pair\x128source_role_arn and target_role_arn must be set together\x1a\x7f!has(this.role_configuration) || (has(this.role_configuration.source_role_arn) == has(this.role_configuration.target_role_arn))\"\xb2\x03\n" +
-	"$AwsManagedPrometheusScraperEksSource\x12~\n" +
-	"\vcluster_arn\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\xbaH\x03\xc8\x01\x01\x88\xd4a\xef\a\x92\xd4a\x1astatus.outputs.cluster_arnR\n" +
+	"\x1cspec.role_configuration_pair\x128source_role_arn and target_role_arn must be set together\x1a\x7f!has(this.role_configuration) || (has(this.role_configuration.source_role_arn) == has(this.role_configuration.target_role_arn))\"\xb7\x03\n" +
+	"$AwsManagedPrometheusScraperEksSource\x12\x82\x01\n" +
+	"\vcluster_arn\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB-\xbaH\x03\xc8\x01\x01\x88\xd4a\xef\a\x92\xd4a\x1astatus.outputs.cluster_arn\x98\xd4a\x01R\n" +
 	"clusterArn\x12|\n" +
 	"\n" +
 	"subnet_ids\x18\x02 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\xbaH\x05\x92\x01\x02\b\x02\x88\xd4a\xbc\b\x92\xd4a\x18status.outputs.subnet_idR\tsubnetIds\x12\x8b\x01\n" +
