@@ -113,9 +113,14 @@ message AzureDataProtectionBackupInstanceBlobStorage {
   // The storage account whose blob services are protected, by ARM ID.
   // Fixed at creation. The vault's identity needs the "Storage
   // Account Backup Contributor" role on this account before create.
+  //
+  // The instance PROTECTS this account's blob services and is an ARM child
+  // of its vault, so on a diagram the reference is access, not placement --
+  // the rule the Kubernetes variant's cluster already carries.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 
@@ -143,9 +148,14 @@ message AzureDataProtectionBackupInstanceDisk {
   // The resource group (by name) where Azure Backup stores the disk
   // snapshots. Fixed at creation. The vault's identity needs the
   // "Disk Snapshot Contributor" role on this group before create.
+  //
+  // Snapshots are WRITTEN into this group; the instance itself is an ARM
+  // child of its vault, so on a diagram the reference is access, not
+  // placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef snapshot_resource_group_name = 2 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureResourceGroup,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.resource_group_name"
   ];
 
@@ -165,18 +175,25 @@ message AzureDataProtectionBackupInstanceKubernetesCluster {
   // cluster must carry the AKS Backup extension and its
   // trusted-access role binding to the vault before create -- an
   // apply-time contract Azure enforces, not something this spec can
-  // check.
+  // check. The backup instance PROTECTS the cluster and lives in its
+  // vault, so the reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef kubernetes_cluster_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureAksCluster,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.cluster_id"
   ];
 
   // The resource group (by name) where Azure Backup stores the
   // cluster's snapshots. Fixed at creation.
+  //
+  // Snapshots are WRITTEN into this group; the instance itself is an ARM
+  // child of its vault, so on a diagram the reference is access, not
+  // placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef snapshot_resource_group_name = 2 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureResourceGroup,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.resource_group_name"
   ];
 
@@ -249,9 +266,14 @@ message AzureDataProtectionBackupInstanceDataLakeStorage {
   // namespace (Data Lake Gen2) enabled. Fixed at creation. The
   // vault's identity needs the "Storage Account Backup Contributor"
   // role on this account before create.
+  //
+  // The instance PROTECTS this account's Data Lake containers and is an ARM
+  // child of its vault, so on a diagram the reference is access, not
+  // placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 

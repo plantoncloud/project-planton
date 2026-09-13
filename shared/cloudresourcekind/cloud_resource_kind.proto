@@ -3144,12 +3144,18 @@ enum CloudResourceKind {
     service_group: azure_networking
   }];
   // AzureFrontDoorProfile is a prerequisite because an origin group is an
-  // ARM child of a referenced profile.
+  // ARM child of a referenced profile. A container kind: every origin is an
+  // ARM child of its origin group, so on a diagram the origins stand inside
+  // the group that load-balances them (the profile's room holds the group).
+  // A route or a rule that forwards TO an origin group lives in its endpoint
+  // or its rule set, never in the group, and those references say so with
+  // containment_exempt.
   AzureFrontDoorOriginGroup = 2082 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azfdog"
     prerequisites: [AzureFrontDoorProfile]
+    container_kind: true
     service_group: azure_networking
   }];
   // AzureFrontDoorOriginGroup is a prerequisite because an origin is an
@@ -3585,24 +3591,31 @@ enum CloudResourceKind {
   // Virtual WAN: the umbrella of Azure's managed hub-and-spoke
   // networking, under which virtual hubs and their gateways are
   // created. Self-contained -- only the resource group is required.
+  // A container: its hubs and its branch sites are created into it, so
+  // on a diagram the WAN is the room they stand in.
   AzureVirtualWan = 2148 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azvwan"
     prerequisites: [AzureResourceGroup]
     service_group: azure_networking
+    container_kind: true
   }];
 
   // The WAN is the prerequisite: this kind models the Virtual WAN hub
   // (virtual_wan_id is required; standalone hubs are the legacy Route
   // Server construction, which has its own ARM surface). The resource
-  // group chains transitively through the WAN.
+  // group chains transitively through the WAN. A container: ARM deploys
+  // the hub's VPN, ExpressRoute, and point-to-site gateways and its
+  // spoke connections INTO the hub, so on a diagram the hub is the room
+  // they stand in.
   AzureVirtualHub = 2149 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azvhub"
     prerequisites: [AzureVirtualWan]
     service_group: azure_networking
+    container_kind: true
   }];
 
   // Both sides of the attachment are prerequisites: the hub being
@@ -3694,11 +3707,18 @@ enum CloudResourceKind {
   // account, the single-service accounts) needs no other Azure
   // resource; subnets (network rules), Key Vault keys (CMK), storage
   // accounts and user-assigned identities are optional references.
+  // A container kind: every model deployment and every project is an
+  // ARM child created onto the account
+  // (accounts/{account}/deployments/{name}, .../projects/{name}), so a
+  // diagram draws them inside it. The subnets the account admits
+  // through its network ACLs or injects agent compute into are access,
+  // never placement (containment_exempt on those fields).
   AzureCognitiveAccount = 2160 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azcog"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_ai_ml
   }];
 
@@ -3725,6 +3745,12 @@ enum CloudResourceKind {
   // The workspace REQUIRES all three companion services at creation
   // (default storage, secrets vault, telemetry) -- genuine
   // deploy-order prerequisites, each with its own fixture profile.
+  // A container kind: datastores, compute clusters and instances, and
+  // online and batch endpoints are ARM children of the workspace
+  // (workspaces/{ws}/datastores|computes|onlineEndpoints|batchEndpoints/{name}),
+  // so a diagram draws them inside it. The companion services it
+  // names are reaches (containment_exempt on those fields), and so is
+  // the subnet its serverless compute or a compute's nodes attach to.
   AzureMachineLearningWorkspace = 2163 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
@@ -3735,6 +3761,7 @@ enum CloudResourceKind {
       AzureKeyVault,
       AzureApplicationInsights
     ]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // An ARM child of its workspace. The storage target (container,
@@ -3769,6 +3796,11 @@ enum CloudResourceKind {
   // The hub REQUIRES both companion services at creation (secrets
   // vault, default storage) -- genuine deploy-order prerequisites,
   // each with its own fixture profile.
+  // A container kind: every AI Foundry project is created inside its
+  // hub and deploys into the hub's resource group (the project spec
+  // carries none), so a diagram draws the projects inside the hub. The
+  // vault and storage account the hub names are reaches
+  // (containment_exempt on those fields).
   AzureAiFoundry = 2167 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
@@ -3778,6 +3810,7 @@ enum CloudResourceKind {
       AzureKeyVault,
       AzureStorageAccount
     ]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // Deploys into its hub's resource group (the provider derives the
@@ -3800,11 +3833,17 @@ enum CloudResourceKind {
   // stable scoring address applications call. azurerm carries no ML
   // endpoint resources; the modules write the raw ARM shape at a
   // pinned api-version (azapi / azure-native).
+  // A container kind in its turn: every online deployment is an ARM
+  // child created under the endpoint whose traffic map routes to it
+  // (.../onlineEndpoints/{endpoint}/deployments/{name}) and cannot
+  // exist without it, so a diagram draws the deployments inside the
+  // endpoint, inside the workspace.
   AzureMachineLearningOnlineEndpoint = 2170 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azmloe"
     prerequisites: [AzureMachineLearningWorkspace]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // An ARM child of its endpoint (.../deployments/{name}) -- the
@@ -3820,11 +3859,18 @@ enum CloudResourceKind {
   // stable address batch scoring jobs are submitted to. azurerm
   // carries no ML endpoint resources; the modules write the raw ARM
   // shape at a pinned api-version (azapi / azure-native).
+  // A container kind in its turn: every batch deployment is an ARM
+  // child created under the endpoint whose default-deployment pointer
+  // routes to it (.../batchEndpoints/{endpoint}/deployments/{name}),
+  // so a diagram draws the deployments inside the endpoint, inside
+  // the workspace. The compute cluster a deployment runs on is a
+  // reach, not a room.
   AzureMachineLearningBatchEndpoint = 2172 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azmlbe"
     prerequisites: [AzureMachineLearningWorkspace]
+    container_kind: true
     service_group: azure_ai_ml
   }];
   // An ARM child of its endpoint (.../deployments/{name}) -- the
@@ -3843,12 +3889,14 @@ enum CloudResourceKind {
   // The Recovery Services vault (Microsoft.RecoveryServices/vaults) --
   // the safe that classic Azure Backup data and Site Recovery
   // configuration live in. Backup policies and protected items are
-  // ARM children of a vault.
+  // ARM children of a vault, so the vault is a container kind: a diagram
+  // draws them inside it, as the portal's own blades do.
   AzureRecoveryServicesVault = 2175 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azrsv"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_backup
   }];
   // An ARM child of its vault (.../backupPolicies/{name}) -- the
@@ -3906,12 +3954,14 @@ enum CloudResourceKind {
   // backupVaults) -- the safe that MODERN Azure Backup data lives in
   // (managed disks, blob storage, AKS clusters, MySQL/PostgreSQL
   // flexible servers, Data Lake storage). Backup policies and backup
-  // instances are ARM children of a vault.
+  // instances are ARM children of a vault, so the vault is a container
+  // kind: a diagram draws them inside it, as the portal's own blades do.
   AzureDataProtectionBackupVault = 2180 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azdpbv"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_backup
   }];
   // An ARM child of its vault (.../backupPolicies/{name}) -- the
@@ -4020,12 +4070,17 @@ enum CloudResourceKind {
   // AzureResourceGroup is a prerequisite because a Traffic Manager
   // profile is created inside a referenced resource group (the profile
   // itself is a global service -- the group only holds its metadata
-  // record).
+  // record). A container kind: every endpoint is an ARM child of its
+  // profile, so on a diagram the endpoints stand inside the profile that
+  // steers traffic to them. A nested endpoint that points AT another
+  // profile lives in its own parent profile, never in the one it targets,
+  // and that reference says so with containment_exempt.
   AzureTrafficManagerProfile = 2189 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "aztmprof"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_networking
   }];
   // AzureTrafficManagerProfile is a prerequisite because every
@@ -4073,31 +4128,45 @@ enum CloudResourceKind {
   // application publishes its own events to, fanned out to handlers by
   // event subscriptions. One topic is one event stream with its own
   // endpoint and access keys; for many streams behind one endpoint see
-  // AzureEventgridDomain.
+  // AzureEventgridDomain. A container kind: every event subscription on
+  // the topic is an ARM child created under it ({topic_id}/providers/
+  // Microsoft.EventGrid/eventSubscriptions/{name}) and cannot exist
+  // without it, so on a diagram the topic is the room its subscriptions
+  // stand in, as the portal's own blade lists them. A kind that merely
+  // publishes to or subscribes from a topic while living elsewhere (a
+  // Data Factory trigger, an Event Grid namespace's MQTT route) says so
+  // with containment_exempt.
   AzureEventgridTopic = 2193 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azegt"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_integration
   }];
   // The Azure Event Grid domain -- ONE publishing endpoint and one
   // pair of access keys serving many event streams (domain topics),
   // the multi-tenant pattern. Topics inside the domain are
   // auto-managed by Azure or declared explicitly as
-  // AzureEventgridDomainTopic resources.
+  // AzureEventgridDomainTopic resources. A container kind: every domain
+  // topic is an ARM child of its domain ({domain_id}/topics/{name}), so
+  // on a diagram the domain is the room its tenant streams stand in.
   AzureEventgridDomain = 2194 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azegd"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_integration
   }];
   // The Azure Event Grid system topic -- the subscription surface for
   // events AZURE ITSELF publishes about one of your resources (a
   // storage account's blob events, a resource group's lifecycle
   // events). One system topic per source resource per topic type;
-  // event subscriptions attach to it to route events to handlers.
+  // event subscriptions attach to it to route events to handlers. A
+  // container kind: every subscription on a system topic is an ARM child
+  // created under it ({system_topic_id}/eventSubscriptions/{name}), so on
+  // a diagram the system topic is the room its subscriptions stand in.
   AzureEventgridSystemTopic = 2195 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
@@ -4106,6 +4175,7 @@ enum CloudResourceKind {
       AzureResourceGroup,
       AzureStorageAccount
     ]
+    container_kind: true
     service_group: azure_integration
   }];
   // The Azure Event Grid event subscription -- the delivery
@@ -4124,23 +4194,29 @@ enum CloudResourceKind {
   // The Azure Event Grid namespace -- the capacity-scaled hub of the
   // newer Event Grid: hosts CloudEvents namespace topics and an
   // optional MQTT broker behind one set of regional endpoints, sized
-  // in throughput units.
+  // in throughput units. A container kind: every namespace topic is an
+  // ARM child of its namespace ({namespace_id}/topics/{name}), so on a
+  // diagram the namespace is the room its streams stand in.
   AzureEventgridNamespace = 2197 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azegns"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_integration
   }];
   // The Azure Data Factory -- the workspace every other Data Factory
   // resource lives inside: pipelines, data flows, linked services,
   // datasets, triggers, and integration runtimes are all created
-  // against a factory's ARM ID.
+  // against a factory's ARM ID. A container kind for exactly that
+  // reason: those six kinds are ARM children of the factory, so on a
+  // diagram the factory is the room they stand in.
   AzureDataFactory = 2198 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azdf"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_analytics
   }];
   // One unit of work inside an Azure Data Factory
@@ -4227,12 +4303,18 @@ enum CloudResourceKind {
   // The Azure Compute Gallery -- the shared library an organization
   // keeps its approved VM images in. Image definitions
   // (AzureComputeGalleryImage) live inside it; VMs and scale sets
-  // deploy from their published, region-replicated versions.
+  // deploy from their published, region-replicated versions. A container
+  // kind: every image definition is an ARM child of its gallery
+  // ({gallery_id}/images/{name}), so on a diagram the definitions stand
+  // inside the library that publishes them. The image ids a VM, a scale
+  // set, or a disk boots from are plain strings and never place anything
+  // inside the gallery.
   AzureComputeGallery = 2205 [(kind_meta) = {
     provider: azure
     version: "v1alpha1"
     id_prefix: "azcgal"
     prerequisites: [AzureResourceGroup]
+    container_kind: true
     service_group: azure_compute
   }];
   // A gallery image ({gallery_id}/images/{name}) -- one image

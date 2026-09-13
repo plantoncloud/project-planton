@@ -142,6 +142,10 @@ type AzureMachineLearningComputeInstanceSpec struct {
 	// The subnet the instance is placed in, by ARM ID. Only legal when
 	// the workspace does NOT use a managed network (Azure then networks
 	// the instance itself). Fixed at creation.
+	// On a diagram the instance is an ARM child of its workspace
+	// (workspaces/{ws}/computes/{name}) and lives there; the subnet is
+	// where its network interface attaches, so the reference is access,
+	// not placement (the compute cluster's and the AKS node pool's rule).
 	SubnetId *v1.StringValueOrRef `protobuf:"bytes,9,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	// Whether the instance gets a public IP. Unspecified applies true
 	// (the provider's default). When set false, the provider requires a
@@ -444,7 +448,7 @@ var File_catalog_azure_azuremachinelearningcomputeinstance_v1alpha1_spec_proto p
 
 const file_catalog_azure_azuremachinelearningcomputeinstance_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"Ecatalog/azure/azuremachinelearningcomputeinstance/v1alpha1/spec.proto\x12>dev.planton.azure.azuremachinelearningcomputeinstance.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\x9d\n" +
+	"Ecatalog/azure/azuremachinelearningcomputeinstance/v1alpha1/spec.proto\x12>dev.planton.azure.azuremachinelearningcomputeinstance.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xa1\n" +
 	"\n" +
 	"'AzureMachineLearningComputeInstanceSpec\x12\x92\x01\n" +
 	"\fworkspace_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB;\xbaH\x03\xc8\x01\x01\x88\xd4a\xf3\x10\x92\xd4a,status.outputs.machine_learning_workspace_idR\vworkspaceId\x12:\n" +
@@ -455,8 +459,8 @@ const file_catalog_azure_azuremachinelearningcomputeinstance_v1alpha1_spec_proto
 	"\x0eassign_to_user\x18\x05 \x01(\v2o.dev.planton.azure.azuremachinelearningcomputeinstance.v1alpha1.AzureMachineLearningComputeInstanceAssignToUserR\fassignToUser\x12\x87\x01\n" +
 	"\bidentity\x18\x06 \x01(\v2k.dev.planton.azure.azuremachinelearningcomputeinstance.v1alpha1.AzureMachineLearningComputeInstanceIdentityR\bidentity\x12;\n" +
 	"\x12local_auth_enabled\x18\a \x01(\bB\b\x8a\xa6\x1d\x04trueH\x00R\x10localAuthEnabled\x88\x01\x01\x12x\n" +
-	"\x03ssh\x18\b \x01(\v2f.dev.planton.azure.azuremachinelearningcomputeinstance.v1alpha1.AzureMachineLearningComputeInstanceSshR\x03ssh\x12r\n" +
-	"\tsubnet_id\x18\t \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\x12B\n" +
+	"\x03ssh\x18\b \x01(\v2f.dev.planton.azure.azuremachinelearningcomputeinstance.v1alpha1.AzureMachineLearningComputeInstanceSshR\x03ssh\x12v\n" +
+	"\tsubnet_id\x18\t \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\bsubnetId\x12B\n" +
 	"\x16node_public_ip_enabled\x18\n" +
 	" \x01(\bB\b\x8a\xa6\x1d\x04trueH\x01R\x13nodePublicIpEnabled\x88\x01\x01\x12 \n" +
 	"\vdescription\x18\v \x01(\tR\vdescription\x12\x85\x01\n" +

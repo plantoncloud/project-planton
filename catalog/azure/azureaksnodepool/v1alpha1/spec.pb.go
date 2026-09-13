@@ -1099,11 +1099,16 @@ type AzureAksNodePoolSpec struct {
 	// cluster's node subnet -- correct for nearly every pool. Reference a
 	// different AzureSubnet to segment pools across subnets (e.g. a
 	// dedicated subnet for an internet-exposed pool). Changing it replaces
-	// the pool.
+	// the pool. A node pool is an ARM child of its cluster
+	// (managedClusters/{cluster}/agentPools/{pool}) and lives there on a
+	// diagram; the subnet is where its nodes attach, so the reference is
+	// access, not placement -- otherwise a pool on its own subnet would be
+	// drawn outside the cluster it belongs to.
 	VnetSubnetId *v1.StringValueOrRef `protobuf:"bytes,18,opt,name=vnet_subnet_id,json=vnetSubnetId,proto3" json:"vnet_subnet_id,omitempty"`
 	// A separate subnet for POD IPs (traditional Azure CNI with dynamic
 	// pod IP allocation). Only meaningful alongside vnet_subnet_id on
-	// clusters using non-overlay Azure CNI.
+	// clusters using non-overlay Azure CNI. Access, not placement, like
+	// vnet_subnet_id.
 	PodSubnetId *v1.StringValueOrRef `protobuf:"bytes,19,opt,name=pod_subnet_id,json=podSubnetId,proto3" json:"pod_subnet_id,omitempty"`
 	// Kubernetes version for this pool's nodes. Unset follows the control
 	// plane. Pools may lag the control plane by up to two minor versions
@@ -2340,7 +2345,7 @@ var File_catalog_azure_azureaksnodepool_v1alpha1_spec_proto protoreflect.FileDes
 
 const file_catalog_azure_azureaksnodepool_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"2catalog/azure/azureaksnodepool/v1alpha1/spec.proto\x12+dev.planton.azure.azureaksnodepool.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xae2\n" +
+	"2catalog/azure/azureaksnodepool/v1alpha1/spec.proto\x12+dev.planton.azure.azureaksnodepool.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xb62\n" +
 	"\x14AzureAksNodePoolSpec\x12\x90\x01\n" +
 	"\x15kubernetes_cluster_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\xd1\x0f\x92\xd4a\x19status.outputs.cluster_idR\x13kubernetesClusterId\x12\xc0\x01\n" +
 	"\x04name\x18\x02 \x01(\tB\xab\x01\xbaH\xa7\x01\xba\x01\xa0\x01\n" +
@@ -2366,9 +2371,9 @@ const file_catalog_azure_azureaksnodepool_v1alpha1_spec_proto_rawDesc = "" +
 	"nodeLabels\x12b\n" +
 	"\vnode_taints\x18\x10 \x03(\tBA\xbaH>\x92\x01;\"9r725^[^=]+=[^:]*:(NoSchedule|PreferNoSchedule|NoExecute)$R\n" +
 	"nodeTaints\x12)\n" +
-	"\x05zones\x18\x11 \x03(\tB\x13\xbaH\x10\x92\x01\r\"\vr\tR\x011R\x012R\x013R\x05zones\x12{\n" +
-	"\x0evnet_subnet_id\x18\x12 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\fvnetSubnetId\x12y\n" +
-	"\rpod_subnet_id\x18\x13 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\vpodSubnetId\x121\n" +
+	"\x05zones\x18\x11 \x03(\tB\x13\xbaH\x10\x92\x01\r\"\vr\tR\x011R\x012R\x013R\x05zones\x12\x7f\n" +
+	"\x0evnet_subnet_id\x18\x12 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\fvnetSubnetId\x12}\n" +
+	"\rpod_subnet_id\x18\x13 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\vpodSubnetId\x121\n" +
 	"\x14orchestrator_version\x18\x14 \x01(\tR\x13orchestratorVersion\x12%\n" +
 	"\x0fos_disk_size_gb\x18\x15 \x01(\x05R\fosDiskSizeGb\x12i\n" +
 	"\fos_disk_type\x18\x16 \x01(\x0e2G.dev.planton.azure.azureaksnodepool.v1alpha1.AzureAksNodePoolOsDiskTypeR\n" +

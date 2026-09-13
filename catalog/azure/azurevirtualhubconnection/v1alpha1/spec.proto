@@ -46,10 +46,13 @@ message AzureVirtualHubConnectionSpec {
   // The virtual network being attached (the spoke) -- references an
   // AzureVirtualNetwork's ARM ID. The VNet's address space must not
   // overlap the hub's or any other connected network's. Fixed at
-  // creation.
+  // creation. Containment-exempt: the connection is an ARM child of the
+  // hub and merely attaches the spoke, so on a diagram it stands in the
+  // hub with a line to the spoke network, never inside the network.
   dev.planton.shared.foreignkey.v1.StringValueOrRef remote_virtual_network_id = 3 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureVirtualNetwork,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.virtual_network_id"
   ];
 

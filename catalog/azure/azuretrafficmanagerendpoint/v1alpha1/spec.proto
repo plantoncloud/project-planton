@@ -164,10 +164,13 @@ message AzureTrafficManagerExternalEndpoint {
 message AzureTrafficManagerNestedEndpoint {
   // The CHILD profile's ARM resource ID -- defaults to referencing an
   // AzureTrafficManagerProfile's traffic_manager_profile_id output.
-  // Retargeting updates the endpoint in place.
+  // Retargeting updates the endpoint in place. The endpoint lives in its
+  // own parent profile (profile_id) and merely points at this one, so the
+  // reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef target_profile_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureTrafficManagerProfile,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.traffic_manager_profile_id"
   ];
 

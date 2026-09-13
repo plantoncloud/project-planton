@@ -513,9 +513,14 @@ message AzureDataFactoryIntegrationRuntimeSsisKeyVaultSecretReference {
 message AzureDataFactoryIntegrationRuntimeSsisExpressVnetIntegration {
   // The subnet the runtime reaches, by ARM ID -- defaults to
   // referencing an AzureSubnet's subnet_id output.
+  //
+  // The runtime is an ARM child of its factory and lives there; the
+  // subnet is where its nodes attach, so on a diagram the reference is
+  // access, not placement -- the AKS node pool's rule.
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 }
@@ -527,16 +532,24 @@ message AzureDataFactoryIntegrationRuntimeSsisVnetIntegration {
   // The virtual network, by ARM ID -- pairs with subnet_name.
   // Defaults to referencing an AzureVirtualNetwork's
   // virtual_network_id output.
+  //
+  // The runtime is an ARM child of its factory and lives there; the
+  // network is where its nodes attach, so on a diagram the reference is
+  // access, not placement -- the AKS node pool's rule.
   dev.planton.shared.foreignkey.v1.StringValueOrRef vnet_id = 1 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureVirtualNetwork,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.virtual_network_id"
   ];
 
   // The subnet, by ARM ID -- the direct alternative to vnet_id +
   // subnet_name. Defaults to referencing an AzureSubnet's subnet_id
   // output.
+  //
+  // Access, not placement, for the same reason as vnet_id above.
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 2 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 

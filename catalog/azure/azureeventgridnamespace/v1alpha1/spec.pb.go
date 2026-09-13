@@ -267,6 +267,9 @@ type AzureEventgridNamespaceTopicSpacesConfiguration struct {
 	// (AzureEventgridTopic) for fan-out to non-MQTT subscribers. The
 	// custom topic must live in the same region and use the CloudEvents
 	// schema. Omit to keep MQTT traffic inside the broker.
+	//
+	// The namespace lives in its resource group and routes INTO the topic,
+	// so the reference is access, not placement, on a diagram.
 	RouteTopicId *v1.StringValueOrRef `protobuf:"bytes,4,opt,name=route_topic_id,json=routeTopicId,proto3" json:"route_topic_id,omitempty"`
 	// Enrichments stamped onto routed MQTT messages whose VALUE is
 	// resolved per message from client attributes or topic segments
@@ -497,12 +500,12 @@ const file_catalog_azure_azureeventgridnamespace_v1alpha1_spec_proto_rawDesc = "
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\v\n" +
 	"\t_capacityB \n" +
-	"\x1e_public_network_access_enabled\"\xed\a\n" +
+	"\x1e_public_network_access_enabled\"\xf1\a\n" +
 	"/AzureEventgridNamespaceTopicSpacesConfiguration\x12\xd4\x01\n" +
 	"'alternative_authentication_name_sources\x18\x01 \x03(\tB}\xbaHz\x92\x01w\"ursR\x18ClientCertificateSubjectR\x14ClientCertificateDnsR\x14ClientCertificateUriR\x13ClientCertificateIpR\x16ClientCertificateEmailR$alternativeAuthenticationNameSources\x12x\n" +
 	"/maximum_client_sessions_per_authentication_name\x18\x02 \x01(\x05B\x0e\xbaH\x06\x1a\x04\x18d(\x01\x8a\xa6\x1d\x011H\x00R*maximumClientSessionsPerAuthenticationName\x88\x01\x01\x12Y\n" +
-	"\x1fmaximum_session_expiry_in_hours\x18\x03 \x01(\x05B\x0e\xbaH\x06\x1a\x04\x18\b(\x01\x8a\xa6\x1d\x011H\x01R\x1bmaximumSessionExpiryInHours\x88\x01\x01\x12z\n" +
-	"\x0eroute_topic_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB \x88\xd4a\x91\x11\x92\xd4a\x17status.outputs.topic_idR\frouteTopicId\x12\x9c\x01\n" +
+	"\x1fmaximum_session_expiry_in_hours\x18\x03 \x01(\x05B\x0e\xbaH\x06\x1a\x04\x18\b(\x01\x8a\xa6\x1d\x011H\x01R\x1bmaximumSessionExpiryInHours\x88\x01\x01\x12~\n" +
+	"\x0eroute_topic_id\x18\x04 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB$\x88\xd4a\x91\x11\x92\xd4a\x17status.outputs.topic_id\x98\xd4a\x01R\frouteTopicId\x12\x9c\x01\n" +
 	"\x1bdynamic_routing_enrichments\x18\x05 \x03(\v2\\.dev.planton.azure.azureeventgridnamespace.v1alpha1.AzureEventgridNamespaceRoutingEnrichmentR\x19dynamicRoutingEnrichments\x12\x9a\x01\n" +
 	"\x1astatic_routing_enrichments\x18\x06 \x03(\v2\\.dev.planton.azure.azureeventgridnamespace.v1alpha1.AzureEventgridNamespaceRoutingEnrichmentR\x18staticRoutingEnrichmentsB2\n" +
 	"0_maximum_client_sessions_per_authentication_nameB\"\n" +

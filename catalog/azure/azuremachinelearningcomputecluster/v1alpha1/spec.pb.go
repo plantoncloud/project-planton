@@ -211,6 +211,11 @@ type AzureMachineLearningComputeClusterSpec struct {
 	// The subnet the cluster's nodes are placed in, by ARM ID. Leave
 	// unset to let Azure network the nodes (a workspace managed network
 	// assigns one, read back after apply). Fixed at creation.
+	// On a diagram the cluster is an ARM child of its workspace
+	// (workspaces/{ws}/computes/{name}) and lives there; the subnet is
+	// where its nodes attach, so the reference is access, not placement
+	// -- otherwise a cluster on its own subnet would be drawn outside
+	// the workspace it belongs to (the AKS node pool's rule).
 	SubnetId *v1.StringValueOrRef `protobuf:"bytes,12,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
 	// What the cluster is for. Fixed at creation (the provider's own
 	// contract -- changing the description replaces the cluster).
@@ -555,7 +560,7 @@ var File_catalog_azure_azuremachinelearningcomputecluster_v1alpha1_spec_proto pr
 
 const file_catalog_azure_azuremachinelearningcomputecluster_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"Dcatalog/azure/azuremachinelearningcomputecluster/v1alpha1/spec.proto\x12=dev.planton.azure.azuremachinelearningcomputecluster.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xc3\v\n" +
+	"Dcatalog/azure/azuremachinelearningcomputecluster/v1alpha1/spec.proto\x12=dev.planton.azure.azuremachinelearningcomputecluster.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xc7\v\n" +
 	"&AzureMachineLearningComputeClusterSpec\x12\x92\x01\n" +
 	"\fworkspace_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB;\xbaH\x03\xc8\x01\x01\x88\xd4a\xf3\x10\x92\xd4a,status.outputs.machine_learning_workspace_idR\vworkspaceId\x12E\n" +
 	"\x04name\x18\x02 \x01(\tB1\xbaH.\xc8\x01\x01r)2'^[a-zA-Z][a-zA-Z0-9-]{1,30}[a-zA-Z0-9]$R\x04name\x12\"\n" +
@@ -570,8 +575,8 @@ const file_catalog_azure_azuremachinelearningcomputecluster_v1alpha1_spec_proto_
 	"\x19ssh_public_access_enabled\x18\t \x01(\bR\x16sshPublicAccessEnabled\x12;\n" +
 	"\x12local_auth_enabled\x18\n" +
 	" \x01(\bB\b\x8a\xa6\x1d\x04trueH\x00R\x10localAuthEnabled\x88\x01\x01\x12B\n" +
-	"\x16node_public_ip_enabled\x18\v \x01(\bB\b\x8a\xa6\x1d\x04trueH\x01R\x13nodePublicIpEnabled\x88\x01\x01\x12r\n" +
-	"\tsubnet_id\x18\f \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_idR\bsubnetId\x12 \n" +
+	"\x16node_public_ip_enabled\x18\v \x01(\bB\b\x8a\xa6\x1d\x04trueH\x01R\x13nodePublicIpEnabled\x88\x01\x01\x12v\n" +
+	"\tsubnet_id\x18\f \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\x88\xd4a\xdb\x0f\x92\xd4a\x18status.outputs.subnet_id\x98\xd4a\x01R\bsubnetId\x12 \n" +
 	"\vdescription\x18\r \x01(\tR\vdescription\x12\x83\x01\n" +
 	"\x04tags\x18\x0e \x03(\v2o.dev.planton.azure.azuremachinelearningcomputecluster.v1alpha1.AzureMachineLearningComputeClusterSpec.TagsEntryR\x04tags\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +

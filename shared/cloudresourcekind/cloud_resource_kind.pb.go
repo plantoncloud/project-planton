@@ -1144,7 +1144,12 @@ const (
 	// through the profile's own prerequisite declaration.)
 	CloudResourceKind_AzureFrontDoorEndpoint CloudResourceKind = 2081
 	// AzureFrontDoorProfile is a prerequisite because an origin group is an
-	// ARM child of a referenced profile.
+	// ARM child of a referenced profile. A container kind: every origin is an
+	// ARM child of its origin group, so on a diagram the origins stand inside
+	// the group that load-balances them (the profile's room holds the group).
+	// A route or a rule that forwards TO an origin group lives in its endpoint
+	// or its rule set, never in the group, and those references say so with
+	// containment_exempt.
 	CloudResourceKind_AzureFrontDoorOriginGroup CloudResourceKind = 2082
 	// AzureFrontDoorOriginGroup is a prerequisite because an origin is an
 	// ARM child of a referenced origin group (the profile and resource
@@ -1292,11 +1297,16 @@ const (
 	// Virtual WAN: the umbrella of Azure's managed hub-and-spoke
 	// networking, under which virtual hubs and their gateways are
 	// created. Self-contained -- only the resource group is required.
+	// A container: its hubs and its branch sites are created into it, so
+	// on a diagram the WAN is the room they stand in.
 	CloudResourceKind_AzureVirtualWan CloudResourceKind = 2148
 	// The WAN is the prerequisite: this kind models the Virtual WAN hub
 	// (virtual_wan_id is required; standalone hubs are the legacy Route
 	// Server construction, which has its own ARM surface). The resource
-	// group chains transitively through the WAN.
+	// group chains transitively through the WAN. A container: ARM deploys
+	// the hub's VPN, ExpressRoute, and point-to-site gateways and its
+	// spoke connections INTO the hub, so on a diagram the hub is the room
+	// they stand in.
 	CloudResourceKind_AzureVirtualHub CloudResourceKind = 2149
 	// Both sides of the attachment are prerequisites: the hub being
 	// joined and the spoke virtual network being attached.
@@ -1336,6 +1346,12 @@ const (
 	// account, the single-service accounts) needs no other Azure
 	// resource; subnets (network rules), Key Vault keys (CMK), storage
 	// accounts and user-assigned identities are optional references.
+	// A container kind: every model deployment and every project is an
+	// ARM child created onto the account
+	// (accounts/{account}/deployments/{name}, .../projects/{name}), so a
+	// diagram draws them inside it. The subnets the account admits
+	// through its network ACLs or injects agent compute into are access,
+	// never placement (containment_exempt on those fields).
 	CloudResourceKind_AzureCognitiveAccount CloudResourceKind = 2160
 	// An ARM child of its account: a model deployment (which model
 	// runs, at which throughput class) exists only on an Azure AI
@@ -1347,6 +1363,12 @@ const (
 	// The workspace REQUIRES all three companion services at creation
 	// (default storage, secrets vault, telemetry) -- genuine
 	// deploy-order prerequisites, each with its own fixture profile.
+	// A container kind: datastores, compute clusters and instances, and
+	// online and batch endpoints are ARM children of the workspace
+	// (workspaces/{ws}/datastores|computes|onlineEndpoints|batchEndpoints/{name}),
+	// so a diagram draws them inside it. The companion services it
+	// names are reaches (containment_exempt on those fields), and so is
+	// the subnet its serverless compute or a compute's nodes attach to.
 	CloudResourceKind_AzureMachineLearningWorkspace CloudResourceKind = 2163
 	// An ARM child of its workspace. The storage target (container,
 	// filesystem or share) is scenario-declared via the
@@ -1362,6 +1384,11 @@ const (
 	// The hub REQUIRES both companion services at creation (secrets
 	// vault, default storage) -- genuine deploy-order prerequisites,
 	// each with its own fixture profile.
+	// A container kind: every AI Foundry project is created inside its
+	// hub and deploys into the hub's resource group (the project spec
+	// carries none), so a diagram draws the projects inside the hub. The
+	// vault and storage account the hub names are reaches
+	// (containment_exempt on those fields).
 	CloudResourceKind_AzureAiFoundry CloudResourceKind = 2167
 	// Deploys into its hub's resource group (the provider derives the
 	// group from the hub reference -- the project spec carries none).
@@ -1371,6 +1398,11 @@ const (
 	// stable scoring address applications call. azurerm carries no ML
 	// endpoint resources; the modules write the raw ARM shape at a
 	// pinned api-version (azapi / azure-native).
+	// A container kind in its turn: every online deployment is an ARM
+	// child created under the endpoint whose traffic map routes to it
+	// (.../onlineEndpoints/{endpoint}/deployments/{name}) and cannot
+	// exist without it, so a diagram draws the deployments inside the
+	// endpoint, inside the workspace.
 	CloudResourceKind_AzureMachineLearningOnlineEndpoint CloudResourceKind = 2170
 	// An ARM child of its endpoint (.../deployments/{name}) -- the
 	// running copy of a model the endpoint's traffic map routes to.
@@ -1379,6 +1411,12 @@ const (
 	// stable address batch scoring jobs are submitted to. azurerm
 	// carries no ML endpoint resources; the modules write the raw ARM
 	// shape at a pinned api-version (azapi / azure-native).
+	// A container kind in its turn: every batch deployment is an ARM
+	// child created under the endpoint whose default-deployment pointer
+	// routes to it (.../batchEndpoints/{endpoint}/deployments/{name}),
+	// so a diagram draws the deployments inside the endpoint, inside
+	// the workspace. The compute cluster a deployment runs on is a
+	// reach, not a room.
 	CloudResourceKind_AzureMachineLearningBatchEndpoint CloudResourceKind = 2172
 	// An ARM child of its endpoint (.../deployments/{name}) -- the
 	// job recipe (model, compute, batching behavior) the endpoint's
@@ -1387,7 +1425,8 @@ const (
 	// The Recovery Services vault (Microsoft.RecoveryServices/vaults) --
 	// the safe that classic Azure Backup data and Site Recovery
 	// configuration live in. Backup policies and protected items are
-	// ARM children of a vault.
+	// ARM children of a vault, so the vault is a container kind: a diagram
+	// draws them inside it, as the portal's own blades do.
 	CloudResourceKind_AzureRecoveryServicesVault CloudResourceKind = 2175
 	// An ARM child of its vault (.../backupPolicies/{name}) -- the
 	// schedule and retention rules that govern IaaS VM backups.
@@ -1413,7 +1452,8 @@ const (
 	// backupVaults) -- the safe that MODERN Azure Backup data lives in
 	// (managed disks, blob storage, AKS clusters, MySQL/PostgreSQL
 	// flexible servers, Data Lake storage). Backup policies and backup
-	// instances are ARM children of a vault.
+	// instances are ARM children of a vault, so the vault is a container
+	// kind: a diagram draws them inside it, as the portal's own blades do.
 	CloudResourceKind_AzureDataProtectionBackupVault CloudResourceKind = 2180
 	// An ARM child of its vault (.../backupPolicies/{name}) -- the
 	// schedule and retention rules for ONE Data Protection datasource
@@ -1467,7 +1507,11 @@ const (
 	// AzureResourceGroup is a prerequisite because a Traffic Manager
 	// profile is created inside a referenced resource group (the profile
 	// itself is a global service -- the group only holds its metadata
-	// record).
+	// record). A container kind: every endpoint is an ARM child of its
+	// profile, so on a diagram the endpoints stand inside the profile that
+	// steers traffic to them. A nested endpoint that points AT another
+	// profile lives in its own parent profile, never in the one it targets,
+	// and that reference says so with containment_exempt.
 	CloudResourceKind_AzureTrafficManagerProfile CloudResourceKind = 2189
 	// AzureTrafficManagerProfile is a prerequisite because every
 	// endpoint is created inside a referenced profile -- it is the
@@ -1493,19 +1537,31 @@ const (
 	// application publishes its own events to, fanned out to handlers by
 	// event subscriptions. One topic is one event stream with its own
 	// endpoint and access keys; for many streams behind one endpoint see
-	// AzureEventgridDomain.
+	// AzureEventgridDomain. A container kind: every event subscription on
+	// the topic is an ARM child created under it ({topic_id}/providers/
+	// Microsoft.EventGrid/eventSubscriptions/{name}) and cannot exist
+	// without it, so on a diagram the topic is the room its subscriptions
+	// stand in, as the portal's own blade lists them. A kind that merely
+	// publishes to or subscribes from a topic while living elsewhere (a
+	// Data Factory trigger, an Event Grid namespace's MQTT route) says so
+	// with containment_exempt.
 	CloudResourceKind_AzureEventgridTopic CloudResourceKind = 2193
 	// The Azure Event Grid domain -- ONE publishing endpoint and one
 	// pair of access keys serving many event streams (domain topics),
 	// the multi-tenant pattern. Topics inside the domain are
 	// auto-managed by Azure or declared explicitly as
-	// AzureEventgridDomainTopic resources.
+	// AzureEventgridDomainTopic resources. A container kind: every domain
+	// topic is an ARM child of its domain ({domain_id}/topics/{name}), so
+	// on a diagram the domain is the room its tenant streams stand in.
 	CloudResourceKind_AzureEventgridDomain CloudResourceKind = 2194
 	// The Azure Event Grid system topic -- the subscription surface for
 	// events AZURE ITSELF publishes about one of your resources (a
 	// storage account's blob events, a resource group's lifecycle
 	// events). One system topic per source resource per topic type;
-	// event subscriptions attach to it to route events to handlers.
+	// event subscriptions attach to it to route events to handlers. A
+	// container kind: every subscription on a system topic is an ARM child
+	// created under it ({system_topic_id}/eventSubscriptions/{name}), so on
+	// a diagram the system topic is the room its subscriptions stand in.
 	CloudResourceKind_AzureEventgridSystemTopic CloudResourceKind = 2195
 	// The Azure Event Grid event subscription -- the delivery
 	// instruction routing events from a source (a custom topic, domain,
@@ -1517,12 +1573,16 @@ const (
 	// The Azure Event Grid namespace -- the capacity-scaled hub of the
 	// newer Event Grid: hosts CloudEvents namespace topics and an
 	// optional MQTT broker behind one set of regional endpoints, sized
-	// in throughput units.
+	// in throughput units. A container kind: every namespace topic is an
+	// ARM child of its namespace ({namespace_id}/topics/{name}), so on a
+	// diagram the namespace is the room its streams stand in.
 	CloudResourceKind_AzureEventgridNamespace CloudResourceKind = 2197
 	// The Azure Data Factory -- the workspace every other Data Factory
 	// resource lives inside: pipelines, data flows, linked services,
 	// datasets, triggers, and integration runtimes are all created
-	// against a factory's ARM ID.
+	// against a factory's ARM ID. A container kind for exactly that
+	// reason: those six kinds are ARM children of the factory, so on a
+	// diagram the factory is the room they stand in.
 	CloudResourceKind_AzureDataFactory CloudResourceKind = 2198
 	// One unit of work inside an Azure Data Factory
 	// ({factory_id}/pipelines/{name}) -- an ordered set of activities
@@ -1569,7 +1629,12 @@ const (
 	// The Azure Compute Gallery -- the shared library an organization
 	// keeps its approved VM images in. Image definitions
 	// (AzureComputeGalleryImage) live inside it; VMs and scale sets
-	// deploy from their published, region-replicated versions.
+	// deploy from their published, region-replicated versions. A container
+	// kind: every image definition is an ARM child of its gallery
+	// ({gallery_id}/images/{name}), so on a diagram the definitions stand
+	// inside the library that publishes them. The image ids a VM, a scale
+	// set, or a disk boots from are plain strings and never place anything
+	// inside the gallery.
 	CloudResourceKind_AzureComputeGallery CloudResourceKind = 2205
 	// A gallery image ({gallery_id}/images/{name}) -- one image
 	// definition inside a Compute Gallery (marketplace-style identity,
@@ -4205,7 +4270,7 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1cKubernetesManifestProjection\x12\x1f\n" +
 	"\vapi_version\x18\x01 \x01(\tR\n" +
 	"apiVersion\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind*\xdf\xdb\x02\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind*\x81\xdc\x02\n" +
 	"\x11CloudResourceKind\x12\x0f\n" +
 	"\vunspecified\x10\x00\x12b\n" +
 	"\x18TestCloudResourceGeneric\x10\x01\x1aD\xa2\xf7\x04@\b\x01\x12\bv1alpha2\"\x04tcrgJ,\n" +
@@ -4535,8 +4600,8 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x1aAzureEventHubConsumerGroup\x10\x9e\x10\x1a\x1b\xa2\xf7\x04\x17\b\r\x12\bv1alpha1\"\x06azehcgP\xd1\x01\x12B\n" +
 	"\x1eAzureEventHubAuthorizationRule\x10\x9f\x10\x1a\x1d\xa2\xf7\x04\x19\b\r\x12\bv1alpha1\"\bazehauthP\xd1\x01\x12;\n" +
 	"\x15AzureFrontDoorProfile\x10\xa0\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x04azfd0\x01:\x02\xd0\x0fP\xcd\x01\x12=\n" +
-	"\x16AzureFrontDoorEndpoint\x10\xa1\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azfde0\x01:\x02\xa0\x10P\xcd\x01\x12?\n" +
-	"\x19AzureFrontDoorOriginGroup\x10\xa2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azfdog:\x02\xa0\x10P\xcd\x01\x129\n" +
+	"\x16AzureFrontDoorEndpoint\x10\xa1\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azfde0\x01:\x02\xa0\x10P\xcd\x01\x12A\n" +
+	"\x19AzureFrontDoorOriginGroup\x10\xa2\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azfdog0\x01:\x02\xa0\x10P\xcd\x01\x129\n" +
 	"\x14AzureFrontDoorOrigin\x10\xa3\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azfdo:\x02\xa2\x10P\xcd\x01\x12;\n" +
 	"\x13AzureFrontDoorRoute\x10\xa4\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azfdrt:\x04\xa1\x10\xa3\x10P\xcd\x01\x12;\n" +
 	"\x15AzureFrontDoorRuleSet\x10\xa5\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azfdrs:\x02\xa0\x10P\xcd\x01\x12@\n" +
@@ -4580,59 +4645,59 @@ const file_shared_cloudresourcekind_cloud_resource_kind_proto_rawDesc = "" +
 	"\x18AzureExpressRouteCircuit\x10\xe0\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azerc:\x02\xd0\x0fP\xcd\x01\x12E\n" +
 	"\x1fAzureExpressRouteCircuitPeering\x10\xe1\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azercp:\x02\xe0\x10P\xcd\x01\x12>\n" +
 	"\x18AzureExpressRouteGateway\x10\xe2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azergw:\x02\xe5\x10P\xcd\x01\x12;\n" +
-	"\x15AzureExpressRoutePort\x10\xe3\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azerpt:\x02\xd0\x0fP\xcd\x01\x125\n" +
-	"\x0fAzureVirtualWan\x10\xe4\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azvwan:\x02\xd0\x0fP\xcd\x01\x125\n" +
-	"\x0fAzureVirtualHub\x10\xe5\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azvhub:\x02\xe4\x10P\xcd\x01\x12B\n" +
+	"\x15AzureExpressRoutePort\x10\xe3\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azerpt:\x02\xd0\x0fP\xcd\x01\x127\n" +
+	"\x0fAzureVirtualWan\x10\xe4\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azvwan0\x01:\x02\xd0\x0fP\xcd\x01\x127\n" +
+	"\x0fAzureVirtualHub\x10\xe5\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azvhub0\x01:\x02\xe4\x10P\xcd\x01\x12B\n" +
 	"\x19AzureVirtualHubConnection\x10\xe6\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazvhubc:\x04\xe5\x10\xd6\x0fP\xcd\x01\x126\n" +
 	"\x0fAzureVpnGateway\x10\xe7\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazvpngw:\x02\xe5\x10P\xcd\x01\x12C\n" +
 	"\x19AzureVpnGatewayConnection\x10\xe8\x10\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\bazvpngwc:\x04\xe7\x10\xe9\x10P\xcd\x01\x125\n" +
 	"\fAzureVpnSite\x10\xe9\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazvpnsite:\x02\xe4\x10P\xcd\x01\x12C\n" +
 	"\x1aAzurePointToSiteVpnGateway\x10\xea\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazp2sgw:\x04\xe5\x10\xeb\x10P\xcd\x01\x12B\n" +
-	"\x1bAzureVpnServerConfiguration\x10\xeb\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazvpnsc:\x02\xd0\x0fP\xcd\x01\x12:\n" +
-	"\x15AzureCognitiveAccount\x10\xf0\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azcog:\x02\xd0\x0fP\xd0\x01\x12>\n" +
+	"\x1bAzureVpnServerConfiguration\x10\xeb\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazvpnsc:\x02\xd0\x0fP\xcd\x01\x12<\n" +
+	"\x15AzureCognitiveAccount\x10\xf0\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azcog0\x01:\x02\xd0\x0fP\xd0\x01\x12>\n" +
 	"\x18AzureCognitiveDeployment\x10\xf1\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcogd:\x02\xf0\x10P\xd0\x01\x12B\n" +
-	"\x1cAzureCognitiveAccountProject\x10\xf2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcogp:\x02\xf0\x10P\xd0\x01\x12H\n" +
-	"\x1dAzureMachineLearningWorkspace\x10\xf3\x10\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\x05azmlw:\b\xd0\x0f\xd9\x0f\xd5\x0f\x83\x10P\xd0\x01\x12C\n" +
+	"\x1cAzureCognitiveAccountProject\x10\xf2\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcogp:\x02\xf0\x10P\xd0\x01\x12J\n" +
+	"\x1dAzureMachineLearningWorkspace\x10\xf3\x10\x1a&\xa2\xf7\x04\"\b\r\x12\bv1alpha1\"\x05azmlw0\x01:\b\xd0\x0f\xd9\x0f\xd5\x0f\x83\x10P\xd0\x01\x12C\n" +
 	"\x1dAzureMachineLearningDatastore\x10\xf4\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlds:\x02\xf3\x10P\xd0\x01\x12H\n" +
 	"\"AzureMachineLearningComputeCluster\x10\xf5\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlcc:\x02\xf3\x10P\xd0\x01\x12I\n" +
-	"#AzureMachineLearningComputeInstance\x10\xf6\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlci:\x02\xf3\x10P\xd0\x01\x127\n" +
-	"\x0eAzureAiFoundry\x10\xf7\x10\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\x05azaif:\x06\xd0\x0f\xd5\x0f\xd9\x0fP\xd0\x01\x12;\n" +
+	"#AzureMachineLearningComputeInstance\x10\xf6\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlci:\x02\xf3\x10P\xd0\x01\x129\n" +
+	"\x0eAzureAiFoundry\x10\xf7\x10\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\x05azaif0\x01:\x06\xd0\x0f\xd5\x0f\xd9\x0fP\xd0\x01\x12;\n" +
 	"\x15AzureAiFoundryProject\x10\xf8\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azaifp:\x02\xf7\x10P\xd0\x01\x128\n" +
-	"\x12AzureSearchService\x10\xf9\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azsrch:\x02\xd0\x0fP\xd0\x01\x12H\n" +
-	"\"AzureMachineLearningOnlineEndpoint\x10\xfa\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmloe:\x02\xf3\x10P\xd0\x01\x12J\n" +
-	"$AzureMachineLearningOnlineDeployment\x10\xfb\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlod:\x02\xfa\x10P\xd0\x01\x12G\n" +
-	"!AzureMachineLearningBatchEndpoint\x10\xfc\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbe:\x02\xf3\x10P\xd0\x01\x12I\n" +
-	"#AzureMachineLearningBatchDeployment\x10\xfd\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbd:\x02\xfc\x10P\xd0\x01\x12?\n" +
-	"\x1aAzureRecoveryServicesVault\x10\xff\x10\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azrsv:\x02\xd0\x0fP\xd4\x01\x128\n" +
+	"\x12AzureSearchService\x10\xf9\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azsrch:\x02\xd0\x0fP\xd0\x01\x12J\n" +
+	"\"AzureMachineLearningOnlineEndpoint\x10\xfa\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azmloe0\x01:\x02\xf3\x10P\xd0\x01\x12J\n" +
+	"$AzureMachineLearningOnlineDeployment\x10\xfb\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlod:\x02\xfa\x10P\xd0\x01\x12I\n" +
+	"!AzureMachineLearningBatchEndpoint\x10\xfc\x10\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azmlbe0\x01:\x02\xf3\x10P\xd0\x01\x12I\n" +
+	"#AzureMachineLearningBatchDeployment\x10\xfd\x10\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azmlbd:\x02\xfc\x10P\xd0\x01\x12A\n" +
+	"\x1aAzureRecoveryServicesVault\x10\xff\x10\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azrsv0\x01:\x02\xd0\x0fP\xd4\x01\x128\n" +
 	"\x13AzureBackupPolicyVm\x10\x80\x11\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azbpv:\x02\xff\x10P\xd4\x01\x12>\n" +
 	"\x16AzureBackupProtectedVm\x10\x81\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azbprv:\x04\x80\x11\xd8\x0fP\xd4\x01\x12@\n" +
 	"\x1aAzureBackupPolicyFileShare\x10\x82\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azbpfs:\x02\xff\x10P\xd4\x01\x12H\n" +
-	"\x1dAzureBackupProtectedFileShare\x10\x83\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\aazbprfs:\x06\xab\x10\x82\x11\xa5\x11P\xd4\x01\x12D\n" +
-	"\x1eAzureDataProtectionBackupVault\x10\x84\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdpbv:\x02\xd0\x0fP\xd4\x01\x12E\n" +
+	"\x1dAzureBackupProtectedFileShare\x10\x83\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\aazbprfs:\x06\xab\x10\x82\x11\xa5\x11P\xd4\x01\x12F\n" +
+	"\x1eAzureDataProtectionBackupVault\x10\x84\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azdpbv0\x01:\x02\xd0\x0fP\xd4\x01\x12E\n" +
 	"\x1fAzureDataProtectionBackupPolicy\x10\x85\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdpbp:\x02\x84\x11P\xd4\x01\x12I\n" +
 	"!AzureDataProtectionBackupInstance\x10\x86\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azdpbi:\x04\x84\x11\x85\x11P\xd4\x01\x12;\n" +
 	"\x10AzureBastionHost\x10\x88\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\tazbastion:\x04\xdb\x0f\xdd\x0fP\xcd\x01\x12C\n" +
 	"\x1aAzureNetworkWatcherFlowLog\x10\x89\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazfwlog:\x04\xd6\x0f\xd9\x0fP\xcd\x01\x12@\n" +
 	"\x17AzurePrivateDnsResolver\x10\x8a\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\aazpdnsr:\x04\xd6\x0f\xdb\x0fP\xcd\x01\x12Q\n" +
 	"(AzurePrivateDnsResolverForwardingRuleset\x10\x8b\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazpdnsfrs:\x02\x8a\x11P\xcd\x01\x12>\n" +
-	"\x15AzurePrivateDnsRecord\x10\x8c\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazpdnsrec:\x02\xdf\x0fP\xcd\x01\x12B\n" +
-	"\x1aAzureTrafficManagerProfile\x10\x8d\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\baztmprof:\x02\xd0\x0fP\xcd\x01\x12A\n" +
+	"\x15AzurePrivateDnsRecord\x10\x8c\x11\x1a\"\xa2\xf7\x04\x1e\b\r\x12\bv1alpha1\"\tazpdnsrec:\x02\xdf\x0fP\xcd\x01\x12D\n" +
+	"\x1aAzureTrafficManagerProfile\x10\x8d\x11\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\baztmprof0\x01:\x02\xd0\x0fP\xcd\x01\x12A\n" +
 	"\x1bAzureTrafficManagerEndpoint\x10\x8e\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06aztmep:\x02\x8d\x11P\xcd\x01\x12G\n" +
 	"\x1cAzureMonitorAutoscaleSetting\x10\x8f\x11\x1a$\xa2\xf7\x04 \b\r\x12\bv1alpha1\"\vazautoscale:\x02\xd0\x0fP\xd3\x01\x12E\n" +
-	"\x1eAzureMonitorDataCollectionRule\x10\x90\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azdcr:\x04\xd0\x0f\x82\x10P\xd3\x01\x128\n" +
-	"\x13AzureEventgridTopic\x10\x91\x11\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azegt:\x02\xd0\x0fP\xd2\x01\x129\n" +
-	"\x14AzureEventgridDomain\x10\x92\x11\x1a\x1e\xa2\xf7\x04\x1a\b\r\x12\bv1alpha1\"\x05azegd:\x02\xd0\x0fP\xd2\x01\x12A\n" +
-	"\x19AzureEventgridSystemTopic\x10\x93\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azegst:\x04\xd0\x0f\xd9\x0fP\xd2\x01\x12E\n" +
-	"\x1fAzureEventgridEventSubscription\x10\x94\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azeges:\x02\x91\x11P\xd2\x01\x12=\n" +
-	"\x17AzureEventgridNamespace\x10\x95\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azegns:\x02\xd0\x0fP\xd2\x01\x124\n" +
-	"\x10AzureDataFactory\x10\x96\x11\x1a\x1d\xa2\xf7\x04\x19\b\r\x12\bv1alpha1\"\x04azdf:\x02\xd0\x0fP\xd1\x01\x12@\n" +
+	"\x1eAzureMonitorDataCollectionRule\x10\x90\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azdcr:\x04\xd0\x0f\x82\x10P\xd3\x01\x12:\n" +
+	"\x13AzureEventgridTopic\x10\x91\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azegt0\x01:\x02\xd0\x0fP\xd2\x01\x12;\n" +
+	"\x14AzureEventgridDomain\x10\x92\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\x05azegd0\x01:\x02\xd0\x0fP\xd2\x01\x12C\n" +
+	"\x19AzureEventgridSystemTopic\x10\x93\x11\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\x06azegst0\x01:\x04\xd0\x0f\xd9\x0fP\xd2\x01\x12E\n" +
+	"\x1fAzureEventgridEventSubscription\x10\x94\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azeges:\x02\x91\x11P\xd2\x01\x12?\n" +
+	"\x17AzureEventgridNamespace\x10\x95\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azegns0\x01:\x02\xd0\x0fP\xd2\x01\x126\n" +
+	"\x10AzureDataFactory\x10\x96\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x04azdf0\x01:\x02\xd0\x0fP\xd1\x01\x12@\n" +
 	"\x18AzureDataFactoryPipeline\x10\x97\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\bazdfpipe:\x02\x96\x11P\xd1\x01\x12@\n" +
 	"\x18AzureDataFactoryDataFlow\x10\x98\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\bazdfflow:\x02\x96\x11P\xd1\x01\x12C\n" +
 	"\x1dAzureDataFactoryLinkedService\x10\x99\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfls:\x02\x96\x11P\xd1\x01\x12=\n" +
 	"\x17AzureDataFactoryDataset\x10\x9a\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfds:\x02\x99\x11P\xd1\x01\x12A\n" +
 	"\x17AzureDataFactoryTrigger\x10\x9b\x11\x1a#\xa2\xf7\x04\x1f\b\r\x12\bv1alpha1\"\bazdftrig:\x04\x96\x11\x97\x11P\xd1\x01\x12H\n" +
-	"\"AzureDataFactoryIntegrationRuntime\x10\x9c\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfir:\x02\x96\x11P\xd1\x01\x129\n" +
-	"\x13AzureComputeGallery\x10\x9d\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azcgal:\x02\xd0\x0fP\xc8\x01\x12?\n" +
+	"\"AzureDataFactoryIntegrationRuntime\x10\x9c\x11\x1a\x1f\xa2\xf7\x04\x1b\b\r\x12\bv1alpha1\"\x06azdfir:\x02\x96\x11P\xd1\x01\x12;\n" +
+	"\x13AzureComputeGallery\x10\x9d\x11\x1a!\xa2\xf7\x04\x1d\b\r\x12\bv1alpha1\"\x06azcgal0\x01:\x02\xd0\x0fP\xc8\x01\x12?\n" +
 	"\x18AzureComputeGalleryImage\x10\x9e\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazcgimg:\x02\x9d\x11P\xc8\x01\x12;\n" +
 	"\x14AzureAvailabilitySet\x10\x9f\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazavset:\x02\xd0\x0fP\xc8\x01\x128\n" +
 	"\x11AzureDiskSnapshot\x10\xa0\x11\x1a \xa2\xf7\x04\x1c\b\r\x12\bv1alpha1\"\aazdsnap:\x02\xe7\x0fP\xc8\x01\x12;\n" +

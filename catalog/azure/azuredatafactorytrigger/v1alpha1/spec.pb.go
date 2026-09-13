@@ -741,6 +741,9 @@ type AzureDataFactoryTriggerBlobEvent struct {
 	// ID -- defaults to referencing an AzureStorageAccount's
 	// storage_account_id output. FIXED AT CREATION -- changing it
 	// replaces the trigger.
+	//
+	// The trigger LISTENS to this account's blob events and belongs to its
+	// factory, so on a diagram the reference is access, not placement.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// Which blob events fire the trigger (at least one).
 	Events []string `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
@@ -859,6 +862,9 @@ type AzureDataFactoryTriggerCustomEvent struct {
 	// webhook subscribers with an HTTP OPTIONS handshake Data
 	// Factory's endpoint does not answer -- Start fails with "Webhook
 	// endpoint validation failed ... MethodNotAllowed".
+	//
+	// The trigger lives in its factory and listens TO the topic, so the
+	// reference is access, not placement, on a diagram.
 	EventgridTopicId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=eventgrid_topic_id,json=eventgridTopicId,proto3" json:"eventgrid_topic_id,omitempty"`
 	// Which event types fire the trigger (at least one) -- free-form
 	// strings matched against the published events' eventType field
@@ -1090,9 +1096,9 @@ const file_catalog_azure_azuredatafactorytrigger_v1alpha1_spec_proto_rawDesc = "
 	"\x06offset\x18\x02 \x01(\tB\xcb\x01\xbaH\xc7\x01\xba\x01\xc3\x01\n" +
 	"/data_factory_trigger_dependency_offset_timespan\x124offset must be a TimeSpan like 24:00:00 or -24:00:00\x1aZthis == '' || this.matches('^-?((\\\\d+)\\\\.)?(\\\\d\\\\d):(60|([0-5][0-9])):(60|([0-5][0-9]))$')R\x06offset\x12\xcf\x01\n" +
 	"\x04size\x18\x03 \x01(\tB\xba\x01\xbaH\xb6\x01\xba\x01\xb2\x01\n" +
-	"-data_factory_trigger_dependency_size_timespan\x12%size must be a TimeSpan like 06:00:00\x1aZthis == '' || this.matches('^-?((\\\\d+)\\\\.)?(\\\\d\\\\d):(60|([0-5][0-9])):(60|([0-5][0-9]))$')R\x04size\"\x82\b\n" +
-	" AzureDataFactoryTriggerBlobEvent\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12b\n" +
+	"-data_factory_trigger_dependency_size_timespan\x12%size must be a TimeSpan like 06:00:00\x1aZthis == '' || this.matches('^-?((\\\\d+)\\\\.)?(\\\\d\\\\d):(60|([0-5][0-9])):(60|([0-5][0-9]))$')R\x04size\"\x86\b\n" +
+	" AzureDataFactoryTriggerBlobEvent\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12b\n" +
 	"\x06events\x18\x02 \x03(\tBJ\xbaHG\x92\x01D\b\x01\"@r>R\x1dMicrosoft.Storage.BlobCreatedR\x1dMicrosoft.Storage.BlobDeletedR\x06events\x121\n" +
 	"\x15blob_path_begins_with\x18\x03 \x01(\tR\x12blobPathBeginsWith\x12-\n" +
 	"\x13blob_path_ends_with\x18\x04 \x01(\tR\x10blobPathEndsWith\x12<\n" +
@@ -1103,9 +1109,9 @@ const file_catalog_azure_azuredatafactorytrigger_v1alpha1_spec_proto_rawDesc = "
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xb7\x01\xbaH\xb3\x01\x1a\xb0\x01\n" +
 	"1azure_data_factory_trigger_blob_event_path_filter\x127Set blob_path_begins_with, blob_path_ends_with, or both\x1aBthis.blob_path_begins_with != '' || this.blob_path_ends_with != ''B\x15\n" +
-	"\x13_ignore_empty_blobs\"\xab\x05\n" +
-	"\"AzureDataFactoryTriggerCustomEvent\x12\x88\x01\n" +
-	"\x12eventgrid_topic_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB&\xbaH\x03\xc8\x01\x01\x88\xd4a\x91\x11\x92\xd4a\x17status.outputs.topic_idR\x10eventgridTopicId\x12&\n" +
+	"\x13_ignore_empty_blobs\"\xaf\x05\n" +
+	"\"AzureDataFactoryTriggerCustomEvent\x12\x8c\x01\n" +
+	"\x12eventgrid_topic_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB*\xbaH\x03\xc8\x01\x01\x88\xd4a\x91\x11\x92\xd4a\x17status.outputs.topic_id\x98\xd4a\x01R\x10eventgridTopicId\x12&\n" +
 	"\x06events\x18\x02 \x03(\tB\x0e\xbaH\v\x92\x01\b\b\x01\"\x04r\x02\x10\x01R\x06events\x12.\n" +
 	"\x13subject_begins_with\x18\x03 \x01(\tR\x11subjectBeginsWith\x12*\n" +
 	"\x11subject_ends_with\x18\x04 \x01(\tR\x0fsubjectEndsWith\x12\xa5\x01\n" +

@@ -232,7 +232,9 @@ type AzureFrontDoorRouteSpec struct {
 	// The origin group that answers requests matched by this route, by ARM
 	// ID. References an AzureFrontDoorOriginGroup's origin_group_id
 	// output. Updatable in place (repointing a route is how traffic moves
-	// between backend pools).
+	// between backend pools). The route lives in its endpoint and forwards
+	// TO the origin group, so the reference is access, not placement, on a
+	// diagram.
 	OriginGroupId *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=origin_group_id,json=originGroupId,proto3" json:"origin_group_id,omitempty"`
 	// The origins this route depends on, by ARM ID -- each references an
 	// AzureFrontDoorOrigin's origin_id output. Azure never receives these
@@ -521,14 +523,14 @@ var File_catalog_azure_azurefrontdoorroute_v1alpha1_spec_proto protoreflect.File
 
 const file_catalog_azure_azurefrontdoorroute_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"5catalog/azure/azurefrontdoorroute/v1alpha1/spec.proto\x12.dev.planton.azure.azurefrontdoorroute.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xc5\x13\n" +
+	"5catalog/azure/azurefrontdoorroute/v1alpha1/spec.proto\x12.dev.planton.azure.azurefrontdoorroute.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\x1a\x1cshared/options/options.proto\"\xc9\x13\n" +
 	"\x17AzureFrontDoorRouteSpec\x12~\n" +
 	"\vendpoint_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB)\xbaH\x03\xc8\x01\x01\x88\xd4a\xa1\x10\x92\xd4a\x1astatus.outputs.endpoint_idR\n" +
 	"endpointId\x12\x84\x02\n" +
 	"\n" +
 	"route_name\x18\x02 \x01(\tB\xe4\x01\xbaH\xe0\x01\xba\x01\xd3\x01\n" +
-	"\x1cfront_door_route_name_format\x12wroute_name must be 2-90 characters, start and end with a letter or digit, and contain only letters, digits, and hyphens\x1a:this.matches('^[a-zA-Z0-9][a-zA-Z0-9-]{0,88}[a-zA-Z0-9]$')\xc8\x01\x01r\x04\x10\x02\x18ZR\trouteName\x12\x89\x01\n" +
-	"\x0forigin_group_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB-\xbaH\x03\xc8\x01\x01\x88\xd4a\xa2\x10\x92\xd4a\x1estatus.outputs.origin_group_idR\roriginGroupId\x12t\n" +
+	"\x1cfront_door_route_name_format\x12wroute_name must be 2-90 characters, start and end with a letter or digit, and contain only letters, digits, and hyphens\x1a:this.matches('^[a-zA-Z0-9][a-zA-Z0-9-]{0,88}[a-zA-Z0-9]$')\xc8\x01\x01r\x04\x10\x02\x18ZR\trouteName\x12\x8d\x01\n" +
+	"\x0forigin_group_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xa2\x10\x92\xd4a\x1estatus.outputs.origin_group_id\x98\xd4a\x01R\roriginGroupId\x12t\n" +
 	"\n" +
 	"origin_ids\x18\x04 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB!\x88\xd4a\xa3\x10\x92\xd4a\x18status.outputs.origin_idR\toriginIds\x12y\n" +
 	"\frule_set_ids\x18\x05 \x03(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB#\x88\xd4a\xa5\x10\x92\xd4a\x1astatus.outputs.rule_set_idR\n" +

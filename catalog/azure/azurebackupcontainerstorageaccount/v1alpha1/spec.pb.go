@@ -52,6 +52,10 @@ type AzureBackupContainerStorageAccountSpec struct {
 	RecoveryVaultName *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=recovery_vault_name,json=recoveryVaultName,proto3" json:"recovery_vault_name,omitempty"`
 	// The storage account to register, by ARM ID. The account must live
 	// in the vault's region (Azure Files backup is regional).
+	//
+	// The registration REGISTERS this account with the vault and is an ARM
+	// child of the vault, never a thing inside the account, so on a diagram
+	// the reference is access, not placement.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,3,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -112,11 +116,11 @@ var File_catalog_azure_azurebackupcontainerstorageaccount_v1alpha1_spec_proto pr
 
 const file_catalog_azure_azurebackupcontainerstorageaccount_v1alpha1_spec_proto_rawDesc = "" +
 	"\n" +
-	"Dcatalog/azure/azurebackupcontainerstorageaccount/v1alpha1/spec.proto\x12=dev.planton.azure.azurebackupcontainerstorageaccount.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xed\x03\n" +
+	"Dcatalog/azure/azurebackupcontainerstorageaccount/v1alpha1/spec.proto\x12=dev.planton.azure.azurebackupcontainerstorageaccount.v1alpha1\x1a\x1bbuf/validate/validate.proto\x1a&shared/foreignkey/v1/foreign_key.proto\"\xf1\x03\n" +
 	"&AzureBackupContainerStorageAccountSpec\x12\x8c\x01\n" +
 	"\x0eresource_group\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_nameR\rresourceGroup\x12\x9e\x01\n" +
-	"\x13recovery_vault_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB:\xbaH\x03\xc8\x01\x01\x88\xd4a\xff\x10\x92\xd4a+status.outputs.recovery_services_vault_nameR\x11recoveryVaultName\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountIdB\xeb\x03\n" +
+	"\x13recovery_vault_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB:\xbaH\x03\xc8\x01\x01\x88\xd4a\xff\x10\x92\xd4a+status.outputs.recovery_services_vault_nameR\x11recoveryVaultName\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x03 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountIdB\xeb\x03\n" +
 	"Acom.dev.planton.azure.azurebackupcontainerstorageaccount.v1alpha1B\tSpecProtoP\x01Z\x81\x01github.com/plantonhq/planton/catalog/azure/azurebackupcontainerstorageaccount/v1alpha1;azurebackupcontainerstorageaccountv1alpha1\xa2\x02\x04DPAA\xaa\x02=Dev.Planton.Azure.Azurebackupcontainerstorageaccount.V1alpha1\xca\x02=Dev\\Planton\\Azure\\Azurebackupcontainerstorageaccount\\V1alpha1\xe2\x02IDev\\Planton\\Azure\\Azurebackupcontainerstorageaccount\\V1alpha1\\GPBMetadata\xea\x02ADev::Planton::Azure::Azurebackupcontainerstorageaccount::V1alpha1b\x06proto3"
 
 var (

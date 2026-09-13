@@ -212,6 +212,10 @@ type AzureDataProtectionBackupInstanceBlobStorage struct {
 	// The storage account whose blob services are protected, by ARM ID.
 	// Fixed at creation. The vault's identity needs the "Storage
 	// Account Backup Contributor" role on this account before create.
+	//
+	// The instance PROTECTS this account's blob services and is an ARM child
+	// of its vault, so on a diagram the reference is access, not placement --
+	// the rule the Kubernetes variant's cluster already carries.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The container names to back up. Required when the policy has a
 	// VAULT tier (vaulted or operational+vaulted policies back up
@@ -279,6 +283,10 @@ type AzureDataProtectionBackupInstanceDisk struct {
 	// The resource group (by name) where Azure Backup stores the disk
 	// snapshots. Fixed at creation. The vault's identity needs the
 	// "Disk Snapshot Contributor" role on this group before create.
+	//
+	// Snapshots are WRITTEN into this group; the instance itself is an ARM
+	// child of its vault, so on a diagram the reference is access, not
+	// placement.
 	SnapshotResourceGroupName *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=snapshot_resource_group_name,json=snapshotResourceGroupName,proto3" json:"snapshot_resource_group_name,omitempty"`
 	// The subscription holding the snapshot resource group, when it
 	// differs from the vault's own subscription (cross-subscription
@@ -350,10 +358,15 @@ type AzureDataProtectionBackupInstanceKubernetesCluster struct {
 	// cluster must carry the AKS Backup extension and its
 	// trusted-access role binding to the vault before create -- an
 	// apply-time contract Azure enforces, not something this spec can
-	// check.
+	// check. The backup instance PROTECTS the cluster and lives in its
+	// vault, so the reference is access, not placement, on a diagram.
 	KubernetesClusterId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=kubernetes_cluster_id,json=kubernetesClusterId,proto3" json:"kubernetes_cluster_id,omitempty"`
 	// The resource group (by name) where Azure Backup stores the
 	// cluster's snapshots. Fixed at creation.
+	//
+	// Snapshots are WRITTEN into this group; the instance itself is an ARM
+	// child of its vault, so on a diagram the reference is access, not
+	// placement.
 	SnapshotResourceGroupName *v1.StringValueOrRef `protobuf:"bytes,2,opt,name=snapshot_resource_group_name,json=snapshotResourceGroupName,proto3" json:"snapshot_resource_group_name,omitempty"`
 	// What the backup includes. Leave unset to back up every namespace
 	// with the service defaults (no cluster-scoped resources, no volume
@@ -626,6 +639,10 @@ type AzureDataProtectionBackupInstanceDataLakeStorage struct {
 	// namespace (Data Lake Gen2) enabled. Fixed at creation. The
 	// vault's identity needs the "Storage Account Backup Contributor"
 	// role on this account before create.
+	//
+	// The instance PROTECTS this account's Data Lake containers and is an ARM
+	// child of its vault, so on a diagram the reference is access, not
+	// placement.
 	StorageAccountId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=storage_account_id,json=storageAccountId,proto3" json:"storage_account_id,omitempty"`
 	// The storage containers to back up -- at least one, at most 1,000
 	// (the provider's own bounds). Container names are 3-63 characters
@@ -697,18 +714,18 @@ const file_catalog_azure_azuredataprotectionbackupinstance_v1alpha1_spec_proto_r
 	"\x1apostgresql_flexible_server\x18\t \x01(\v2w.dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstancePostgresqlFlexibleServerR\x18postgresqlFlexibleServer\x12\x9a\x01\n" +
 	"\x11data_lake_storage\x18\n" +
 	" \x01(\v2n.dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceDataLakeStorageR\x0fdataLakeStorage:\xbd\x03\xbaH\xb9\x03\x1a\xb6\x03\n" +
-	"\x13exactly_one_variant\x12\xad\x01exactly one of blob_storage, disk, kubernetes_cluster, mysql_flexible_server, postgresql_flexible_server or data_lake_storage must be set -- the block is the datasource type\x1a\xee\x01(has(this.blob_storage) ? 1 : 0) + (has(this.disk) ? 1 : 0) + (has(this.kubernetes_cluster) ? 1 : 0) + (has(this.mysql_flexible_server) ? 1 : 0) + (has(this.postgresql_flexible_server) ? 1 : 0) + (has(this.data_lake_storage) ? 1 : 0) == 1\"\x8a\x02\n" +
-	",AzureDataProtectionBackupInstanceBlobStorage\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12E\n" +
-	"\x1fstorage_account_container_names\x18\x02 \x03(\tR\x1cstorageAccountContainerNames\"\xaa\x03\n" +
+	"\x13exactly_one_variant\x12\xad\x01exactly one of blob_storage, disk, kubernetes_cluster, mysql_flexible_server, postgresql_flexible_server or data_lake_storage must be set -- the block is the datasource type\x1a\xee\x01(has(this.blob_storage) ? 1 : 0) + (has(this.disk) ? 1 : 0) + (has(this.kubernetes_cluster) ? 1 : 0) + (has(this.mysql_flexible_server) ? 1 : 0) + (has(this.postgresql_flexible_server) ? 1 : 0) + (has(this.data_lake_storage) ? 1 : 0) == 1\"\x8e\x02\n" +
+	",AzureDataProtectionBackupInstanceBlobStorage\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12E\n" +
+	"\x1fstorage_account_container_names\x18\x02 \x03(\tR\x1cstorageAccountContainerNames\"\xae\x03\n" +
 	"%AzureDataProtectionBackupInstanceDisk\x12r\n" +
-	"\adisk_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\xbaH\x03\xc8\x01\x01\x88\xd4a\xe7\x0f\x92\xd4a\x16status.outputs.disk_idR\x06diskId\x12\xa6\x01\n" +
-	"\x1csnapshot_resource_group_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_nameR\x19snapshotResourceGroupName\x12G\n" +
+	"\adisk_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB%\xbaH\x03\xc8\x01\x01\x88\xd4a\xe7\x0f\x92\xd4a\x16status.outputs.disk_idR\x06diskId\x12\xaa\x01\n" +
+	"\x1csnapshot_resource_group_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_name\x98\xd4a\x01R\x19snapshotResourceGroupName\x12G\n" +
 	"\x18snapshot_subscription_id\x18\x03 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01H\x00R\x16snapshotSubscriptionId\x88\x01\x01B\x1b\n" +
-	"\x19_snapshot_subscription_id\"\xba\x04\n" +
-	"2AzureDataProtectionBackupInstanceKubernetesCluster\x12\x90\x01\n" +
-	"\x15kubernetes_cluster_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB(\xbaH\x03\xc8\x01\x01\x88\xd4a\xd1\x0f\x92\xd4a\x19status.outputs.cluster_idR\x13kubernetesClusterId\x12\xa6\x01\n" +
-	"\x1csnapshot_resource_group_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB1\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_nameR\x19snapshotResourceGroupName\x12\xc7\x01\n" +
+	"\x19_snapshot_subscription_id\"\xc2\x04\n" +
+	"2AzureDataProtectionBackupInstanceKubernetesCluster\x12\x94\x01\n" +
+	"\x15kubernetes_cluster_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB,\xbaH\x03\xc8\x01\x01\x88\xd4a\xd1\x0f\x92\xd4a\x19status.outputs.cluster_id\x98\xd4a\x01R\x13kubernetesClusterId\x12\xaa\x01\n" +
+	"\x1csnapshot_resource_group_name\x18\x02 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB5\xbaH\x03\xc8\x01\x01\x88\xd4a\xd0\x0f\x92\xd4a\"status.outputs.resource_group_name\x98\xd4a\x01R\x19snapshotResourceGroupName\x12\xc7\x01\n" +
 	"\x1cbackup_datasource_parameters\x18\x03 \x01(\v2\x84\x01.dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1.AzureDataProtectionBackupInstanceKubernetesClusterDatasourceParametersR\x1abackupDatasourceParameters\"\xc4\x03\n" +
 	"FAzureDataProtectionBackupInstanceKubernetesClusterDatasourceParameters\x12/\n" +
 	"\x13included_namespaces\x18\x01 \x03(\tR\x12includedNamespaces\x12/\n" +
@@ -721,9 +738,9 @@ const file_catalog_azure_azuredataprotectionbackupinstance_v1alpha1_spec_proto_r
 	"4AzureDataProtectionBackupInstanceMysqlFlexibleServer\x12x\n" +
 	"\tserver_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xf2\x0f\x92\xd4a\x18status.outputs.server_idR\bserverId\"\xb5\x01\n" +
 	"9AzureDataProtectionBackupInstancePostgresqlFlexibleServer\x12x\n" +
-	"\tserver_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xee\x0f\x92\xd4a\x18status.outputs.server_idR\bserverId\"\xaa\x02\n" +
-	"0AzureDataProtectionBackupInstanceDataLakeStorage\x12\x92\x01\n" +
-	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB0\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_idR\x10storageAccountId\x12a\n" +
+	"\tserver_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xee\x0f\x92\xd4a\x18status.outputs.server_idR\bserverId\"\xae\x02\n" +
+	"0AzureDataProtectionBackupInstanceDataLakeStorage\x12\x96\x01\n" +
+	"\x12storage_account_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB4\xbaH\x03\xc8\x01\x01\x88\xd4a\xd9\x0f\x92\xd4a!status.outputs.storage_account_id\x98\xd4a\x01R\x10storageAccountId\x12a\n" +
 	"\x17storage_container_names\x18\x02 \x03(\tB)\xbaH&\x92\x01#\b\x01\x10\xe8\a\"\x1cr\x1a\x10\x03\x18?2\x14^[0-9a-z][0-9a-z-]*$R\x15storageContainerNamesB\xe3\x03\n" +
 	"@com.dev.planton.azure.azuredataprotectionbackupinstance.v1alpha1B\tSpecProtoP\x01Z\x7fgithub.com/plantonhq/planton/catalog/azure/azuredataprotectionbackupinstance/v1alpha1;azuredataprotectionbackupinstancev1alpha1\xa2\x02\x04DPAA\xaa\x02<Dev.Planton.Azure.Azuredataprotectionbackupinstance.V1alpha1\xca\x02<Dev\\Planton\\Azure\\Azuredataprotectionbackupinstance\\V1alpha1\xe2\x02HDev\\Planton\\Azure\\Azuredataprotectionbackupinstance\\V1alpha1\\GPBMetadata\xea\x02@Dev::Planton::Azure::Azuredataprotectionbackupinstance::V1alpha1b\x06proto3"
 

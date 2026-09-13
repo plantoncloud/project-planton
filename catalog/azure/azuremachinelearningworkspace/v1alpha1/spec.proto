@@ -68,10 +68,13 @@ message AzureMachineLearningWorkspaceSpec {
   ];
 
   // The Key Vault the workspace stores its secrets in (connection
-  // credentials, compute SSH keys), by ARM ID. Fixed at creation.
+  // credentials, compute SSH keys), by ARM ID. Fixed at creation. The
+  // workspace WRITES INTO the vault and lives in its own resource group,
+  // so the reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 5 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 
@@ -79,9 +82,15 @@ message AzureMachineLearningWorkspaceSpec {
   // built-in datastores, by ARM ID. Must be a general-purpose account
   // WITHOUT hierarchical namespace (ARM rejects Data Lake Gen2
   // accounts as default workspace storage). Fixed at creation.
+  //
+  // The workspace READS and WRITES this account as its default storage and
+  // lives in its own resource group, so on a diagram the reference is
+  // access, not placement -- the same rule its key_vault_id already
+  // carries.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 6 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 
@@ -329,10 +338,13 @@ message AzureMachineLearningWorkspaceFeatureStore {
 // Customer-managed-key encryption for the workspace's data at rest.
 // The whole block is fixed at creation.
 message AzureMachineLearningWorkspaceEncryption {
-  // The Key Vault holding the encryption key, by ARM ID.
+  // The Key Vault holding the encryption key, by ARM ID. The workspace
+  // UNWRAPS its key through the vault and never lives in it, so the
+  // reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef key_vault_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureKeyVault,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.key_vault_id"
   ];
 
@@ -409,8 +421,13 @@ message AzureMachineLearningWorkspaceServerlessCompute {
   // The subnet serverless compute nodes are placed in, by ARM ID.
   // Required when public_ip_enabled is false and the workspace's
   // public network access is disabled.
+  // On a diagram the workspace lives in its resource group and its
+  // serverless nodes attach to this subnet, so the reference is
+  // access, not placement -- a workspace is never drawn inside the
+  // subnet it injects compute into (the Azure-SSIS runtime's rule).
   dev.planton.shared.foreignkey.v1.StringValueOrRef subnet_id = 1 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 

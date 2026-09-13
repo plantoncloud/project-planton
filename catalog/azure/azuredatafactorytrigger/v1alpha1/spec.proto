@@ -382,9 +382,13 @@ message AzureDataFactoryTriggerBlobEvent {
   // ID -- defaults to referencing an AzureStorageAccount's
   // storage_account_id output. FIXED AT CREATION -- changing it
   // replaces the trigger.
+  //
+  // The trigger LISTENS to this account's blob events and belongs to its
+  // factory, so on a diagram the reference is access, not placement.
   dev.planton.shared.foreignkey.v1.StringValueOrRef storage_account_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureStorageAccount,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.storage_account_id"
   ];
 
@@ -444,9 +448,13 @@ message AzureDataFactoryTriggerCustomEvent {
   // webhook subscribers with an HTTP OPTIONS handshake Data
   // Factory's endpoint does not answer -- Start fails with "Webhook
   // endpoint validation failed ... MethodNotAllowed".
+  //
+  // The trigger lives in its factory and listens TO the topic, so the
+  // reference is access, not placement, on a diagram.
   dev.planton.shared.foreignkey.v1.StringValueOrRef eventgrid_topic_id = 1 [
     (buf.validate.field).required = true,
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureEventgridTopic,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.topic_id"
   ];
 

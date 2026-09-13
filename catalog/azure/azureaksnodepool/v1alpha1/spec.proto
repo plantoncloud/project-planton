@@ -155,17 +155,24 @@ message AzureAksNodePoolSpec {
   // cluster's node subnet -- correct for nearly every pool. Reference a
   // different AzureSubnet to segment pools across subnets (e.g. a
   // dedicated subnet for an internet-exposed pool). Changing it replaces
-  // the pool.
+  // the pool. A node pool is an ARM child of its cluster
+  // (managedClusters/{cluster}/agentPools/{pool}) and lives there on a
+  // diagram; the subnet is where its nodes attach, so the reference is
+  // access, not placement -- otherwise a pool on its own subnet would be
+  // drawn outside the cluster it belongs to.
   dev.planton.shared.foreignkey.v1.StringValueOrRef vnet_subnet_id = 18 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 
   // A separate subnet for POD IPs (traditional Azure CNI with dynamic
   // pod IP allocation). Only meaningful alongside vnet_subnet_id on
-  // clusters using non-overlay Azure CNI.
+  // clusters using non-overlay Azure CNI. Access, not placement, like
+  // vnet_subnet_id.
   dev.planton.shared.foreignkey.v1.StringValueOrRef pod_subnet_id = 19 [
     (dev.planton.shared.foreignkey.v1.default_kind) = AzureSubnet,
+    (dev.planton.shared.foreignkey.v1.containment_exempt) = true,
     (dev.planton.shared.foreignkey.v1.default_kind_field_path) = "status.outputs.subnet_id"
   ];
 

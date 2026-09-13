@@ -2652,6 +2652,8 @@ type AzureFrontDoorRuleRouteConfigurationOverrideAction struct {
 	// own, by ARM ID. References an AzureFrontDoorOriginGroup's
 	// origin_group_id output. When set, forwarding_protocol must be
 	// chosen too; when unset, the route's own origin group keeps serving.
+	// The rule set lives in its profile and steers TO the origin group, so
+	// the reference is access, not placement, on a diagram.
 	OriginGroupId *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=origin_group_id,json=originGroupId,proto3" json:"origin_group_id,omitempty"`
 	// The protocol toward the overriding origin group. Required when
 	// origin_group_id is set; must be left unspecified otherwise (it
@@ -2982,9 +2984,9 @@ const file_catalog_azure_azurefrontdoorruleset_v1alpha1_spec_proto_rawDesc = "" 
 	"\vheader_name\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\n" +
 	"headerName\x12\x14\n" +
 	"\x05value\x18\x03 \x01(\tR\x05value:\xc8\x01\xbaH\xc4\x01\x1a\xc1\x01\n" +
-	"\x1efront_door_header_action_value\x12`value is required when header_action is APPEND or OVERWRITE, and must be empty when it is DELETE\x1a=this.header_action == 3 ? this.value == '' : this.value != ''\"\x95\x15\n" +
-	"2AzureFrontDoorRuleRouteConfigurationOverrideAction\x12\x83\x01\n" +
-	"\x0forigin_group_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\x88\xd4a\xa2\x10\x92\xd4a\x1estatus.outputs.origin_group_idR\roriginGroupId\x12\x91\x01\n" +
+	"\x1efront_door_header_action_value\x12`value is required when header_action is APPEND or OVERWRITE, and must be empty when it is DELETE\x1a=this.header_action == 3 ? this.value == '' : this.value != ''\"\x99\x15\n" +
+	"2AzureFrontDoorRuleRouteConfigurationOverrideAction\x12\x87\x01\n" +
+	"\x0forigin_group_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB+\x88\xd4a\xa2\x10\x92\xd4a\x1estatus.outputs.origin_group_id\x98\xd4a\x01R\roriginGroupId\x12\x91\x01\n" +
 	"\x13forwarding_protocol\x18\x02 \x01(\x0e2V.dev.planton.azure.azurefrontdoorruleset.v1alpha1.AzureFrontDoorRuleForwardingProtocolB\b\xbaH\x05\x82\x01\x02\x10\x01R\x12forwardingProtocol\x12\x84\x01\n" +
 	"\x0ecache_behavior\x18\x03 \x01(\x0e2Q.dev.planton.azure.azurefrontdoorruleset.v1alpha1.AzureFrontDoorRuleCacheBehaviorB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\rcacheBehavior\x12\xbe\x02\n" +

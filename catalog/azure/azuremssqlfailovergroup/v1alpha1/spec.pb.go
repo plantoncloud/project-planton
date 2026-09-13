@@ -211,7 +211,9 @@ func (x *AzureMssqlFailoverGroupSpec) GetTags() map[string]string {
 type AzureMssqlFailoverGroupPartnerServer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The partner logical server, in a different region than the primary.
-	// Defaults to referencing an AzureMssqlServer's server_id output.
+	// Defaults to referencing an AzureMssqlServer's server_id output. The
+	// group is created ON its primary and replicates TO this server, so on a
+	// diagram this reference is access, not placement.
 	ServerId      *v1.StringValueOrRef `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -331,9 +333,9 @@ const file_catalog_azure_azuremssqlfailovergroup_v1alpha1_spec_proto_rawDesc = "
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B,\n" +
-	"*_readonly_endpoint_failover_policy_enabled\"\xa0\x01\n" +
-	"$AzureMssqlFailoverGroupPartnerServer\x12x\n" +
-	"\tserver_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB'\xbaH\x03\xc8\x01\x01\x88\xd4a\xf1\x0f\x92\xd4a\x18status.outputs.server_idR\bserverId\"\x9d\x03\n" +
+	"*_readonly_endpoint_failover_policy_enabled\"\xa4\x01\n" +
+	"$AzureMssqlFailoverGroupPartnerServer\x12|\n" +
+	"\tserver_id\x18\x01 \x01(\v22.dev.planton.shared.foreignkey.v1.StringValueOrRefB+\xbaH\x03\xc8\x01\x01\x88\xd4a\xf1\x0f\x92\xd4a\x18status.outputs.server_id\x98\xd4a\x01R\bserverId\"\x9d\x03\n" +
 	"&AzureMssqlFailoverGroupReadWritePolicy\x12s\n" +
 	"\x04mode\x18\x01 \x01(\x0e2W.dev.planton.azure.azuremssqlfailovergroup.v1alpha1.AzureMssqlFailoverGroupFailoverModeB\x06\xbaH\x03\xc8\x01\x01R\x04mode\x12,\n" +
 	"\rgrace_minutes\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\fgraceMinutes:\xcf\x01\xbaH\xcb\x01\x1a\xc8\x01\n" +
